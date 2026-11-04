@@ -828,13 +828,6 @@ async function init() {
   const { data: { user } } = await db.auth.getUser();
   if (!user) { window.location.href = 'index.html'; return; }
 
-  // --- DEVICE LOCK CHECK ---
-  const devId = getDeviceId();
-  const { data: deviceCheck, error: devErr } = await db.rpc('verify_and_register_device', {
-    p_auth_id: user.id,
-    p_device_id: devId,
-    p_role: 'agent'
-  });
   
   if (devErr || !deviceCheck.success) {
     db.auth.signOut();
