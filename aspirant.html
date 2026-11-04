@@ -1544,11 +1544,12 @@ function renderDrillGrid() {
     if (topCand && topCand.color && typeof tintBg === 'function') {
       tintStyle += ` background: linear-gradient(to right, ${tintBg(topCand.color, 0.08)} 0%, #FFFFFF 50%) !important;`;
     }
-    
-    var leaderHtml = topCand ? `
+     var leaderHtml = topCand ? `
       <div class="card-leader">
-        <div class="avatar-wrap with-crown">
-          <img src="${topCand.photo_url}" onerror="this.src='';this.parentElement.textContent='${topCand.name ? topCand.name.charAt(0) : '?'}'">
+        <div class="avatar-wrap with-crown ${topCand.photo_url ? '' : 'no-photo'}">
+          ${topCand.photo_url 
+            ? `<img src="${topCand.photo_url}" onerror="this.onerror=null; this.style.display='none'; this.parentElement.textContent='${topCand.name ? topCand.name.charAt(0) : '?'}'">` 
+            : (topCand.name ? topCand.name.charAt(0) : '?')}
           <span class="avatar-crown"><i class="fas fa-crown"></i></span>
         </div>
         <div class="card-leader-info">
@@ -1563,8 +1564,8 @@ function renderDrillGrid() {
       <div class="card-bar">
         <div class="card-bar-fill" style="width:${pct}%;background:${topCand.color || '#A5CF83'}"></div>
       </div>
-    ` : `<div class="card-empty-body"><i class="fas fa-hourglass-half"></i>No votes yet</div>`;
-    
+    ` : `<div class="card-empty-body"><i class="fas fa-hourglass-half"></i>No votes yet</div>`;   
+
     return `<div class="card" style="${tintStyle}" onclick="${onClickAction}">
       <div class="card-head"><div><div class="card-name">${esc(item.name || item.code)}</div><div class="card-sub">${typeLabel}</div></div></div>
       ${leaderHtml}
