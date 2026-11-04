@@ -568,7 +568,69 @@ body {
   line-height: 1.2;
   }
 
-  
+  /* ================================================================
+   V3 UI ALIGNMENT FIXES
+================================================================ */
+
+/* 1. Turnout Card: Center the labels to match the centered numbers */
+.turnout-item label {
+  text-align: center !important;
+  width: 100%;
+  display: block;
+}
+.turnout-item {
+  align-items: center;
+}
+.turnout-input {
+  text-align: center !important; /* Ensure numbers stay centered */
+}
+
+/* 2. Candidate Rows (Read-Only): Perfectly align the name and votes */
+.readonly-row {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  padding: 12px 16px !important;
+}
+.readonly-name {
+  flex: 1;
+  text-align: left;
+}
+.readonly-votes {
+  text-align: right;
+  min-width: 50px; /* Ensures numbers line up perfectly vertically even if one has 2 digits and another has 3 */
+}
+
+/* 3. Form Photo & Replace Button: Match widths and rounding */
+.form-thumbnail-wrap {
+  width: 100% !important;
+  border-radius: 12px !important;
+  overflow: hidden !important;
+  margin-bottom: 8px !important; /* Tighten the gap between image and button */
+}
+.form-thumbnail-wrap img {
+  width: 100% !important;
+  height: 140px !important; /* Slightly taller for better visibility */
+  object-fit: cover !important;
+  display: block;
+}
+
+/* The Replace Photo Button */
+button.btn[onclick^="openUploadModal"] {
+  width: 100% !important;
+  border-radius: 12px !important; /* Match the image's corners */
+  padding: 14px !important;
+  font-weight: 800 !important;
+  box-shadow: 0 4px 12px rgba(165, 207, 131, 0.3) !important;
+  margin-top: 0 !important; /* Let the margin-bottom of the image handle the spacing */
+}
+
+/* 4. Slight spacing adjustment for the whole page */
+.readonly-body {
+  padding: 16px 16px 40px !important;
+  max-width: 600px; /* Keeps it from stretching too wide on tablets */
+  margin: 0 auto;
+}
   </style>
 </head>
 <body>
