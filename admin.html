@@ -5917,6 +5917,7 @@ async function loadAdminWarRoom(silent) {
        return;
     }
 
+    // 1. Fetch turnout (V3 View) and forms for this county's streams
     const { data: turnout, error } = await db.from('stream_turnout').select('*').in('stream_code', streamCodes);
     if (error) throw error;
 
@@ -5928,17 +5929,11 @@ async function loadAdminWarRoom(silent) {
     var formMap = {};
     (forms || []).forEach(f => { formMap[f.stream_code + '_' + f.position] = true; });
 
-    var centreMap = {}; CENTRES.forEach(c => centreMap[c.id] = c);
-    var wardMap = {}; WARDS.forEach(w => wardMap[w.id] = w);
-
     var cleanCount = 0, partialCount = 0, missingFormCount = 0, anomalyCount = 0, silentCount = 0;
     ADMIN_WAR_DATA = [];
 
+    // 2. Loop through STREAMS (which already have all the geographic IDs in V3!)
     STREAMS.forEach(s => {
-      var centre = centreMap[s.centre_id];
-      var ward = centre ? wardMap[centre.ward_id] : null;
-      if (!ward) return;
-
       var hasAnomaly = false;
       var hasMissingForm = false;
       var submittedCount = 0;
@@ -5948,7 +5943,7 @@ async function loadAdminWarRoom(silent) {
           var t = turnoutMap[s.code + '_' + pos];
           var hasForm = formMap[s.code + '_' + pos];
 
-          if (t) submittedCount++; // Count how many positions have reported
+          if (t) submittedCount++;
 
           if (!t) {
               positionDetails[pos] = { status: 'silent', cast: 0, valid: 0, hasForm: false };
@@ -5965,17 +5960,12 @@ async function loadAdminWarRoom(silent) {
           }
       });
 
-      // --- THE CORRECTED LOGIC ---
+      // Determine overall status based on Worst-Case
       var overallStatus = 'silent';
-      if (hasAnomaly) {
-          overallStatus = 'anomaly'; // Red overrides everything
-      } else if (hasMissingForm) {
-          overallStatus = 'no-form'; // Yellow overrides partial (missing evidence is critical)
-      } else if (submittedCount === POSITIONS.length) {
-          overallStatus = 'clean';   // All 6 in, all forms uploaded, no anomalies
-      } else if (submittedCount > 0) {
-          overallStatus = 'partial'; // Some in, no errors, just waiting on the rest (BLUE)
-      }
+      if (hasAnomaly) overallStatus = 'anomaly'; 
+      else if (hasMissingForm) overallStatus = 'no-form'; 
+      else if (submittedCount === POSITIONS.length) overallStatus = 'clean'; 
+      else if (submittedCount > 0) overallStatus = 'partial'; 
 
       if (overallStatus === 'clean') cleanCount++;
       else if (overallStatus === 'partial') partialCount++;
@@ -5983,12 +5973,13 @@ async function loadAdminWarRoom(silent) {
       else if (overallStatus === 'anomaly') anomalyCount++;
       else silentCount++;
 
+      // V3 MAGIC: No more looking up Centre/Ward maps. It's right on the stream.
       ADMIN_WAR_DATA.push({
           streamCode: s.code,
-          constId: ward.constituency_id,
-          wardId: ward.id,
-          centreId: centre.id,
-          centreName: centre.name,
+          constId: s.constituency_id,
+          wardId: s.ward_id,
+          centreId: s.centre_id,
+          centreName: s.centre_name || 'Unknown', // Make sure your loadStreams includes this
           status: overallStatus,
           details: positionDetails
       });
