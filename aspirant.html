@@ -784,15 +784,17 @@ var POSITION_SHORT = { 'President': 'P', 'Governor': 'G', 'Senator': 'S', 'MP': 
 async function init() {
   const { data: { user } } = await db.auth.getUser();
   if (!user) { window.location.href = 'index.html'; return; }
-// V3: Device lock removed for now. Will be re-implemented with backend RLS later.
+  
+  // V3: Device lock removed for now. Will be re-implemented with backend RLS later.
 
-   const { data: profile, error: profErr } = await db.from('aspirants').select('*').eq('auth_user_id', user.id).single();
+  const { data: profile, error: profErr } = await db.from('aspirants').select('*').eq('auth_user_id', user.id).single();
   
   if (!profile) { 
       alert("Profile not found!\n\nError: " + JSON.stringify(profErr) + "\nUser ID: " + user.id); 
       doLogout(); 
       return; 
   }
+  
   USER = {
     name: profile.name, position: profile.position, 
     ward: profile.ward_id, constituency: profile.constituency_id, 
@@ -819,26 +821,35 @@ async function init() {
   } else {
     let scopeName = 'Scope';
     
+    // 1. Set the mode and level safely
     if (USER.position === 'MCA') {
       SCOPE_MODE = 'ward'; 
       DRILL_LEVEL = 'centre';
       TRACKER_LEVEL = 'centre';
-      const { data: w } = await db.from('wards').select('name').eq('id', USER.ward).single();
-      scopeName = w ? toTitleCase(w.name) + ' Ward' : 'Ward';
-      
     } else if (USER.position === 'MP') {
       SCOPE_MODE = 'constituency'; 
       DRILL_LEVEL = 'ward';
       TRACKER_LEVEL = 'ward';
-      const { data: c } = await db.from('constituencies').select('name').eq('id', USER.constituency).single();
-      scopeName = c ? toTitleCase(c.name) + ' Constituency' : 'Constituency';
-      
     } else {
       SCOPE_MODE = 'county'; 
       DRILL_LEVEL = 'constituency';
       TRACKER_LEVEL = 'constituency';
-      const { data: c } = await db.from('counties').select('name').eq('id', USER.county).single();
-      scopeName = c ? toTitleCase(c.name) + ' County' : 'County';
+    }
+
+    // 2. Fetch the name with a safety net (Try/Catch)
+    try {
+        if (SCOPE_MODE === 'county' && USER.county) {
+            const { data: c } = await db.from('counties').select('name').eq('id', USER.county).single();
+            if (c) scopeName = toTitleCase(c.name) + ' County';
+        } else if (SCOPE_MODE === 'constituency' && USER.constituency) {
+            const { data: c } = await db.from('constituencies').select('name').eq('id', USER.constituency).single();
+            if (c) scopeName = toTitleCase(c.name) + ' Constituency';
+        } else if (SCOPE_MODE === 'ward' && USER.ward) {
+            const { data: w } = await db.from('wards').select('name').eq('id', USER.ward).single();
+            if (w) scopeName = toTitleCase(w.name) + ' Ward';
+        }
+    } catch (e) {
+        console.warn("Could not fetch scope name, falling back to default.", e);
     }
     
     document.getElementById('lockedScopeName').textContent = scopeName;
