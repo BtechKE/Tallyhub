@@ -828,18 +828,16 @@ async function init() {
   const { data: { user } } = await db.auth.getUser();
   if (!user) { window.location.href = 'index.html'; return; }
 
-  
-  if (devErr || !deviceCheck.success) {
-    db.auth.signOut();
-    alert(deviceCheck?.message || 'Device limit reached. Contact Admin.');
-    window.location.href = 'index.html';
-    return;
-  }
-  // --------------------------
+  // V3: Device lock removed completely. No more devErr variable.
 
   // Fetch agent profile
-  const { data: profile } = await db.from('agents').select('*').eq('auth_user_id', user.id).single();
-  if (!profile) { alert("Agent profile not found!"); window.location.href = 'index.html'; return; }
+  const { data: profile, error: profileErr } = await db.from('agents').select('*').eq('auth_user_id', user.id).single();
+  
+  if (!profile) { 
+    alert("Agent profile not found in V3!\n\nError: " + JSON.stringify(profileErr)); 
+    window.location.href = 'index.html'; 
+    return; 
+  }
   
   USER = profile;
 
@@ -854,11 +852,11 @@ async function init() {
   document.getElementById('pickerGreeting').textContent = h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
   document.getElementById('pickerName').textContent = fullName;
 
+  // Load the streams assigned to this agent
   loadStreams();
   loadCountingStatus();
   startAutoRefresh();
 }
-
 // ================================================================
 //  DATA LOADING (SUPABASE)
 // ================================================================
