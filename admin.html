@@ -2373,10 +2373,16 @@ body::after {
           <div class="section-title"><i class="fas fa-map"></i> Counties & Constituencies</div>
           <div class="section-desc">Manage the geographic hierarchy for your clients</div>
         </div>
-        <div style="display:flex; gap:8px;">
+        
+        <!-- UPDATED BUTTON GROUP -->
+        <div style="display:flex; gap:8px; flex-wrap: wrap; justify-content: flex-end;">
+          <button class="btn btn-sm" onclick="openCsvImportModal()" style="background: var(--primary); color: var(--text); border: 1.5px solid var(--primary-dark); font-weight: 800; box-shadow: 0 4px 12px rgba(165, 207, 131, 0.4);">
+            <i class="fas fa-file-csv"></i> Bulk Import CSV
+          </button>
           <button class="btn btn-primary btn-sm" onclick="openCountyModal()"><i class="fas fa-plus"></i> Add County</button>
           <button class="btn btn-primary btn-sm" onclick="openConstituencyModal()"><i class="fas fa-plus"></i> Add Constituency</button>
         </div>
+        
       </div>
       <div id="locationsList"><div class="loading-inline"><i class="fas fa-spinner"></i>Loading…</div></div>
     </div>
@@ -2572,6 +2578,8 @@ body::after {
       </div>
     </div>
 </div><!-- /page -->
+
+  
   <!-- ============================================================
      WAR ROOM REPORT MODAL
 ============================================================ -->
@@ -2658,6 +2666,42 @@ body::after {
   </div>
 </div>
 
+  <!-- CSV IMPORT MODAL -->
+<div class="modal-bg" id="csvImportModal" onclick="if(event.target===this) closeCsvImportModal()">
+  <div class="modal" style="max-width:420px;">
+    <div class="modal-head">
+      <div>
+        <div class="modal-title">Bulk Import IEBC Data</div>
+        <div class="modal-sub">Upload a CSV to build the entire geographic tree.</div>
+      </div>
+      <button class="modal-close" onclick="closeCsvImportModal()"><i class="fas fa-times"></i></button>
+    </div>
+
+    <div style="background: var(--primary-tint); padding: 12px; border-radius: 10px; margin-bottom: 16px; border: 1px dashed var(--primary-dark); font-size: 12px; color: var(--text-muted);">
+      <strong>Format required:</strong><br>
+      County, Constituency, Ward, Centre, Stream Number, Registered Voters
+    </div>
+
+    <div class="form-group">
+      <label>Select CSV File</label>
+      <input type="file" id="csvFileInput" accept=".csv" style="padding:10px; background:var(--bg); border:1px solid var(--border); border-radius:8px; width:100%;" onchange="handleCsvUpload(event)">
+    </div>
+
+    <div id="csvProgressWrap" style="display:none; margin-top: 16px;">
+      <div style="display:flex; justify-content:space-between; font-size:12px; font-weight:700; margin-bottom:4px;">
+        <span id="csvProgressLabel">Importing…</span>
+        <span id="csvProgressPct">0%</span>
+      </div>
+      <div class="progress-track" style="height:8px; background:var(--border); border-radius:20px; overflow:hidden;">
+        <div id="csvProgressBar" class="progress-fill" style="width:0%; height:100%; background:var(--primary); transition: width 0.3s ease;"></div>
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeCsvImportModal()">Cancel</button>
+    </div>
+  </div>
+</div>
 <!-- ============================================================
      EXPORT MODAL
 ============================================================ -->
@@ -6548,6 +6592,99 @@ function generateWarRoomPDF() {
     btn.innerHTML = '<i class="fas fa-file-pdf"></i> Download PDF';
   }
 }
+
+ // ================================================================
+//  CSV BULK IMPORTER
+// ================================================================
+function openCsvImportModal() {
+  document.getElementById('csvFileInput').value = '';
+  document.getElementById('csvProgressWrap').style.display = 'none';
+  document.getElementById('csvImportModal').classList.add('active');
+}
+
+function closeCsvImportModal() {
+  document.getElementById('csvImportModal').classList.remove('active');
+}
+
+async function handleCsvUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = async function(e) {
+    const text = e.target.result;
+    
+    // Split by new line and filter out empty rows
+    const rows = text.split('\n').map(r => r.trim()).filter(r => r.length > 0);
+    
+    // Assume first row is header, skip it
+    if (rows.length <= 1) return toast('CSV file is empty.', 'error');
+    rows.shift(); 
+
+    document.getElementById('csvProgressWrap').style.display = 'block';
+    const progressBar = document.getElementById('csvProgressBar');
+    const progressPct = document.getElementById('csvProgressPct');
+    const progressLabel = document.getElementById('csvProgressLabel');
+
+    let successCount = 0;
+    let failCount = 0;
+
+    // Process rows one by one
+    for (let i = 0; i < rows.length; i++) {
+        const cols = rows[i].split(',').map(c => c.trim());
+        
+        // Expecting 6 columns: County, Const, Ward, Centre, Stream, Voters
+        if (cols.length >= 6) {
+            const pCounty = cols[0];
+            const pConst = cols[1];
+            const pWard = cols[2];
+            const pCentre = cols[3];
+            const pStream = parseInt(cols[4], 10);
+            const pVoters = parseInt(cols[5], 10);
+
+            // Call the V3 RPC
+            const { data, error } = await db.rpc('import_stream_v3', {
+                p_county_name: pCounty,
+                p_const_name: pConst,
+                p_ward_name: pWard,
+                p_centre_name: pCentre,
+                p_stream_number: pStream,
+                p_registered_voters: pVoters
+            });
+
+            if (error) {
+                console.warn("Row failed:", cols, error);
+                failCount++;
+            } else {
+                successCount++;
+            }
+        } else {
+            failCount++;
+        }
+
+        // Update Progress Bar
+        const pct = Math.round(((i + 1) / rows.length) * 100);
+        progressBar.style.width = pct + '%';
+        progressPct.textContent = pct + '%';
+        progressLabel.textContent = `Importing: ${i + 1} / ${rows.length}`;
+
+        // Small delay to prevent browser freeze and API rate limiting
+        await new Promise(r => setTimeout(r, 50));
+    }
+
+    // Done!
+    progressLabel.textContent = 'Import Complete!';
+    progressBar.style.background = 'var(--success)';
+    toast(`Imported ${successCount} streams. ${failCount} failed.`, failCount > 0 ? 'info' : 'success');
+    
+    // Refresh the admin dashboard data
+    loadAllData();
+    
+    setTimeout(closeCsvImportModal, 2000);
+  };
+  
+  reader.readAsText(file);
+}   
 </script>
 </body>
 </html>
