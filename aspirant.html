@@ -786,9 +786,13 @@ async function init() {
   if (!user) { window.location.href = 'index.html'; return; }
 // V3: Device lock removed for now. Will be re-implemented with backend RLS later.
 
-  const { data: profile } = await db.from('aspirants').select('*').eq('auth_user_id', user.id).single();
-  if (!profile) { alert("Profile not found"); doLogout(); return; }
+   const { data: profile, error: profErr } = await db.from('aspirants').select('*').eq('auth_user_id', user.id).single();
   
+  if (!profile) { 
+      alert("Profile not found!\n\nError: " + JSON.stringify(profErr) + "\nUser ID: " + user.id); 
+      doLogout(); 
+      return; 
+  }
   USER = {
     name: profile.name, position: profile.position, 
     ward: profile.ward_id, constituency: profile.constituency_id, 
