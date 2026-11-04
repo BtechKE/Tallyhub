@@ -1257,11 +1257,10 @@ function closeConfirm() { document.getElementById('confirmModal').classList.remo
 
 function collectVotes() {
   return [].map.call(document.querySelectorAll('#candidateEntryList .vote-input'), inp => ({
-    candidate_code: inp.closest('.candidate-entry').getAttribute('data-code'), // <--- FIXED
+    candidate_code: inp.closest('.candidate-entry').getAttribute('data-code'), // FIXED
     votes: parseInt(inp.value, 10) || 0
   }));
-    }
-
+}
 async function submitNow() {
   closeConfirm();
   var btn = document.getElementById('submitBtn');
@@ -1289,8 +1288,7 @@ async function submitNow() {
       : `<i class="fas fa-sync-alt fa-spin"></i> Retrying (${attempt}/${maxRetries})…`;
 
     try {
-      // Pass the new parameters to the RPC
-      const { data, error } = await db.rpc('submit_election_results', {
+      const { data, error } = await db.rpc('submit_election_results_v3', {
         p_stream_code: streamCode,
         p_position: position,
         p_votes: payload,
@@ -1680,7 +1678,7 @@ function retakePhoto() {
   openUploadModal(currentFormStream, currentFormPos);
 }
 
-  async function executeFormUpload() {
+async function executeFormUpload() {
   if (!currentFormFile) return;
 
   var btn = document.getElementById('confirmUploadBtn');
@@ -1689,17 +1687,33 @@ function retakePhoto() {
 
   try {
     var fileName = currentFormStream + '_' + currentFormPos.replace(/\s+/g, '') + '.jpg';
+    
+    // 1. Upload the physical image to the Storage Bucket
     const { error: uploadError } = await db.storage
       .from('form-photos')
       .upload(fileName, currentFormFile, { upsert: true, contentType: 'image/jpeg' });
     if (uploadError) throw new Error(uploadError.message);
 
+    // 2. V3 FIX: Fetch the Geographic IDs for this stream
+    const { data: streamData, error: streamErr } = await db.from('streams')
+      .select('county_id, constituency_id, ward_id')
+      .eq('code', currentFormStream)
+      .single();
+      
+    if (streamErr) throw new Error('Failed to fetch stream geography: ' + streamErr.message);
+
+    // 3. Save the record with the IDs stamped in
     const { error: dbError } = await db.from('form_photos').upsert({
       stream_code: currentFormStream,
       position: currentFormPos,
       photo_url: fileName,
-      uploaded_by: USER.name
+      uploaded_by: USER.name,
+      // V3 ADDITIONS
+      county_id: streamData?.county_id,
+      constituency_id: streamData?.constituency_id,
+      ward_id: streamData?.ward_id
     }, { onConflict: 'stream_code,position' });
+    
     if (dbError) throw new Error(dbError.message);
 
     // Tiny thumbnail cache; never allowed to break the upload
