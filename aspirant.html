@@ -920,43 +920,95 @@ function manualRefresh() {
 async function loadOverview(silent) {
   if (!silent) setPulse('loading');
   try {
-    // 1. Fetch the scoped Leaderboard directly from the Materialized View
-    let boardQuery = db.from('county_leaderboard').select('*').eq('position', VIEW_POS);
-    
-    // If they are an MP or MCA, the backend RLS handles the county lock anyway, 
-    // but we filter by their specific geography for the leaderboard view.
-    if (SCOPE_MODE === 'county' && USER.county) {
-        boardQuery = boardQuery.eq('county_id', USER.county);
-    } else if (SCOPE_MODE === 'national' && DRILL_COUNTY_ID) {
-        boardQuery = boardQuery.eq('county_id', DRILL_COUNTY_ID);
-    }
-    
-    const { data: rawLeaderboard, error: boardErr } = await boardQuery;
-    if (boardErr) throw boardErr;
+    // --- 1. FETCH GEOGRAPHY TREE ---
+    let constQuery = db.from('constituencies').select('*').order('id');
+    if (SCOPE_MODE === 'constituency') constQuery = constQuery.eq('id', USER.constituency);
+    else if (SCOPE_MODE === 'county') constQuery = constQuery.eq('county_id', USER.county);
+    const consts = await fetchAll(() => constQuery);
 
-    // 2. Fetch Candidate Profiles (RLS automatically restricts this to their scope!)
+    let wardsData = [];
+    if (SCOPE_MODE === 'ward') {
+        wardsData = await fetchAll(() => db.from('wards').select('*').eq('id', USER.ward).order('id'));
+    } else if (SCOPE_MODE === 'constituency') {
+        wardsData = await fetchAll(() => db.from('wards').select('*').eq('constituency_id', USER.constituency).order('id'));
+    } else if (SCOPE_MODE !== 'national') {
+        wardsData = await fetchIn('wards', '*', 'constituency_id', (consts||[]).map(c=>c.id), 'id');
+    } else {
+        wardsData = await fetchAll(() => db.from('wards').select('*').order('id'));
+    }
+
+    let centresData = [];
+    if (SCOPE_MODE === 'national' && !DRILL_COUNTY_ID) {
+        centresData = await fetchAll(() => db.from('centres').select('*').order('id'));
+    } else if (SCOPE_MODE === 'national' && DRILL_COUNTY_ID) {
+        const countyConstIds = (consts || []).filter(c => c.county_id === DRILL_COUNTY_ID).map(c => c.id);
+        const countyWardIds = (wardsData || []).filter(w => countyConstIds.includes(w.constituency_id)).map(w => w.id);
+        centresData = await fetchIn('centres', '*', 'ward_id', countyWardIds, 'id');
+    } else {
+        centresData = await fetchIn('centres', '*', 'ward_id', (wardsData||[]).map(w=>w.id), 'id');
+    }
+
+    let streamsData = [];
+    if (SCOPE_MODE === 'national' && DRILL_COUNTY_ID) {
+        streamsData = await fetchIn('streams', '*', 'centre_id', (centresData||[]).map(c=>c.id), 'code');
+    } else if (SCOPE_MODE === 'national') {
+        streamsData = await fetchAll(() => db.from('streams').select('*').order('code'));
+    } else {
+        streamsData = await fetchIn('streams', '*', 'centre_id', (centresData||[]).map(c=>c.id), 'code');
+    }
+
+    // --- 2. FETCH CANDIDATES ---
     const { data: cands, error: candErr } = await db.from('candidates').select('*').eq('position', VIEW_POS);
     if (candErr) throw candErr;
 
-    // Build a quick map
     const candMap = {};
-    (cands || []).forEach(c => { 
-        c.photo_url = normalizeImageUrl(c.photo_url); 
-        candMap[c.code] = c; 
-    });
+    (cands || []).forEach(c => { c.photo_url = normalizeImageUrl(c.photo_url); candMap[c.code] = c; });
 
-    // 3. Format the Leaderboard
-    let leaderboard = (rawLeaderboard || []).map(row => {
-        const info = candMap[row.candidate_code] || {};
-        return {
-            code: row.candidate_code,
-            name: info.name || 'Unknown',
-            party: info.party || '',
-            photo_url: info.photo_url || '',
-            color: info.color || '#A5CF83',
-            votes: Number(row.total_votes) || 0
-        };
-    }).sort((a, b) => b.votes - a.votes);
+    // --- 3. FETCH PRE-AGGREGATED VOTES FROM THE VIEWS ---
+    const constIds = (consts || []).map(c => c.id);
+    const wardIds = (wardsData || []).map(w => w.id);
+    const centreIds = (centresData || []).map(c => c.id);
+    const streamCodes = (streamsData || []).map(s => s.code);
+
+    let constVotes = [], wardVotes = [], centreVotes = [], streamVotes = [], countyVotes = [];
+
+    if (constIds.length) constVotes = await fetchIn('constituency_votes', '*', 'constituency_id', constIds, 'constituency_id');
+    if (wardIds.length) wardVotes = await fetchIn('ward_votes', '*', 'ward_id', wardIds, 'ward_id');
+    if (centreIds.length) centreVotes = await fetchIn('centre_votes', '*', 'centre_id', centreIds, 'centre_id');
+    if (streamCodes.length) streamVotes = await fetchIn('stream_votes', '*', 'stream_code', streamCodes, 'stream_code');
+    
+    // Fetch overall board for the current scope
+    let boardQuery = db.from('county_leaderboard').select('*').eq('position', VIEW_POS);
+    if (SCOPE_MODE === 'county' && USER.county) boardQuery = boardQuery.eq('county_id', USER.county);
+    else if (SCOPE_MODE === 'national' && DRILL_COUNTY_ID) boardQuery = boardQuery.eq('county_id', DRILL_COUNTY_ID);
+    const { data: rawLeaderboard } = await boardQuery;
+
+    // --- 4. BUILD THE MAPS ---
+    const votesByConst = {}, votesByWard = {}, votesByCentre = {}, votesByStream = {}, votesByCounty = {};
+    
+    constVotes.forEach(r => { if(!votesByConst[r.constituency_id]) votesByConst[r.constituency_id]={}; votesByConst[r.constituency_id][r.candidate_code] = Number(r.total_votes); });
+    wardVotes.forEach(r => { if(!votesByWard[r.ward_id]) votesByWard[r.ward_id]={}; votesByWard[r.ward_id][r.candidate_code] = Number(r.total_votes); });
+    centreVotes.forEach(r => { if(!votesByCentre[r.centre_id]) votesByCentre[r.centre_id]={}; votesByCentre[r.centre_id][r.candidate_code] = Number(r.total_votes); });
+    streamVotes.forEach(r => { if(!votesByStream[r.stream_code]) votesByStream[r.stream_code]={}; votesByStream[r.stream_code][r.candidate_code] = Number(r.total_votes); });
+    
+    if (SCOPE_MODE === 'national' && !DRILL_COUNTY_ID) {
+        const countyData = await fetchAll(() => db.from('county_leaderboard').select('*').eq('position', VIEW_POS));
+        countyData.forEach(r => { if(!votesByCounty[r.county_id]) votesByCounty[r.county_id]={}; votesByCounty[r.county_id][r.candidate_code] = Number(r.total_votes); });
+    }
+
+    // --- 5. BUILD LEADERBOARD ---
+    let leaderboard = (cands || []).map(c => {
+        let v = 0;
+        if (rawLeaderboard) {
+            const match = rawLeaderboard.find(r => r.candidate_code === c.code);
+            if (match) v = Number(match.total_votes);
+        } else if (SCOPE_MODE === 'constituency' && votesByConst[USER.constituency]) {
+            v = votesByConst[USER.constituency][c.code] || 0;
+        } else if (SCOPE_MODE === 'ward' && votesByWard[USER.ward]) {
+            v = votesByWard[USER.ward][c.code] || 0;
+        }
+        return { code: c.code, name: c.name, party: c.party, photo_url: c.photo_url, color: c.color || '#A5CF83', votes: v };
+    }).sort((a,b) => b.votes - a.votes);
 
     let globalTotal = leaderboard.reduce((s, c) => s + c.votes, 0);
     leaderboard.forEach(c => c.pct = globalTotal > 0 ? ((c.votes/globalTotal)*100).toFixed(1) : '0.0');
@@ -967,26 +1019,32 @@ async function loadOverview(silent) {
         if (idx !== -1) { ownRow = leaderboard[idx]; ownRank = idx + 1; }
     }
 
-    // 4. Save to OVERVIEW state
+    let countiesData = [];
+    if (SCOPE_MODE === 'national') {
+      countiesData = await fetchAll(() => db.from('counties').select('*').order('name'));
+    }
+
+    // --- 6. SAVE STATE ---
     OVERVIEW = {
       viewingPosition: VIEW_POS, 
       leaderboard: leaderboard, 
-      globalTotal, 
-      ownRow, 
-      ownRank,
-      leader: leaderboard[0], 
-      runner: leaderboard[1], 
+      globalTotal, ownRow, ownRank,
+      leader: leaderboard[0], runner: leaderboard[1], 
       margin: leaderboard[0] && leaderboard[1] ? (leaderboard[0].votes - leaderboard[1].votes) : 0,
+      counties: countiesData, 
+      consts: consts || [], 
+      wards: wardsData || [], 
+      centres: centresData || [], 
+      streams: streamsData || [],
+      votesByCounty, votesByConst, votesByWard, votesByCentre, votesByStream, 
       candMap: candMap
     };
 
-    // Note: The Drill-Grid and Hero calculations will be handled by separate queries 
-    // in the next surgical step. For now, let's render what we have.
-    
     renderTabs(); 
-    renderBoard(); 
+    renderHero(); 
+    renderDrillGrid(); 
+    renderBoard();
     setPulse('live');
-
   } catch (err) { 
     console.error(err); 
     setPulse('stale'); 
@@ -1732,16 +1790,12 @@ function getRaceCandidates() {
 }
 // Votes map for the current drill level (returns {} if none available)
 function getVotesForCurrentDrill() {
-  // FIX: When at Stream level, show the aggregate for the Centre.
   if (DRILL_LEVEL === 'stream' && DRILL_CENTRE)   return OVERVIEW.votesByCentre[DRILL_CENTRE] || {};
-  // When at Centre level, show the aggregate for the Ward.
   if (DRILL_LEVEL === 'centre' && DRILL_WARD)     return OVERVIEW.votesByWard[DRILL_WARD]     || {};
-  // When at Ward level, show the aggregate for the Constituency.
   if (DRILL_LEVEL === 'ward' && DRILL_CONST_ID)   return OVERVIEW.votesByConst[DRILL_CONST_ID] || {};
-  // When at Constituency level (National scope), show the aggregate for the County.
   if (DRILL_LEVEL === 'constituency' && SCOPE_MODE === 'national' && DRILL_COUNTY_ID)
                                                   return OVERVIEW.votesByCounty[DRILL_COUNTY_ID] || {};
-  // fallback — global totals
+  // fallback for Governor viewing county, etc.
   const totals = {};
   (OVERVIEW.leaderboard || []).forEach(c => totals[c.code] = c.votes);
   return totals;
