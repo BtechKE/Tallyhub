@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>TallyHub — Secure Election Tally System</title>
+
+  <!-- Font Awesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  
+  <!-- Supabase Library -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23A5CF83'/%3E%3Cpath d='M18 33 L28 43 L46 21' stroke='%231A1A19' stroke-width='8' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <meta name="theme-color" content="#09090B">
+
+  <style>
+    :root {
+      --primary: #A5CF83; 
+      --primary-glow: rgba(165, 207, 131, 0.4);
+      --blue: #1591DC;
+      --blue-glow: rgba(21, 145, 220, 0.4);
+      --bg: #09090B;
+      --surface: rgba(255, 255, 255, 0.03);
+      --surface-hover: rgba(255, 255, 255, 0.08);
+      --border: rgba(255, 255, 255, 0.08);
+      --text: #FAFAFA;
+      --text-muted: #A1A1AA;
+      --danger: #C4453A;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { overscroll-behavior-y: contain; background: var(--bg); }
+    body { 
+      font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif; 
+      color: var(--text); 
+      min-height: 100dvh; 
+      -webkit-font-smoothing: antialiased; 
+      position: relative; 
+      overflow-x: hidden; 
+      line-height: 1.5;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ============================================================
+       BACKGROUND EFFECTS (Mission Control Grid & Glows)
+    ============================================================ */
+    .bg-grid {
+      position: fixed;
+      inset: 0;
+      background-image: 
+        linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+      z-index: -2;
+      mask-image: radial-gradient(circle at 50% 50%, black 40%, transparent 80%);
+      -webkit-mask-image: radial-gradient(circle at 50% 50%, black 40%, transparent 80%);
+    }
+
+    .bg-glow {
+      position: fixed;
+      border-radius: 50%;
+      filter: blur(100px);
+      z-index: -1;
+      opacity: 0.6;
+      pointer-events: none;
+    }
+    .glow-green {
+      width: 500px; height: 500px;
+      background: var(--primary-glow);
+      top: -150px; right: -150px;
+      animation: driftGreen 20s ease-in-out infinite alternate;
+    }
+    .glow-blue {
+      width: 600px; height: 600px;
+      background: var(--blue-glow);
+      bottom: -200px; left: -200px;
+      animation: driftBlue 25s ease-in-out infinite alternate;
+    }
+
+    @keyframes driftGreen {
+      0% { transform: translate(0, 0) scale(1); }
+      100% { transform: translate(-50px, 50px) scale(1.1); }
+    }
+    @keyframes driftBlue {
+      0% { transform: translate(0, 0) scale(1); }
+      100% { transform: translate(50px, -50px) scale(1.1); }
+    }
+
+    /* ============================================================
+       LANDING LAYOUT
+    ============================================================ */
+    #landing {
+      position: relative;
+      z-index: 1;
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      padding: 28px 24px 16px;
+    }
+
+    /* Brand */
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 16px 8px 8px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 100px;
+      margin: 0 auto 40px;
+      align-self: center;
+      backdrop-filter: blur(12px);
+    }
+    .brand-mark {
+      width: 36px; height: 36px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, var(--primary) 0%, #7EAE5C 100%);
+      color: #1A1A19;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 17px;
+      box-shadow: 0 0 20px var(--primary-glow);
+    }
+    .brand-name { font-size: 15px; font-weight: 800; color: var(--text); }
+    .brand-tag { font-size: 11px; color: var(--text-muted); font-weight: 500; }
+
+    /* Content */
+    .landing-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      max-width: 1000px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    /* Hero */
+    .hero-wrap {
+      text-align: center;
+      margin-bottom: 44px;
+      animation: heroFadeIn 0.8s cubic-bezier(0.34, 1.2, 0.64, 1);
+    }
+    @keyframes heroFadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .hero-title {
+      font-size: clamp(32px, 5.2vw, 56px);
+      font-weight: 900;
+      letter-spacing: -1.5px;
+      line-height: 1.05;
+      margin-bottom: 16px;
+    }
+    .hero-title .accent {
+      background: linear-gradient(135deg, var(--primary) 0%, var(--blue) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .hero-sub {
+      color: var(--text-muted);
+      font-size: 16px;
+      max-width: 480px;
+      margin: 0 auto;
+      font-weight: 400;
+    }
+
+    /* Role Cards */
+    .role-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 16px;
+      width: 100%;
+      max-width: 900px;
+      margin-bottom: 32px;
+    }
+    .role-card {
+      background: var(--surface);
+      backdrop-filter: blur(20px);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 28px 24px;
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+    }
+    .role-card:hover {
+      background: var(--surface-hover);
+      border-color: rgba(255, 255, 255, 0.2);
+      transform: translateY(-4px);
+      box-shadow: 0 10px 40px -10px var(--accent-glow);
+    }
+    .role-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: var(--accent);
+      opacity: 0.3;
+      transition: opacity 0.3s ease;
+    }
+    .role-card:hover::before { opacity: 1; }
+
+    /* Role Accents */
+    .role-admin { --accent: var(--blue); --accent-glow: var(--blue-glow); --icon-bg: rgba(21, 145, 220, 0.15); }
+    .role-agent { --accent: #6AECE1; --accent-glow: rgba(106, 236, 225, 0.3); --icon-bg: rgba(106, 236, 225, 0.15); }
+    .role-aspirant { --accent: var(--primary); --accent-glow: var(--primary-glow); --icon-bg: rgba(165, 207, 131, 0.15); }
+
+    .role-icon {
+      width: 54px; height: 54px;
+      border-radius: 16px;
+      background: var(--icon-bg);
+      color: var(--accent);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px;
+      flex-shrink: 0;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      transition: all 0.3s ease;
+    }
+    .role-card:hover .role-icon {
+      box-shadow: 0 0 20px var(--icon-bg);
+      transform: scale(1.05);
+    }
+
+    .role-title { font-size: 18px; font-weight: 800; letter-spacing: -0.3px; }
+    .role-desc { font-size: 13px; color: var(--text-muted); line-height: 1.5; }
+    .role-arrow {
+      position: absolute;
+      bottom: 24px; right: 24px;
+      color: var(--text-muted);
+      font-size: 14px;
+      transition: transform 0.3s ease, color 0.3s ease;
+    }
+    .role-card:hover .role-arrow {
+      transform: translateX(4px);
+      color: var(--text);
+    }
+
+    /* Login Panel */
+    .login-panel {
+      width: 100%;
+      max-width: 440px;
+      background: rgba(20, 20, 22, 0.7);
+      backdrop-filter: blur(24px);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      padding: 34px 30px;
+      box-shadow: 0 32px 72px -20px rgba(0, 0, 0, 0.8);
+      display: none;
+      animation: panelIn 0.4s cubic-bezier(0.34, 1.3, 0.64, 1);
+    }
+    .login-panel.active { display: block; }
+    @keyframes panelIn {
+      from { opacity: 0; transform: translateY(16px) scale(0.98); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .login-back {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: transparent; border: none;
+      color: var(--text-muted); font-size: 13px; font-weight: 600;
+      cursor: pointer; padding: 6px 0; margin-bottom: 24px;
+      transition: color 0.2s;
+    }
+    .login-back:hover { color: var(--text); }
+    .login-role-badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 6px 14px; background: var(--surface-hover);
+      color: var(--primary); border-radius: 100px;
+      font-size: 11.5px; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase;
+      margin-bottom: 18px;
+    }
+    .login-title { font-size: 24px; font-weight: 900; letter-spacing: -0.6px; margin-bottom: 6px; }
+    .login-sub { color: var(--text-muted); font-size: 14px; margin-bottom: 28px; }
+
+    .field { margin-bottom: 20px; }
+    .field label { display: block; font-size: 12px; font-weight: 700; margin-bottom: 8px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+    .field input {
+      width: 100%; padding: 14px 16px;
+      border: 1px solid var(--border); border-radius: 12px;
+      font-size: 15px; background: rgba(0, 0, 0, 0.3); color: var(--text);
+      transition: all 0.2s ease;
+    }
+    .field input:focus {
+      outline: none; border-color: var(--primary);
+      background: rgba(0, 0, 0, 0.5);
+      box-shadow: 0 0 0 3px var(--primary-glow);
+    }
+    
+    .btn-primary {
+      width: 100%; padding: 16px; border: none; border-radius: 12px;
+      background: var(--text); color: var(--bg);
+      font-size: 15px; font-weight: 800; font-family: inherit; cursor: pointer;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      margin-top: 10px;
+      transition: all 0.2s ease;
+    }
+    .btn-primary:hover:not(:disabled) {
+      background: var(--primary); color: #1A1A19;
+      box-shadow: 0 0 20px var(--primary-glow);
+    }
+    .login-error {
+      padding: 12px 16px; background: rgba(196, 69, 58, 0.1);
+      border: 1px solid rgba(196, 69, 58, 0.3); border-radius: 12px;
+      color: #ff8b7e; font-size: 13px; font-weight: 600;
+      margin-bottom: 20px; display: none;
+    }
+    .login-error.active { display: block; }
+
+    .landing-footer {
+      text-align: center; padding: 24px 0;
+      color: var(--text-muted); font-size: 12px;
+      position: relative; z-index: 1; margin-top: auto;
+    }
+
+    /* Mobile Adjustments */
+    @media (max-width: 640px) {
+      #landing { padding: 20px 16px; }
+      .brand { margin-bottom: 28px; }
+      .hero-title { font-size: 34px; }
+      .role-grid { gap: 12px; }
+      .role-card { flex-direction: row; align-items: center; padding: 16px; gap: 16px; border-radius: 16px; }
+      .role-card::before { width: 3px; height: 100%; border-top-left-radius: 16px; border-bottom-left-radius: 16px; }
+      .role-icon { width: 46px; height: 46px; font-size: 18px; border-radius: 12px; }
+      .role-arrow { position: static; margin-left: auto; }
+      .login-panel { padding: 24px 20px; }
+    }
+        /* Password Eye Icon */
+    #togglePasswordBtn:hover {
+      color: var(--text);
+    }
+    #togglePasswordBtn:focus {
+      color: var(--primary);
+    }
+  </style>
+</head>
+<body>
+
+<!-- Background Elements -->
+<div class="bg-grid"></div>
+<div class="bg-glow glow-green"></div>
+<div class="bg-glow glow-blue"></div>
+
+<div id="landing">
+  <!-- Brand -->
+  <div class="brand">
+    <div class="brand-mark"><i class="fas fa-vote-yea"></i></div>
+    <div class="brand-text">
+      <div class="brand-name">TallyHub</div>
+      <div class="brand-tag">Election Management System</div>
+    </div>
+  </div>
+
+  <div class="landing-content">
+    <!-- Hero -->
+    <div class="hero-wrap" id="heroWrap">
+      <h1 class="hero-title">Welcome to <span class="accent">TallyHub</span></h1>
+      <p class="hero-sub">Choose your role to continue to your dashboard.</p>
+    </div>
+
+    <!-- Role Cards -->
+    <div class="role-grid" id="roleGrid">
+      <div class="role-card role-admin" onclick="selectRole('admin')">
+        <div class="role-icon"><i class="fas fa-sliders-h"></i></div>
+        <div class="role-body">
+          <div class="role-title">ADMIN</div>
+          <div class="role-desc">Configure wards, centres, streams &amp; agents</div>
+        </div>
+        <div class="role-arrow"><i class="fas fa-arrow-right"></i></div>
+      </div>
+      <div class="role-card role-agent" onclick="selectRole('agent')">
+        <div class="role-icon"><i class="fas fa-clipboard-list"></i></div>
+        <div class="role-body">
+          <div class="role-title">AGENT</div>
+          <div class="role-desc">Submit tallies for your assigned polling streams</div>
+        </div>
+        <div class="role-arrow"><i class="fas fa-arrow-right"></i></div>
+      </div>
+      <div class="role-card role-aspirant" onclick="selectRole('aspirant')">
+        <div class="role-icon"><i class="fas fa-user-tie"></i></div>
+        <div class="role-body">
+          <div class="role-title">ASPIRANT</div>
+          <div class="role-desc">View live results, compare candidates &amp; drill down</div>
+        </div>
+        <div class="role-arrow"><i class="fas fa-arrow-right"></i></div>
+      </div>
+    </div>
+
+    <!-- Login Panel -->
+    <div class="login-panel" id="loginPanel">
+      <button class="login-back" onclick="backToRoles()"><i class="fas fa-arrow-left"></i> Back to roles</button>
+      <div class="login-role-badge" id="roleBadge"><i class="fas fa-user"></i> <span id="roleBadgeText">Role</span></div>
+      <h2 class="login-title" id="loginTitle">Sign in</h2>
+      <p class="login-sub" id="loginSub">Enter your credentials</p>
+      
+      <div class="login-error" id="loginError"><i class="fas fa-exclamation-circle"></i> <span id="loginErrorText">Invalid credentials.</span></div>
+
+      <div class="field">
+        <label id="idLabel" for="loginId">ID</label>
+        <input type="text" id="loginId" autocomplete="username" autocapitalize="off" spellcheck="false">
+      </div>
+          <div class="field">
+        <label for="loginPassword">Password</label>
+        <div style="position: relative; width: 100%;">
+          <input type="password" id="loginPassword" autocomplete="current-password" style="padding-right: 40px;">
+          <button type="button" id="togglePasswordBtn" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center; outline: none;">
+            <i class="fas fa-eye" id="togglePasswordIcon"></i>
+          </button>
+        </div>
+      </div>
+      <button class="btn-primary" id="loginBtn" onclick="doLogin()"><i class="fas fa-sign-in-alt"></i> <span>Sign In</span></button>
+    </div>
+  </div>
+
+  <div class="landing-footer">© <span id="year">2027</span> TallyHub — Secure Election Tally System</div>
+</div>
+
+<script>
+  // 1. Initialize Supabase
+const supabaseUrl = 'https://qkkhtglsstinsvbdmclt.supabase.co';
+const supabaseKey = 'sb_publishable_AEFOxR5dWWyQu9ZIaYMwLQ_4dPU-RM0';
+  const db = window.supabase.createClient(supabaseUrl, supabaseKey);
+
+  let currentRole = null;
+  const ROLE_META = {
+    admin: { label: 'Administrator', icon: 'fa-sliders-h', idLabel: 'Admin ID', idPlaceholder: 'e.g. admin', title: 'Administrator Login', sub: 'Manage the election system' },
+    agent: { label: 'Presiding Agent', icon: 'fa-clipboard-list', idLabel: 'Agent ID', idPlaceholder: 'e.g. AGT001', title: 'Agent Login', sub: 'Submit your stream tallies' },
+    aspirant: { label: 'Aspirant', icon: 'fa-user-tie', idLabel: 'Login Code', idPlaceholder: 'e.g. JD123', title: 'Aspirant Login', sub: 'View your live results' }
+  };
+
+  document.getElementById('year').textContent = Math.max(2027, new Date().getFullYear());
+
+  function selectRole(role) {
+    currentRole = role;
+    const meta = ROLE_META[role];
+    
+    document.getElementById('roleBadge').innerHTML = `<i class="fas ${meta.icon}"></i> <span>${meta.label}</span>`;
+    document.getElementById('loginTitle').textContent = meta.title;
+    document.getElementById('loginSub').textContent = meta.sub;
+    document.getElementById('idLabel').textContent = meta.idLabel;
+    document.getElementById('loginId').placeholder = meta.idPlaceholder;
+    
+    document.getElementById('loginId').value = '';
+    document.getElementById('loginPassword').value = '';
+    document.getElementById('loginError').classList.remove('active');
+    
+    document.getElementById('roleGrid').style.display = 'none';
+    document.getElementById('heroWrap').style.display = 'none';
+    document.getElementById('loginPanel').classList.add('active');
+    setTimeout(() => document.getElementById('loginId').focus(), 180);
+  }
+
+  function backToRoles() {
+    currentRole = null;
+    document.getElementById('loginPanel').classList.remove('active');
+    document.getElementById('roleGrid').style.display = '';
+    document.getElementById('heroWrap').style.display = '';
+  }
+
+  async function doLogin() {
+  if (!currentRole) return;
+  
+  const id = document.getElementById('loginId').value.trim();
+  const pw = document.getElementById('loginPassword').value;
+  const errBox = document.getElementById('loginError');
+  const errText = document.getElementById('loginErrorText');
+  const btn = document.getElementById('loginBtn');
+
+  // --- 1. CHECK IF LOCKED OUT ---
+  const lockoutUntil = parseInt(localStorage.getItem('login_lockout') || '0');
+  if (Date.now() < lockoutUntil) {
+    const secondsLeft = Math.ceil((lockoutUntil - Date.now()) / 1000);
+    errText.textContent = `Too many failed attempts. Please wait ${secondsLeft} seconds.`;
+    errBox.classList.add('active');
+    return;
+  }
+
+  if (!id || !pw) {
+    errText.textContent = 'Please fill all fields.';
+    errBox.classList.add('active');
+    return;
+  }
+
+  errBox.classList.remove('active');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> <span>Signing in…</span>';
+
+  const email = id + '@tallyhub.com';
+  const { data, error } = await db.auth.signInWithPassword({ email: email, password: pw });
+
+  if (error) {
+    // --- 2. HANDLE FAILED ATTEMPT ---
+    let fails = parseInt(localStorage.getItem('login_fails') || '0');
+    fails++;
+    localStorage.setItem('login_fails', fails.toString());
+
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> <span>Sign In</span>';
+
+    if (fails >= 3) {
+      // Lock them out for 20 seconds
+      const lockTime = Date.now() + 20000; 
+      localStorage.setItem('login_lockout', lockTime.toString());
+      localStorage.setItem('login_fails', '0'); // Reset fails for after the lockout
+      
+      startLockoutTimer(errText, errBox);
+    } else {
+      // Show normal error with attempts remaining
+      errText.textContent = `Invalid ID or password. ${3 - fails} attempt(s) remaining.`;
+      errBox.classList.add('active');
+    }
+    return;
+  }
+
+  // --- 3. SUCCESSFUL LOGIN ---
+  localStorage.removeItem('login_fails');
+  localStorage.removeItem('login_lockout');
+  
+  btn.innerHTML = '<i class="fas fa-check"></i> <span>Success! Redirecting...</span>';
+  
+  if (currentRole === 'admin') {
+    window.location.href = 'admin.html';
+  } else if (currentRole === 'agent') {
+    window.location.href = 'agent.html';
+  } else if (currentRole === 'aspirant') {
+    window.location.href = 'aspirant.html';
+  }
+}
+
+// --- HELPER FUNCTION FOR COUNTDOWN UI ---
+function startLockoutTimer(errText, errBox) {
+  const btn = document.getElementById('loginBtn');
+  btn.disabled = true;
+  
+  const interval = setInterval(() => {
+    const lockoutUntil = parseInt(localStorage.getItem('login_lockout') || '0');
+    const secondsLeft = Math.ceil((lockoutUntil - Date.now()) / 1000);
+
+    if (secondsLeft <= 0) {
+      clearInterval(interval);
+      errBox.classList.remove('active');
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> <span>Sign In</span>';
+    } else {
+      errText.textContent = `Too many failed attempts. Please wait ${secondsLeft}s.`;
+      errBox.classList.add('active');
+      btn.innerHTML = `<i class="fas fa-lock"></i> <span>Locked (${secondsLeft}s)</span>`;
+    }
+  }, 1000);
+}
+</script>
+</body>
+</html>

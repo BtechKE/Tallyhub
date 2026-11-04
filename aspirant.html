@@ -1,0 +1,2966 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#1A1A19">
+  <title>Live Results — TallyHub</title>
+  
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <style>
+    /* ============================================================
+       YOUR EXACT CSS (Auroras, Glass Cards, Mobile Responsive)
+    ============================================================ */
+    :root {
+      --blue: #1591DC; --blue-soft: rgba(21, 145, 220, 0.12); --blue-glow: rgba(21, 145, 220, 0.35);
+      --green: #A5CF83; --green-soft: rgba(165, 207, 131, 0.15); --green-dark: #7EAE5C;
+      --slate: #435663; --slate-soft: rgba(67, 86, 99, 0.10);
+      --ink: #1A1A19; --ink-2: #2A2A28; --canvas: #F0F0F0; --surface: #FFFFFF;
+      --danger: #C4453A; --danger-soft:rgba(196, 69, 58, 0.10);
+      --border: rgba(26, 26, 25, 0.08); --border-2: rgba(26, 26, 25, 0.14);
+      --radius: 16px; --radius-lg: 22px; --topbar-h: 60px; --tabs-h: 56px;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { overscroll-behavior-y: contain; }
+    body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: var(--canvas); color: var(--ink); min-height: 100dvh; -webkit-font-smoothing: antialiased; font-size: 15px; }
+
+    /* TOPBAR */
+    .topbar { position: sticky; top: 0; z-index: 100; background: var(--ink); color: #F0F0F0; padding: 10px 16px; min-height: var(--topbar-h); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .topbar-left { display: flex; align-items: center; gap: 11px; min-width: 0; flex: 1; }
+    .pulse { width: 10px; height: 10px; border-radius: 50%; background: var(--green); flex-shrink: 0; position: relative; }
+    .pulse::after { content: ''; position: absolute; inset: -4px; border-radius: 50%; background: var(--green); opacity: 0.4; animation: pulse 2s ease-out infinite; }
+    .pulse.stale { background: var(--slate); } .pulse.stale::after { background: var(--slate); animation: none; opacity: 0.2; }
+    .pulse.loading { background: var(--blue); } .pulse.loading::after { background: var(--blue); animation: pulse 0.9s linear infinite; }
+    @keyframes pulse { 0% { transform: scale(1); opacity: 0.5; } 100% { transform: scale(2.4); opacity: 0; } }
+    .topbar-info { min-width: 0; flex: 1; }
+    .topbar-name { font-size: 14.5px; font-weight: 700; letter-spacing: -0.2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .topbar-meta { font-size: 11.5px; color: rgba(240, 240, 240, 0.55); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
+    .topbar-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+    .topbar-refresh { background: rgba(240, 240, 240, 0.10); border: none; width: 38px; height: 38px; border-radius: 11px; color: #F0F0F0; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 14px; transition: background-color 0.15s; }
+    .topbar-refresh:hover { background: rgba(240, 240, 240, 0.18); } .topbar-refresh:active { transform: scale(0.94); }
+    .topbar-refresh .spin { animation: spin 0.9s linear infinite; display: inline-block; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .topbar-logout { background: transparent; border: 1px solid rgba(240, 240, 240, 0.2); color: #F0F0F0; padding: 8px 12px; border-radius: 11px; font-size: 12.5px; font-weight: 600; font-family: inherit; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: background-color 0.15s, border-color 0.15s, color 0.15s; }
+    .topbar-logout:hover { background: var(--danger-soft); border-color: var(--danger); color: #FF9B8F; }
+    .topbar-logout span { display: none; } @media (min-width: 480px) { .topbar-logout span { display: inline; } }
+
+    /* TABS */
+    .postabs { position: sticky; top: var(--topbar-h); z-index: 90; background: var(--surface); border-bottom: 1px solid var(--border); padding: 8px 12px; min-height: var(--tabs-h); display: flex; align-items: center; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+    .postabs::-webkit-scrollbar { display: none; }
+    .postab { padding: 8px 14px; border-radius: 20px; background: var(--canvas); border: 1px solid transparent; color: var(--slate); font-size: 13px; font-weight: 600; font-family: inherit; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: 7px; transition: background-color 0.15s, color 0.15s, border-color 0.15s; flex-shrink: 0; }
+    .postab:hover { background: var(--blue-soft); color: var(--ink); }
+    .postab.active { background: var(--ink); color: #F0F0F0; border-color: var(--ink); }
+    .postab.mine::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--blue); }
+    .postab.mine.active::before { background: var(--green); }
+    .postab .pill { font-size: 10.5px; font-weight: 700; padding: 1px 7px; border-radius: 20px; background: rgba(67, 86, 99, 0.12); color: var(--slate); }
+    .postab.active .pill { background: rgba(240, 240, 240, 0.18); color: #F0F0F0; }
+
+    /* PAGE */
+    .page { max-width: 1400px; margin: 0 auto; padding: 20px 16px 40px; }
+
+    /* HERO */
+    .hero { background: var(--ink); color: #F0F0F0; border-radius: var(--radius-lg); padding: 22px; margin-bottom: 16px; position: relative; overflow: hidden; box-shadow: 0 20px 50px -20px rgba(26, 26, 25, 0.4); }
+    .hero::before { content: ''; position: absolute; top: -120px; right: -120px; width: 340px; height: 340px; background: radial-gradient(circle, var(--blue-glow) 0%, transparent 65%); opacity: 0.55; pointer-events: none; }
+    .hero::after { content: ''; position: absolute; bottom: -140px; left: -100px; width: 300px; height: 300px; background: radial-gradient(circle, rgba(165, 207, 131, 0.22) 0%, transparent 70%); pointer-events: none; }
+    .hero.other { background: var(--surface); color: var(--ink); box-shadow: 0 4px 20px rgba(26, 26, 25, 0.06); border: 1px solid var(--border); }
+    .hero.other::before { background: radial-gradient(circle, rgba(21, 145, 220, 0.10) 0%, transparent 65%); }
+    .hero.other::after { display: none; }
+    .hero.other .hero-eyebrow { color: var(--slate); } .hero.other .hero-name { color: var(--ink); } .hero.other .hero-meta { color: var(--slate); }
+    .hero.other .hero-stat-num { color: var(--ink); } .hero.other .hero-stat-lbl { color: var(--slate); } .hero.other .hero-rank { color: var(--slate); }
+    .hero.other .hero-share-bar { background: rgba(67, 86, 99, 0.14); } .hero.other .hero-live { color: var(--slate); }
+    .hero-inner { position: relative; z-index: 1; }
+    .hero-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
+    .hero-live { display: inline-flex; align-items: center; gap: 7px; font-size: 11.5px; font-weight: 600; color: rgba(240, 240, 240, 0.7); letter-spacing: 0.2px; }
+    .hero-live .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 0 var(--green); animation: pulse-dot 2s ease-out infinite; }
+    .hero-live.stale .dot { background: var(--slate); animation: none; }
+    @keyframes pulse-dot { 0% { box-shadow: 0 0 0 0 rgba(165, 207, 131, 0.7); } 70% { box-shadow: 0 0 0 8px rgba(165, 207, 131, 0); } 100% { box-shadow: 0 0 0 0 rgba(165, 207, 131, 0); } }
+    .hero-badges { display: flex; gap: 6px; flex-wrap: wrap; }
+    .badge-status { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 20px; font-size: 11.5px; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase; }
+    .badge-status.leading { background: var(--green); color: var(--ink); }
+    .badge-status.trailing { background: rgba(240, 240, 240, 0.12); color: rgba(240, 240, 240, 0.8); }
+    .badge-status.neutral { background: var(--slate); color: #F0F0F0; }
+    .hero.other .badge-status.trailing { background: var(--slate-soft); color: var(--slate); }
+    .hero.other .badge-status.neutral { background: var(--blue); color: #fff; }
+    .hero-rank { font-family: 'SF Mono', Menlo, Consolas, monospace; font-size: 12.5px; font-weight: 600; color: rgba(240, 240, 240, 0.55); letter-spacing: 0.4px; }
+    .hero-eyebrow { font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: rgba(240, 240, 240, 0.5); margin-bottom: 4px; }
+    .hero-name { font-size: clamp(22px, 3.4vw, 30px); font-weight: 800; letter-spacing: -0.6px; line-height: 1.15; color: #F0F0F0; margin-bottom: 4px; }
+    .hero-meta { font-size: 13px; color: rgba(240, 240, 240, 0.6); font-weight: 500; }
+    .hero-stats { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 14px; margin: 22px 0 18px; padding: 18px 0; border-top: 1px solid rgba(240, 240, 240, 0.08); border-bottom: 1px solid rgba(240, 240, 240, 0.08); }
+    .hero.other .hero-stats { border-color: var(--border); }
+    .hero-stat-num { font-size: clamp(26px, 4.5vw, 40px); font-weight: 800; line-height: 1; letter-spacing: -1px; font-variant-numeric: tabular-nums; color: #F0F0F0; }
+    .hero-stat-lbl { font-size: 11px; font-weight: 600; letter-spacing: 0.6px; text-transform: uppercase; color: rgba(240, 240, 240, 0.5); margin-top: 6px; }
+    .hero-stat-num.green { color: var(--green); } .hero-stat-num.blue { color: var(--blue); }
+    .hero-share { margin-top: 4px; }
+    .hero-share-track { height: 8px; background: rgba(240, 240, 240, 0.10); border-radius: 20px; overflow: hidden; }
+    .hero-share-bar { height: 100%; background: linear-gradient(90deg, var(--green) 0%, var(--green-dark) 100%); border-radius: 20px; transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1); }
+    .hero-share-legend { display: flex; justify-content: space-between; font-size: 11.5px; color: rgba(240, 240, 240, 0.5); margin-top: 8px; font-weight: 500; }
+    .hero.other .hero-share-legend { color: var(--slate); }
+
+    /* SECTION HEADERS */
+    .section-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; margin: 26px 2px 12px; flex-wrap: wrap; }
+    .section-title { font-size: 15px; font-weight: 800; letter-spacing: -0.2px; color: var(--ink); display: flex; align-items: center; gap: 8px; }
+    .section-title i { color: var(--blue); font-size: 14px; }
+    .section-sub { font-size: 12.5px; color: var(--slate); font-weight: 500; margin-top: 3px; }
+    .section-count { font-size: 12px; color: var(--slate); font-weight: 600; }
+
+    /* BREADCRUMB */
+    .breadcrumb { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; font-size: 12.5px; font-weight: 600; }
+    .bc-seg { padding: 5px 11px; background: var(--surface); border: 1px solid var(--border); border-radius: 20px; color: var(--slate); cursor: pointer; font-family: inherit; transition: background-color 0.15s, color 0.15s, border-color 0.15s; display: inline-flex; align-items: center; gap: 6px; }
+    .bc-seg:hover { background: var(--blue-soft); border-color: var(--blue); color: var(--blue); }
+    .bc-seg.current { background: var(--ink); border-color: var(--ink); color: #F0F0F0; cursor: default; }
+    .bc-seg.current:hover { background: var(--ink); border-color: var(--ink); color: #F0F0F0; }
+    .bc-sep { color: var(--slate); font-size: 11px; }
+
+    /* DRILL GRID */
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; cursor: pointer; position: relative; transition: transform 0.15s, border-color 0.15s, box-shadow 0.15s; display: flex; flex-direction: column; gap: 12px; }
+    .card:hover { transform: translateY(-2px); border-color: var(--blue); box-shadow: 0 12px 32px -12px var(--blue-glow); }
+    .card:active { transform: scale(0.985); }
+    .card.leading { border-left: 3px solid var(--green); } .card.trailing { border-left: 3px solid var(--slate); } .card.empty { border-left: 3px solid var(--border-2); }
+    .card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+    .card-name { font-size: 14.5px; font-weight: 700; color: var(--ink); line-height: 1.25; letter-spacing: -0.2px; }
+    .card-sub { font-size: 11.5px; color: var(--slate); margin-top: 2px; font-weight: 500; }
+    .card-status { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 20px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.3px; white-space: nowrap; flex-shrink: 0; }
+    .card-status.done { background: var(--green-soft); color: var(--green-dark); } .card-status.partial { background: var(--blue-soft); color: var(--blue); } .card-status.pending { background: var(--slate-soft); color: var(--slate); }
+    .card-leader { display: flex; align-items: center; gap: 10px; }
+    .card-leader-crown { width: 30px; height: 30px; border-radius: 8px; background: var(--green-soft); color: var(--green-dark); display: flex; align-items: center; justify-content: center; font-size: 12px; flex-shrink: 0; }
+    .card.leading .card-leader-crown { background: var(--green); color: var(--ink); } .card-trailing .card-leader-crown { background: var(--slate-soft); color: var(--slate); }
+    .card-leader-info { min-width: 0; flex: 1; }
+    .card-leader-name { font-size: 13.5px; font-weight: 700; color: var(--ink); line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .card-leader-party { font-size: 11.5px; color: var(--slate); margin-top: 1px; }
+    .card-numbers { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+    .card-votes { font-size: 18px; font-weight: 800; color: var(--ink); letter-spacing: -0.4px; font-variant-numeric: tabular-nums; line-height: 1; }
+    .card-pct { font-size: 13px; font-weight: 700; color: var(--blue); font-variant-numeric: tabular-nums; }
+    .card-votes-lbl { font-size: 10.5px; color: var(--slate); font-weight: 600; letter-spacing: 0.4px; text-transform: uppercase; margin-top: 4px; }
+    .card-bar { height: 5px; background: var(--canvas); border-radius: 20px; overflow: hidden; }
+    .card-bar-fill { height: 100%; background: linear-gradient(90deg, var(--green) 0%, var(--green-dark) 100%); border-radius: 20px; transition: width 0.7s cubic-bezier(0.4, 0, 0.2, 1); }
+    .card.trailing .card-bar-fill { background: linear-gradient(90deg, var(--slate) 0%, #2f3b46 100%); }
+    .card-empty-body { text-align: center; padding: 14px 0; color: var(--slate); font-size: 12.5px; }
+    .card-empty-body i { font-size: 20px; color: var(--border-2); display: block; margin-bottom: 6px; }
+
+    /* LEADERBOARD */
+    .board { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+    .board-row { display: grid; grid-template-columns: 44px 1fr auto auto; gap: 12px; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--border); transition: background-color 0.15s; cursor: pointer; }
+    .board-row:last-child { border-bottom: none; } .board-row:hover { background: var(--canvas); }
+    .board-row.you { background: linear-gradient(to right, var(--blue-soft) 0%, transparent 60%); border-left: 3px solid var(--blue); }
+    .board-row.leader .board-rank { background: var(--green); color: var(--ink); border-color: var(--green-dark); }
+    .board-row.rank-2 .board-rank { background: var(--slate); color: #F0F0F0; border-color: var(--slate); }
+    .board-row.rank-3 .board-rank { background: var(--slate-soft); color: var(--slate); }
+    .board-rank { width: 30px; height: 30px; border-radius: 50%; background: var(--canvas); border: 1.5px solid var(--border-2); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; color: var(--slate); font-variant-numeric: tabular-nums; }
+    .board-info { min-width: 0; }
+    .board-name { font-size: 14px; font-weight: 700; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.2; }
+    .board-party { font-size: 11.5px; color: var(--slate); margin-top: 2px; font-weight: 500; }
+    .board-you-pill { display: inline-block; font-size: 9.5px; font-weight: 800; letter-spacing: 0.6px; padding: 1px 7px; border-radius: 20px; background: var(--blue); color: #fff; margin-left: 6px; vertical-align: middle; text-transform: uppercase; }
+    .board-votes { font-size: 15px; font-weight: 800; color: var(--ink); font-variant-numeric: tabular-nums; text-align: right; letter-spacing: -0.3px; line-height: 1.1; }
+    .board-pct { font-size: 11.5px; color: var(--slate); text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; margin-top: 2px; }
+    .board-delta { font-size: 11px; font-weight: 700; margin-top: 2px; color: var(--green-dark); }
+    .board-delta.up::before { content: '▲ '; } .board-delta.down { color: var(--danger); } .board-delta.down::before { content: '▼ '; }
+    .board-delta.same { color: var(--slate); } .board-delta.same::before { content: '· '; }
+    .board-share { width: 70px; height: 4px; background: var(--canvas); border-radius: 20px; overflow: hidden; margin-top: 6px; margin-left: auto; }
+    .board-share-fill { height: 100%; background: var(--green); border-radius: 20px; transition: width 0.7s cubic-bezier(0.4, 0, 0.2, 1); }
+    .board-row.you .board-share-fill { background: var(--blue); }
+    .board-row:not(.leader):not(.you) .board-share-fill { background: var(--slate); opacity: 0.55; }
+
+    /* FOOTER */
+    .foot { margin-top: 32px; padding: 20px 16px; text-align: center; font-size: 11.5px; color: var(--slate); line-height: 1.6; }
+    .foot i { color: var(--blue); margin-right: 4px; } .foot-tiny { opacity: 0.7; margin-top: 6px; }
+
+    /* COMPARISON SHEET */
+    .sheet-bg { position: fixed; inset: 0; background: rgba(26, 26, 25, 0.55); display: none; z-index: 9000; opacity: 0; transition: opacity 0.22s ease; padding: 16px; }
+    .sheet-bg.active { display: flex; opacity: 1; align-items: center; justify-content: center; }
+    .sheet { background: var(--surface); border-radius: 22px; width: 100%; max-width: 520px; max-height: 85dvh; overflow-y: auto; padding: 20px 22px 24px; transform: scale(0.94) translateY(12px); transition: transform 0.28s cubic-bezier(0.34, 1.35, 0.64, 1); position: relative; box-shadow: 0 24px 64px rgba(26, 26, 25, 0.35); }
+    .sheet-bg.active .sheet { transform: scale(1) translateY(0); }
+    .sheet-grabber { width: 40px; height: 4px; background: var(--border-2); border-radius: 20px; margin: 6px auto 14px; }
+    .sheet-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 18px; }
+    .sheet-title { font-size: 17px; font-weight: 800; letter-spacing: -0.3px; line-height: 1.2; }
+    .sheet-sub { font-size: 12.5px; color: var(--slate); margin-top: 3px; font-weight: 500; }
+    .sheet-close { width: 34px; height: 34px; border-radius: 10px; border: none; background: var(--canvas); color: var(--slate); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; transition: background-color 0.15s, color 0.15s; }
+    .sheet-close:hover { background: var(--danger-soft); color: var(--danger); }
+    .cmp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 18px; }
+    .cmp-card { 
+  padding: 20px 16px; 
+  border-radius: 14px; 
+  border: 1.5px solid var(--border); 
+  background: var(--canvas); 
+  text-align: center; /* Forces all text to center */
+  display: flex; 
+  flex-direction: column; 
+  align-items: center; /* Centers flex children like the photo */
+}
+.cmp-card.winner { border-color: var(--green); background: linear-gradient(135deg, var(--green-soft) 0%, transparent 70%); }
+
+.cmp-card .who { 
+  font-size: 10.5px; font-weight: 800; letter-spacing: 0.8px; text-transform: uppercase; 
+  color: var(--slate); margin-bottom: 12px; 
+  display: flex; align-items: center; justify-content: center; gap: 4px;
+}
+.cmp-card.winner .who { color: var(--green-dark); }
+
+.cmp-name { font-size: 15.5px; font-weight: 800; line-height: 1.2; letter-spacing: -0.3px; margin-bottom: 4px; }
+.cmp-party { font-size: 11.5px; color: var(--slate); margin-bottom: 12px; }
+.cmp-votes { font-size: 28px; font-weight: 800; letter-spacing: -0.8px; line-height: 1; font-variant-numeric: tabular-nums; margin-bottom: 4px; }
+.cmp-pct { font-size: 12.5px; color: var(--blue); font-weight: 700; margin-top: 0; }
+    /* UI KIT */
+    .th-modal-bg { position: fixed; inset: 0; background: rgba(26, 26, 25, 0.5); display: none; align-items: center; justify-content: center; z-index: 10000; padding: 20px; opacity: 0; transition: opacity 0.18s ease; }
+    .th-modal-bg.active { display: flex; opacity: 1; }
+    .th-modal { background: var(--surface); border-radius: 20px; padding: 26px 24px 22px; width: 100%; max-width: 380px; box-shadow: 0 24px 72px rgba(26, 26, 25, 0.3); transform: scale(0.94) translateY(8px); transition: transform 0.22s cubic-bezier(0.34, 1.4, 0.64, 1); }
+    .th-modal-bg.active .th-modal { transform: scale(1) translateY(0); }
+    .th-modal-icon { width: 56px; height: 56px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 22px; margin: 0 auto 16px; }
+    .th-modal-icon.warn { background: rgba(184, 134, 11, 0.12); color: #b8860b; } .th-modal-icon.danger { background: var(--danger-soft); color: var(--danger); } .th-modal-icon.info { background: var(--blue-soft); color: var(--blue); }
+    .th-modal-title { font-size: 17px; font-weight: 700; text-align: center; margin-bottom: 6px; letter-spacing: -0.2px; }
+    .th-modal-msg { font-size: 13.5px; color: var(--slate); text-align: center; line-height: 1.55; }
+    .th-modal-msg strong { color: var(--ink); font-weight: 600; }
+    .th-modal-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 22px; }
+    .th-modal-actions.single { grid-template-columns: 1fr; }
+    .th-btn { padding: 12px 16px; border: none; border-radius: 11px; font-size: 14px; font-weight: 700; font-family: inherit; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: background-color 0.15s, color 0.15s, transform 0.1s; }
+    .th-btn:active { transform: scale(0.98); }
+    .th-btn-ghost { background: var(--canvas); color: var(--ink); border: 1.5px solid var(--border-2); }
+    .th-btn-ghost:hover { background: var(--blue-soft); }
+    .th-btn-primary { background: var(--ink); color: #F0F0F0; } .th-btn-primary:hover { background: var(--blue); }
+    .th-btn-danger { background: var(--danger); color: #fff; } .th-btn-danger:hover { background: #a93a30; }
+
+    /* Toasts */
+    .toasts { position: fixed; top: calc(var(--topbar-h) + 12px); left: 12px; right: 12px; z-index: 9500; display: flex; flex-direction: column; gap: 8px; pointer-events: none; align-items: center; }
+    .toast { padding: 11px 16px; background: var(--ink); color: #F0F0F0; border-radius: 12px; font-size: 13.5px; font-weight: 600; box-shadow: 0 12px 32px rgba(26, 26, 25, 0.25); display: flex; align-items: center; gap: 9px; pointer-events: auto; max-width: 100%; animation: toastIn 0.22s ease; }
+    .toast i { font-size: 14px; flex-shrink: 0; } .toast.success i { color: var(--green); } .toast.error i { color: #FF9B8F; } .toast.info i { color: var(--blue); }
+    @keyframes toastIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* Empty & loading */
+    .empty { text-align: center; padding: 48px 20px; color: var(--slate); }
+    .empty-icon { width: 64px; height: 64px; border-radius: 50%; background: var(--canvas); color: var(--slate); display: flex; align-items: center; justify-content: center; font-size: 24px; margin: 0 auto 14px; }
+    .empty-title { font-size: 15px; font-weight: 700; color: var(--ink); margin-bottom: 6px; }
+    .empty-sub { font-size: 13px; line-height: 1.5; max-width: 320px; margin: 0 auto; }
+    .load { text-align: center; padding: 40px 20px; color: var(--slate); font-size: 13.5px; }
+    .load i { font-size: 22px; color: var(--blue); animation: spin 0.9s linear infinite; display: block; margin-bottom: 10px; }
+
+    /* RESPONSIVE */
+    @media (max-width: 640px) {
+      .page { padding: 14px 12px 30px; }
+      .hero { padding: 18px; border-radius: 18px; }
+      .hero-stats { gap: 10px; padding: 14px 0; margin: 16px 0 14px; }
+      .grid { grid-template-columns: 1fr; gap: 10px; }
+      .board-row { grid-template-columns: 38px 1fr auto; padding: 11px 12px; gap: 10px; }
+      .board-share { display: none; }
+      .cmp-grid { grid-template-columns: 1fr; }
+    }
+    @media (min-width: 1024px) {
+      .page { padding: 28px 28px 60px; }
+      .hero { padding: 30px 32px; }
+      .grid { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+      .board-row { grid-template-columns: 52px 1fr auto auto; padding: 14px 20px; }
+    }
+    @media (min-width: 1440px) {
+      .grid { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+    }
+
+    /* VIEW TABS */
+    .viewtabs { background: var(--surface); border-bottom: 1px solid var(--border); display: flex; gap: 4px; padding: 8px 12px; overflow-x: auto; scrollbar-width: none; position: relative; z-index: 1; }
+    .viewtabs::-webkit-scrollbar { display: none; }
+    .viewtab { padding: 9px 16px; border-radius: 20px; background: var(--canvas); border: none; color: var(--slate); font-size: 13.5px; font-weight: 600; font-family: inherit; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; transition: background-color 0.15s, color 0.15s; flex-shrink: 0; }
+    .viewtab:hover { background: var(--blue-soft); color: var(--blue); }
+    .viewtab.active { background: var(--ink); color: #F0F0F0; } .viewtab.active i { color: var(--green); }
+    body.tracker-mode .postabs { display: none; }
+
+    /* TRACKER SUMMARY */
+    .tracker-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
+    .tracker-stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 12px; text-align: center; }
+    .tracker-stat .num { font-size: 26px; font-weight: 800; letter-spacing: -0.6px; line-height: 1; color: var(--ink); font-variant-numeric: tabular-nums; }
+    .tracker-stat .num.small { font-size: 15px; padding-top: 5px; }
+    .tracker-stat .lbl { font-size: 10.5px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase; color: var(--slate); margin-top: 6px; }
+    .tracker-stat.green .num { color: var(--green-dark); } .tracker-stat.blue .num { color: var(--blue); } .tracker-stat.warn .num { color: var(--danger); }
+
+    /* STALE ALERT BANNER */
+    .tracker-alert { display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: linear-gradient(135deg, rgba(196, 69, 58, 0.12) 0%, rgba(196, 69, 58, 0.04) 100%); border: 1px solid rgba(196, 69, 58, 0.22); border-radius: var(--radius); margin-bottom: 16px; color: #B91C1C; font-size: 13.5px; font-weight: 600; }
+    .tracker-alert i { font-size: 20px; flex-shrink: 0; color: var(--danger); } .tracker-alert strong { font-weight: 800; }
+
+    /* POSITION PIPS */
+    .pips { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+    .pip { width: 26px; height: 26px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; letter-spacing: 0.3px; flex-shrink: 0; cursor: default; font-family: inherit; }
+    .pip-done { background: var(--green); color: var(--ink); } .pip-pending { background: rgba(67, 86, 99, 0.12); color: var(--slate); }
+
+    /* "LAST SUBMISSION" LINE ON CARDS */
+    .tracker-last { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--slate); padding-top: 10px; margin-top: 4px; border-top: 1px dashed var(--border); font-weight: 500; }
+    .tracker-last i { color: var(--green-dark); font-size: 10.5px; } .tracker-last.empty { color: var(--text-faint); font-style: italic; }
+
+    @media (max-width: 640px) {
+      .tracker-summary { grid-template-columns: repeat(2, 1fr); }
+      .tracker-stat .num { font-size: 22px; } .tracker-stat .num.small { font-size: 13.5px; padding-top: 4px; }
+    }
+
+    /* Make submitted pips interactive */
+    .pip { border: none; padding: 0; font-family: inherit; background: rgba(67, 86, 99, 0.12); color: var(--slate); }
+    .pip-done { cursor: pointer; transition: background-color 0.15s, color 0.15s, transform 0.12s; }
+    .pip-done:hover { background: var(--green-dark); color: #fff; transform: scale(1.08); } .pip-done:active { transform: scale(0.95); }
+    .pip-pending { cursor: not-allowed; opacity: 0.55; }
+
+    /* Result rows inside the pip sheet */
+    .pip-result-info { padding: 12px 14px; background: var(--canvas); border-radius: 12px; margin-bottom: 14px; font-size: 12.5px; color: var(--slate); }
+    .pip-result-info .row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; } .pip-result-info .row:last-child { margin-bottom: 0; }
+    .pip-result-info .row i { width: 14px; text-align: center; }
+    .pip-result-info .row i.user { color: var(--green-dark); } .pip-result-info .row i.clock { color: var(--blue); } .pip-result-info .row i.lock { color: var(--slate); }
+    .pip-result-info strong { color: var(--ink); font-weight: 600; }
+
+    @media (max-width: 640px) { .sheet { max-width: 100%; border-radius: 20px; padding: 18px 18px 22px; max-height: 88dvh; } }
+
+    /* ================================================================
+       ASPIRANT — COLOUR SIGNALS LAYER
+    ============================================================ */
+    .hero-stat-num:nth-child(1) { color: var(--green); } .hero-stat-num:nth-child(2) { color: var(--blue); } .hero-stat-num:nth-child(3) { color: #E8534A; }
+    .hero.other .hero-stat-num:nth-child(1) { color: var(--green-dark); } .hero.other .hero-stat-num:nth-child(2) { color: var(--blue); } .hero.other .hero-stat-num:nth-child(3) { color: #C4453A; }
+    .hero-stat-num.green { color: var(--green) !important; } .hero-stat-num.blue { color: var(--blue) !important; }
+    .hero.other .hero-stat-num.green { color: var(--green-dark) !important; } .hero.other .hero-stat-num.blue { color: var(--blue) !important; }
+
+    .postab { background: var(--canvas); color: var(--slate); border: 1px solid transparent; transition: background-color 0.18s, color 0.18s, border-color 0.18s, transform 0.12s; }
+    .postab .pill { transition: background-color 0.18s, color 0.18s; }
+    .postab[data-pos="President"] { background: rgba(165, 207, 131, 0.14); color: #4A7C3A; }
+    .postab[data-pos="Governor"] { background: rgba(21, 145, 220, 0.10); color: #0F7BC0; }
+    .postab[data-pos="Senator"] { background: rgba(21, 145, 220, 0.14); color: #1591DC; }
+    .postab[data-pos="MP"] { background: rgba(67, 86, 99, 0.10); color: #435663; }
+    .postab[data-pos="Women Rep"] { background: rgba(196, 69, 58, 0.10); color: #B23A32; }
+    .postab[data-pos="MCA"] { background: rgba(126, 174, 92, 0.14); color: #7EAE5C; }
+    .postab[data-pos="President"] .pill { background: rgba(165, 207, 131, 0.35); color: #4A7C3A; }
+    .postab[data-pos="Governor"] .pill { background: rgba(21, 145, 220, 0.18); color: #0F7BC0; }
+    .postab[data-pos="Senator"] .pill { background: rgba(21, 145, 220, 0.22); color: #0F7BC0; }
+    .postab[data-pos="MP"] .pill { background: rgba(67, 86, 99, 0.18); color: #435663; }
+    .postab[data-pos="Women Rep"] .pill { background: rgba(196, 69, 58, 0.18); color: #B23A32; }
+    .postab[data-pos="MCA"] .pill { background: rgba(126, 174, 92, 0.24); color: #4A7C3A; }
+    .postab:hover { background: rgba(165, 207, 131, 0.30) !important; color: #4A7C3A !important; border-color: rgba(126, 174, 92, 0.35); transform: translateY(-1px); }
+    .postab:hover .pill { background: rgba(165, 207, 131, 0.55) !important; color: #2F5520 !important; }
+    .postab.active { background: var(--ink); color: #F0F0F0; border-color: var(--ink); transform: none; }
+    .postab.active .pill { background: var(--green); color: var(--ink); }
+
+    .viewtab { background: var(--canvas); color: var(--slate); transition: background-color 0.18s, color 0.18s, transform 0.12s, box-shadow 0.18s; }
+    .viewtab[data-view="results"]:not(.active) { background: var(--canvas); color: var(--slate); }
+    .viewtab[data-view="results"]:not(.active):hover { background: rgba(165, 207, 131, 0.30); color: #4A7C3A; }
+    .viewtab[data-view="tracker"]:not(.active) { background: rgba(196, 69, 58, 0.12); color: #B23A32; font-weight: 700; border: 1px solid rgba(196, 69, 58, 0.20); box-shadow: 0 1px 4px rgba(196, 69, 58, 0.08); }
+    .viewtab[data-view="tracker"]:not(.active) i { color: #C4453A; }
+    .viewtab[data-view="tracker"]:not(.active):hover { background: rgba(196, 69, 58, 0.20); color: #8A2E27; border-color: rgba(196, 69, 58, 0.35); box-shadow: 0 3px 10px rgba(196, 69, 58, 0.15); transform: translateY(-1px); }
+    .viewtab.active { background: var(--ink); color: #F0F0F0; border-color: var(--ink); box-shadow: none; } .viewtab.active i { color: var(--green); }
+    .board-votes { color: var(--ink); } .board-row.you .board-votes { color: var(--blue); }
+    .card-votes { color: var(--green-dark); } .card-pct { color: var(--blue); } .card.trailing .card-votes { color: var(--slate); }
+    .cmp-votes { color: var(--green-dark); } .cmp-card.winner .cmp-votes { color: #4A7C3A; } .cmp-pct { color: var(--blue); }
+    .tracker-stat.green .num { color: var(--green-dark); } .tracker-stat.blue .num { color: var(--blue); } .tracker-stat.warn .num { color: var(--danger); }
+
+    .pip.pip-done { background: linear-gradient(135deg, #A5CF83 0%, #7EAE5C 100%); color: #1A1A19; font-weight: 900; box-shadow: 0 2px 6px rgba(126, 174, 92, 0.35); border: none; cursor: pointer; transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease; }
+    .pip.pip-done:hover { transform: scale(1.12); box-shadow: 0 4px 12px rgba(126, 174, 92, 0.50); filter: brightness(1.05); }
+    .pip.pip-done:active { transform: scale(0.96); box-shadow: 0 1px 3px rgba(126, 174, 92, 0.40); }
+    .pip.pip-pending { background: transparent; color: #9CA3AF; font-weight: 600; border: 1.5px dashed rgba(156, 163, 175, 0.50); box-shadow: none; cursor: not-allowed; opacity: 1; }
+
+    .stream-card, .card { background: #FFFFFF; border: 1px solid rgba(21, 145, 220, 0.12); box-shadow: 0 2px 10px rgba(21, 145, 220, 0.06); transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease; }
+    .stream-card:hover, .card:hover { transform: translateY(-2px); border-color: rgba(21, 145, 220, 0.30); box-shadow: 0 10px 28px -10px rgba(21, 145, 220, 0.28); }
+    .card.leading { border-left: 4px solid #7EAE5C; background: linear-gradient(to right, rgba(165, 207, 131, 0.06) 0%, #FFFFFF 50%); }
+    .card.trailing { border-left: 4px solid #1591DC; } .card.empty { border-left: 4px solid #CBD5E1; }
+    .card-status.done { background: linear-gradient(135deg, rgba(165, 207, 131, 0.28) 0%, rgba(126, 174, 92, 0.18) 100%); color: #4A7C3A; font-weight: 800; box-shadow: inset 0 0 0 1px rgba(126, 174, 92, 0.25); }
+    .card-status.partial { background: linear-gradient(135deg, rgba(21, 145, 220, 0.14) 0%, rgba(21, 145, 220, 0.08) 100%); color: #0F7BC0; font-weight: 800; box-shadow: inset 0 0 0 1px rgba(21, 145, 220, 0.20); }
+    .card-status.pending { background: rgba(67, 86, 99, 0.08); color: #6B7C93; font-weight: 700; }
+    .card-name { font-size: 15px; font-weight: 800; letter-spacing: -0.2px; color: #0F172A; } .card-sub { color: #6B7C93; font-weight: 500; }
+    .tracker-last { color: #4A7C3A; font-weight: 600; } .tracker-last i { color: #7EAE5C; }
+    .stream-progress, .card-pct { color: #0F7BC0; font-weight: 800; } .card.leading .stream-progress { color: #4A7C3A; }
+    .card-bar { height: 6px; background: rgba(21, 145, 220, 0.10); } .card-bar-fill { background: linear-gradient(90deg, #A5CF83 0%, #7EAE5C 100%); box-shadow: 0 0 6px rgba(126, 174, 92, 0.35); }
+
+    body { background: #ECFAE5; background-image: radial-gradient(circle at 100% 0%, rgba(165, 207, 131, 0.20) 0%, transparent 55%), radial-gradient(circle at 0% 100%, rgba(165, 207, 131, 0.14) 0%, transparent 55%); background-attachment: fixed; }
+    .topbar { background: linear-gradient(135deg, #A5CF83 0%, #8FBF6C 100%); color: #1A1A19; border-bottom: none; box-shadow: 0 2px 12px rgba(165, 207, 131, 0.35); }
+    .pulse { background: #1A1A19; } .pulse::after { background: #1A1A19; } .pulse.loading { background: #1591DC; } .pulse.loading::after { background: #1591DC; } .pulse.stale { background: #435663; } .pulse.stale::after { background: #435663; }
+    .topbar-name { color: #1A1A19; } .topbar-meta { color: rgba(26, 26, 25, 0.65); }
+    .topbar-refresh { background: rgba(26, 26, 25, 0.12); color: #1A1A19; } .topbar-refresh:hover { background: rgba(26, 26, 25, 0.20); }
+    .topbar-logout { background: rgba(26, 26, 25, 0.08); border-color: rgba(26, 26, 25, 0.25); color: #1A1A19; }
+    .topbar-logout:hover { background: rgba(196, 69, 58, 0.15); border-color: #C4453A; color: #B23A32; }
+    .hero::after { opacity: 0.65; }
+
+    /* Avatars */
+    .avatar-wrap { position: relative; width: 44px; height: 44px; border-radius: 50%; flex-shrink: 0; background: linear-gradient(135deg, rgba(165, 207, 131, 0.35) 0%, rgba(126, 174, 92, 0.25) 100%); display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 800; color: #4A7C3A; border: 2px solid rgba(255, 255, 255, 0.7); box-shadow: 0 2px 8px rgba(26, 26, 25, 0.08); }
+    .avatar-wrap img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; }
+    .avatar-wrap.no-photo { background: linear-gradient(135deg, rgba(165, 207, 131, 0.35) 0%, rgba(126, 174, 92, 0.25) 100%); color: #4A7C3A; }
+    .avatar-rank { position: absolute; bottom: -3px; right: -3px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 20px; background: #1A1A19; color: #F0F0F0; font-size: 10px; font-weight: 800; display: flex; align-items: center; justify-content: center; border: 2px solid #FFFFFF; font-variant-numeric: tabular-nums; letter-spacing: -0.3px; }
+    .result-row.leader .avatar-rank, .board-row.leader .avatar-rank, .readonly-row.leader .avatar-rank, .card.leading .avatar-rank { background: #7EAE5C; color: #FFFFFF; }
+    .avatar-wrap.small { width: 36px; height: 36px; font-size: 14px; } .avatar-wrap.small .avatar-rank { min-width: 16px; height: 16px; font-size: 9px; padding: 0 4px; }
+    .candidate-entry .entry-avatar { width: 38px; height: 38px; border-radius: 50%; overflow: hidden; flex-shrink: 0; background: linear-gradient(135deg, rgba(165, 207, 131, 0.35) 0%, rgba(126, 174, 92, 0.25) 100%); display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 800; color: #4A7C3A; border: 1.5px solid rgba(255, 255, 255, 0.7); }
+    .candidate-entry .entry-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .hero-name-row { display: flex; align-items: center; gap: 14px; }
+    .hero-avatar { width: 56px; height: 56px; border-radius: 50%; overflow: hidden; flex-shrink: 0; background: rgba(165, 207, 131, 0.20); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15); border: 2px solid rgba(255, 255, 255, 0.30); }
+    .hero-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    @media (max-width: 640px) { .avatar-wrap { width: 38px; height: 38px; font-size: 14px; } .avatar-wrap .avatar-rank { min-width: 16px; height: 16px; font-size: 9px; } .candidate-entry .entry-avatar { width: 34px; height: 34px; font-size: 13px; } .hero-avatar { width: 46px; height: 46px; } }
+
+    /* Leader avatar */
+    .avatar-wrap.with-crown { width: 44px; height: 44px; }
+    .avatar-crown { position: absolute; bottom: -3px; right: -3px; width: 18px; height: 18px; border-radius: 50%; background: #7EAE5C; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 9px; border: 2px solid #FFFFFF; box-shadow: 0 2px 6px rgba(126, 174, 92, 0.35); }
+    .card.leading .avatar-crown { background: #4A7C3A; } .card.trailing .avatar-crown { background: #435663; box-shadow: 0 2px 6px rgba(67, 86, 99, 0.30); }
+    .hero-avatar { width: 64px; height: 64px; border-radius: 50%; overflow: hidden; flex-shrink: 0; background: rgba(165, 207, 131, 0.20); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.20); border: 2px solid rgba(255, 255, 255, 0.35); }
+    .hero-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .hero.other .hero-avatar { border-color: rgba(21, 145, 220, 0.25); box-shadow: 0 4px 14px rgba(21, 145, 220, 0.15); }
+    .sheet .avatar-wrap { width: 46px; height: 46px; } .sheet .avatar-wrap .avatar-rank { min-width: 20px; height: 20px; font-size: 10px; }
+    @media (max-width: 640px) { .avatar-wrap.with-crown { width: 38px; height: 38px; } .hero-avatar { width: 52px; height: 52px; } .sheet .avatar-wrap { width: 42px; height: 42px; } }
+    .cmp-avatar { width: 56px; height: 56px; border-radius: 50%; overflow: hidden; margin: 0 auto 10px; background: rgba(21, 145, 220, 0.10); border: 2px solid rgba(255, 255, 255, 0.6); box-shadow: 0 4px 12px rgba(26, 26, 25, 0.10); }
+    .cmp-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; } .cmp-card.winner .cmp-avatar { border-color: rgba(126, 174, 92, 0.5); box-shadow: 0 4px 14px rgba(126, 174, 92, 0.25); }
+    .hero-stats > div:nth-child(3) .hero-stat-num { color: #C4453A !important; }
+    .board-row[style*="background:rgba"], .card[style*="background:rgba"] { background-clip: padding-box; }
+    .board-row.you { background: linear-gradient(to right, rgba(21, 145, 220, 0.12) 0%, transparent 60%) !important; } .board-row.leader { background: linear-gradient(to right, rgba(165, 207, 131, 0.18) 0%, transparent 60%) !important; }
+    .postab[data-pos="President"]:not(.active) { background: #E8DDB4; color: #1A1A19; border-color: #D9CDA0; }
+    .postab[data-pos="Governor"]:not(.active) { background: #ABE0F0; color: #1A1A19; border-color: #90CBDB; }
+    .postab[data-pos="Senator"]:not(.active) { background: #70FFD2; color: #1A1A19; border-color: #55E0B8; }
+    .postab[data-pos="MP"]:not(.active) { background: #FFA6FB; color: #1A1A19; border-color: #E890E3; }
+    .postab[data-pos="Women Rep"]:not(.active) { background: #ECE7D1; color: #1A1A19; border-color: #D9D3BC; }
+    .postab[data-pos="MCA"]:not(.active) { background: #FCF5EE; color: #1A1A19; border-color: #E8DCC9; }
+    .postab[data-pos="President"]:not(.active) .pill { background: rgba(26, 26, 25, 0.10); color: #1A1A19; }
+    .postab[data-pos="Governor"]:not(.active) .pill { background: rgba(26, 26, 25, 0.10); color: #1A1A19; }
+    .postab[data-pos="Senator"]:not(.active) .pill { background: rgba(26, 26, 25, 0.10); color: #1A1A19; }
+    .postab[data-pos="MP"]:not(.active) .pill { background: rgba(26, 26, 25, 0.10); color: #1A1A19; }
+    .postab[data-pos="Women Rep"]:not(.active) .pill { background: rgba(26, 26, 25, 0.10); color: #1A1A19; }
+    .postab[data-pos="MCA"]:not(.active) .pill { background: rgba(26, 26, 25, 0.10); color: #1A1A19; }
+    .hero-stats > div:nth-child(1) .hero-stat-num, .hero.other .hero-stats > div:nth-child(1) .hero-stat-num, .hero-stat-num.green, .hero.other .hero-stat-num.green { color: #7EAE5C !important; }
+    .hero-stats > div:nth-child(2) .hero-stat-num, .hero.other .hero-stats > div:nth-child(2) .hero-stat-num, .hero-stat-num.blue, .hero.other .hero-stat-num.blue { color: #1591DC !important; }
+    .hero-stats > div:nth-child(3) .hero-stat-num, .hero.other .hero-stats > div:nth-child(3) .hero-stat-num, .hero-stats > div:nth-child(3) .hero-stat-num.green, .hero.other .hero-stats > div:nth-child(3) .hero-stat-num.green, .hero-stats > div:nth-child(3) .hero-stat-num.blue, .hero.other .hero-stats > div:nth-child(3) .hero-stat-num.blue { color: #C4453A !important; }
+    .hero.mca-summary .hero-stats > div:nth-child(3) .hero-stat-num, .hero.mca-summary.hero.other .hero-stats > div:nth-child(3) .hero-stat-num { color: #7EAE5C !important; }
+    @media (max-width: 640px) { .hero-stats { grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 14px 0 12px; padding: 14px 0; } .hero-stat-num { font-size: clamp(16px, 5.5vw, 24px); font-weight: 900; letter-spacing: -0.5px; line-height: 1.05; display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .hero-stat-lbl { font-size: 9.5px; letter-spacing: 0.5px; margin-top: 4px; } .hero-stats > div { min-width: 0; overflow: hidden; } }
+    @media (max-width: 380px) { .hero-stat-num { font-size: clamp(15px, 5vw, 20px); font-weight: 900; } .hero-stat-lbl { font-size: 9px; } .hero-stats { gap: 4px; } }
+    .hero.mca-hero .hero-stat-num.stat-info, .hero.mca-hero.other .hero-stat-num.stat-info { color: inherit !important; }
+    .hero.mca-hero .hero-stat-num.stat-info { color: #F0F0F0 !important; } .hero.mca-hero.other .hero-stat-num.stat-info { color: var(--ink) !important; }
+    /* ================================================================
+   PREMIUM FLOATING CARDS (GLOBAL OVERRIDE)
+================================================================ */
+
+/* 1. Remove the colored left borders completely */
+.card.leading, 
+.card.trailing, 
+.card.empty {
+  border-left: 1px solid rgba(21, 145, 220, 0.12) !important; /* Matches the other borders */
+}
+
+/* 2. Add the soft, floating drop shadow */
+.stream-card, 
+.card {
+  background: #FFFFFF !important;
+  border: 1px solid rgba(0, 0, 0, 0.04) !important; /* Very soft border */
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05), 0 2px 8px rgba(0, 0, 0, 0.02) !important;
+  transform: translateY(0) !important;
+  transition: transform 0.2s ease, box-shadow 0.2s ease !important;
+}
+
+/* 3. Make them lift up beautifully on hover */
+.stream-card:hover, 
+.card:hover {
+  transform: translateY(-4px) !important; /* Lifts up */
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.08), 0 4px 12px rgba(0, 0, 0, 0.03) !important; /* Deeper shadow */
+  border-color: rgba(21, 145, 220, 0.2) !important;
+}
+    /* ... your other CSS ... */
+
+
+.custom-select-modal {
+  position: fixed; inset: 0; background: rgba(27, 33, 26, 0.6);
+  backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+  display: none; align-items: flex-end; justify-content: center;
+  z-index: 20000; opacity: 0; transition: opacity 0.2s ease;
+}
+.custom-select-modal.active { display: flex; opacity: 1; }
+
+.custom-select-sheet {
+  background: var(--surface); width: 100%; max-width: 500px;
+  border-radius: 24px 24px 0 0; padding: 12px 20px 24px;
+  transform: translateY(100%); transition: transform 0.3s cubic-bezier(0.34, 1.2, 0.64, 1);
+  max-height: 80vh; display: flex; flex-direction: column;
+}
+.custom-select-modal.active .custom-select-sheet { transform: translateY(0); }
+
+.custom-select-grabber {
+  width: 40px; height: 4px; background: var(--border-strong);
+  border-radius: 20px; margin: 0 auto 16px;
+}
+.custom-select-header {
+  font-size: 16px; font-weight: 800; color: var(--text);
+  margin-bottom: 16px; text-align: center; letter-spacing: -0.3px;
+}
+.custom-select-list {
+  overflow-y: auto; display: flex; flex-direction: column; gap: 8px;
+  margin-bottom: 16px;
+}
+.custom-select-option {
+  padding: 16px; border-radius: 14px; background: var(--bg);
+  border: 1.5px solid transparent; font-size: 15px; font-weight: 600;
+  color: var(--text); cursor: pointer; display: flex;
+  align-items: center; justify-content: space-between;
+  transition: all 0.15s ease;
+}
+.custom-select-option:hover, .custom-select-option:active {
+  background: var(--primary-tint); border-color: var(--primary);
+}
+.custom-select-option.selected {
+  background: var(--primary); color: var(--text);
+  border-color: var(--primary-dark);
+}
+.custom-select-option i {
+  opacity: 0; font-size: 14px; color: var(--text);
+}
+.custom-select-option.selected i { opacity: 1; }
+.custom-select-cancel {
+  width: 100%; padding: 16px; border-radius: 14px;
+  background: rgba(196, 69, 58, 0.08); color: var(--danger);
+  font-size: 15px; font-weight: 800; border: none; cursor: pointer;
+}
+/* ================================================================
+   LARGE SCREEN TAB LAYOUT (Tablets & Desktops)
+================================================================ */
+@media (min-width: 768px) {
+  /* Push Results to far left, Live Tracker to far right */
+  .viewtabs {
+    justify-content: space-between;
+  }
+
+  /* Distribute the 6 Position tabs evenly across the screen */
+  .postabs {
+    display: grid !important;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 8px;
+    overflow-x: visible !important;
+  }
+
+  .postab {
+    justify-content: center;
+    width: 100%;
+  }
+}
+</style>
+  </style>
+</head>
+<body>
+
+<!-- TOPBAR -->
+<div class="topbar">
+  <div class="topbar-left">
+    <span class="pulse" id="topPulse"></span>
+    <div class="topbar-info">
+      <div class="topbar-name" id="topName">Loading…</div>
+      <div class="topbar-meta" id="topMeta">—</div>
+    </div>
+  </div>
+  <div class="topbar-right">
+    
+    <!-- National Dropdown (President/Spectator) -->
+    <div id="nationalScopeWrap" style="display:none; align-items:center; gap:8px;">
+      <select id="aspCountySelector" onchange="switchAspCounty(this.value)" style="padding: 6px 10px; border-radius: 8px; font-weight: 700; font-size: 12px; border: 1.5px solid rgba(26, 26, 25, 0.2); background: #1A1A19; color: #A5CF83; cursor: pointer;">
+        <option value="">Loading…</option>
+      </select>
+    </div>
+
+    <!-- Locked Scope Badge (Premium) -->
+<div id="lockedScopeWrap" style="display:none; align-items:center; gap:6px; font-size:12px; font-weight:800; color:#1A1A19; padding: 6px 12px; border-radius: 12px; background: rgba(255,255,255,0.45); border: 1px solid rgba(26,26,25,0.1); box-shadow: 0 4px 12px rgba(0,0,0,0.05); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);">
+  <i class="fas fa-lock" style="color:var(--green-dark);"></i> <span id="lockedScopeName">Scope</span>
+</div>
+
+    <button class="topbar-refresh" id="topRefresh" onclick="manualRefresh()" title="Refresh now">
+      <i class="fas fa-arrows-rotate" id="topRefreshIcon"></i>
+    </button>
+    <button class="topbar-logout" onclick="doLogout()">
+      <i class="fas fa-right-from-bracket"></i><span>Logout</span>
+    </button>
+  </div>
+</div>
+
+<!-- VIEW TABS -->
+<div class="viewtabs" id="viewTabs">
+  <button class="viewtab active" data-view="results" onclick="switchView('results')">
+    <i class="fas fa-chart-bar"></i> Results
+  </button>
+  <button class="viewtab" data-view="tracker" onclick="switchView('tracker')">
+    <i class="fas fa-satellite-dish"></i> Live Tracker
+  </button>
+  <!-- NEW WAR ROOM TAB -->
+  <button class="viewtab" data-view="warroom" onclick="switchView('warroom')" style="color: #C4453A; border-color: rgba(196, 69, 58, 0.3);">
+    <i class="fas fa-shield-halved"></i> War Room
+  </button>
+</div>
+
+<!-- POSITION TABS -->
+<div class="postabs" id="posTabs"></div>
+
+<!-- PAGE -->
+<div class="page">
+
+  <!-- HERO -->
+  <div id="resultsView">
+  <div class="hero" id="heroCard">
+    <div class="hero-inner">
+      <div class="load"><i class="fas fa-spinner"></i>Loading live results…</div>
+    </div>
+  </div>
+
+  <!-- DRILL DOWN -->
+  <div class="section-head">
+    <div>
+      <div class="section-title"><i class="fas fa-map-location-dot"></i> <span id="drillTitle">Ward Breakdown</span></div>
+      <div class="section-sub" id="drillSub">Vote share by ward</div>
+    </div>
+    <div class="section-count" id="drillCount"></div>
+  </div>
+
+  <div class="breadcrumb" id="breadcrumb"></div>
+
+  <div class="grid" id="drillGrid">
+    <div class="load" style="grid-column:1/-1;"><i class="fas fa-spinner"></i>Loading breakdown…</div>
+  </div>
+
+  <!-- LEADERBOARD -->
+  <!-- LEADERBOARD -->
+  <div class="section-head" id="boardSectionHead">
+    <div>
+      <div class="section-title"><i class="fas fa-ranking-star"></i> Full Race</div>
+      <div class="section-sub" id="boardSub">All candidates ranked</div>
+    </div>
+    <div class="section-count" id="boardCount"></div>
+  </div>
+  <div class="board" id="board"></div>
+  </div><!-- /resultsView -->
+
+  <!-- TRACKER VIEW -->
+  <div id="trackerView" style="display:none;">
+    <div id="trackerAlert"></div>
+    <div class="tracker-summary" id="trackerSummary"></div>
+    <div class="section-head">
+      <div>
+        <div class="section-title"><i class="fas fa-satellite-dish"></i> <span id="trackerTitle">Submission Status</span></div>
+        <div class="section-sub" id="trackerSub">Which streams have reported</div>
+      </div>
+      <div class="section-count" id="trackerCount"></div>
+    </div>
+    <div class="breadcrumb" id="trackerBreadcrumb"></div>
+    <div class="grid" id="trackerGrid">
+      <div class="load" style="grid-column:1/-1;"><i class="fas fa-spinner"></i>Loading…</div>
+    </div>
+  </div><!-- /trackerView -->
+
+<!-- WAR ROOM VIEW (NEW) -->
+<div id="warRoomView" style="display:none;">
+  <div class="tracker-summary" style="grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 20px;">
+    <div class="tracker-stat" style="border-top: 3px solid #4A7C3A;">
+      <div class="num" style="color: #4A7C3A;" id="warGreenCount">0</div>
+      <div class="lbl" style="font-size: 9px;">Clean</div>
+    </div>
+    <div class="tracker-stat" style="border-top: 3px solid #b8860b;">
+      <div class="num" style="color: #b8860b;" id="warYellowCount">0</div>
+      <div class="lbl" style="font-size: 9px;">No Form</div>
+    </div>
+    <div class="tracker-stat" style="border-top: 3px solid #C4453A;">
+      <div class="num" style="color: #C4453A;" id="warRedCount">0</div>
+      <div class="lbl" style="font-size: 9px;">Anomaly</div>
+    </div>
+    <div class="tracker-stat" style="border-top: 3px solid #6B7C93;">
+      <div class="num" style="color: #6B7C93;" id="warGreyCount">0</div>
+      <div class="lbl" style="font-size: 9px;">Silent</div>
+    </div>
+  </div>
+
+     <div class="section-head">
+      <div>
+        <div class="section-title"><i class="fas fa-shield-halved"></i> <span id="warRoomTitle">Governor</span> Race Anomalies</div>
+        <div class="section-sub" id="warRoomSub">Only showing issues relevant to your specific race</div>
+      </div>
+    </div>
+
+  <div class="breadcrumb" id="warRoomBreadcrumb"></div>
+  <div class="grid" id="warRoomGrid">
+    <div class="load" style="grid-column:1/-1;"><i class="fas fa-spinner"></i>Scanning for anomalies…</div>
+  </div>
+</div><!-- /warRoomView -->
+
+  <!-- FOOTER -->
+  <div class="foot">
+    <div><i class="fas fa-circle-info"></i> Live provisional tallies — unofficial until certified by the returning officer.</div>
+    <div class="foot-tiny" id="footTime">—</div>
+  </div>
+
+</div>
+
+<!-- COMPARISON SHEET -->
+<div class="sheet-bg" id="sheetBg" onclick="if(event.target===this) closeSheet()">
+  <div class="sheet" id="sheet">
+    <div class="sheet-grabber"></div>
+    <div id="sheetContent"></div>
+  </div>
+</div>
+
+<!-- TOASTS -->
+<div class="toasts" id="toasts"></div>
+<!-- CUSTOM PREMIUM DROPDOWN MODAL -->
+<div class="custom-select-modal" id="customSelectModal" onclick="if(event.target===this) closeCustomSelect()">
+  <div class="custom-select-sheet">
+    <div class="custom-select-grabber"></div>
+    <div class="custom-select-header" id="customSelectTitle">Select Option</div>
+    <div class="custom-select-list" id="customSelectList">
+      <!-- Options will be injected here via JS -->
+    </div>
+    <button class="custom-select-cancel" onclick="closeCustomSelect()">Cancel</button>
+  </div>
+</div>
+<script>
+// ================================================================
+//  SUPABASE INITIALIZATION
+// ================================================================
+const supabaseUrl = 'https://qkkhtglsstinsvbdmclt.supabase.co';
+const supabaseKey = 'sb_publishable_AEFOxR5dWWyQu9ZIaYMwLQ_4dPU-RM0';
+const db = window.supabase.createClient(supabaseUrl, supabaseKey);
+  const PAGE = 1000;
+
+// Pull EVERY row of a query by paging with range()
+async function fetchAll(makeQuery) {
+  let all = [], from = 0;
+  while (true) {
+    const { data, error } = await makeQuery().range(from, from + PAGE - 1);
+    if (error) throw error;
+    all = all.concat(data || []);
+    if (!data || data.length < PAGE) break;
+    from += PAGE;
+  }
+  return all;
+}
+
+// Same, but for ".in(column, ids)" queries with URL chunking
+async function fetchIn(table, select, column, ids, orderCol = 'id', chunk = 100) {
+  if (!ids || !ids.length) return [];
+  const parts = [];
+  for (let i = 0; i < ids.length; i += chunk) parts.push(ids.slice(i, i + chunk));
+  const out = await Promise.all(parts.map(part =>
+    fetchAll(() => db.from(table).select(select).in(column, part).order(orderCol))
+  ));
+  return out.flat();
+}
+// Helper to get/generate a unique device ID
+function getDeviceId() {
+  let devId = localStorage.getItem('tallyhub_device_id');
+  if (!devId) {
+    devId = 'DEV-' + Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
+    localStorage.setItem('tallyhub_device_id', devId);
+  }
+  return devId;
+}
+
+// ================================================================
+//  CONSTANTS & STATE
+// ================================================================
+var USER = null; 
+var TOKEN = "supabase"; 
+var OVERVIEW = null; 
+var VIEW_POS = 'President';
+
+var CURRENT_VIEW = 'results'; 
+var SCOPE_MODE = 'national'; // 'national', 'county', 'constituency', or 'ward'
+var CURRENT_COUNTY = ''; 
+
+// --- DRILL DOWN STATE ---
+var DRILL_LEVEL = ''; // 'constituency', 'ward', or 'centre'
+var DRILL_COUNTY_ID = ''; 
+var DRILL_COUNTY_NAME = '';
+var DRILL_CONST_ID = ''; 
+var DRILL_CONST_NAME = '';
+var DRILL_WARD = ''; 
+var DRILL_WARD_NAME = '';
+var DRILL_CENTRE = ''; 
+var DRILL_CENTRE_NAME = ''; 
+var DRILL_DATA = null;
+// --- TRACKER STATE ---
+var TRACKER_FORMS = {}; // Tracks which stream/position combos have photos
+var TRACKER_DATA = null; 
+var TRACKER_LEVEL = ''; // 'constituency', 'ward', 'centre', 'stream'
+var TRACKER_CONST_ID = ''; 
+var TRACKER_CONST_NAME = '';
+var TRACKER_WARD = ''; 
+var TRACKER_WARD_NAME = '';
+var TRACKER_CENTRE = ''; 
+var TRACKER_CENTRE_NAME = '';
+
+// --- TIMERS ---
+var refreshTimer = null; 
+var trackerRefreshAt = null; 
+var lastRefreshAt = null;
+
+const POSITIONS = ['President', 'Governor', 'Senator', 'MP', 'Women Rep', 'MCA'];
+var POSITION_SHORT = { 'President': 'P', 'Governor': 'G', 'Senator': 'S', 'MP': 'M', 'Women Rep': 'W', 'MCA': 'C' };
+
+// ================================================================
+//  INIT & AUTO REFRESH
+// ================================================================
+async function init() {
+  const { data: { user } } = await db.auth.getUser();
+  if (!user) { window.location.href = 'index.html'; return; }
+
+  // --- DEVICE LOCK CHECK ---
+  const devId = getDeviceId();
+  const { data: deviceCheck, error: devErr } = await db.rpc('verify_and_register_device', {
+    p_auth_id: user.id,
+    p_device_id: devId,
+    p_role: 'aspirant'
+  });
+  
+  if (devErr || !deviceCheck.success) {
+    db.auth.signOut();
+    alert(deviceCheck?.message || 'Device limit reached. Contact Admin.');
+    window.location.href = 'index.html';
+    return;
+  }
+  // --------------------------
+
+  const { data: profile } = await db.from('aspirants').select('*').eq('auth_user_id', user.id).single();
+  if (!profile) { alert("Profile not found"); doLogout(); return; }
+  
+  USER = {
+    name: profile.name, position: profile.position, 
+    ward: profile.ward_id, constituency: profile.constituency_id, 
+    county: profile.county_id, loginCode: profile.login_code, isSpectator: profile.is_spectator
+  };
+
+  document.getElementById('topName').textContent = USER.name || 'Viewer';
+  if (!USER.isSpectator && USER.position && POSITIONS.indexOf(USER.position) !== -1) { VIEW_POS = USER.position; }
+
+  if (USER.isSpectator || USER.position === 'President') {
+    SCOPE_MODE = 'national';
+    DRILL_LEVEL = 'county';
+    TRACKER_LEVEL = 'constituency';
+    document.getElementById('nationalScopeWrap').style.display = 'flex';
+
+    const { data: counties } = await db.from('counties').select('id, name').order('name');
+    if (counties && counties.length > 0) {
+      CURRENT_COUNTY = '';                       
+      document.getElementById('aspCountySelector').innerHTML =
+        '<option value="">All Counties</option>' +                       
+        counties.map(c => `<option value="${c.id}">${toTitleCase(c.name)} County</option>`).join('');
+      document.getElementById('aspCountySelector').value = '';           
+    }
+  } else {
+    let scopeName = 'Scope';
+    
+    if (USER.position === 'MCA') {
+      SCOPE_MODE = 'ward'; 
+      DRILL_LEVEL = 'centre';
+      TRACKER_LEVEL = 'centre';
+      const { data: w } = await db.from('wards').select('name').eq('id', USER.ward).single();
+      scopeName = w ? toTitleCase(w.name) + ' Ward' : 'Ward';
+      
+    } else if (USER.position === 'MP') {
+      SCOPE_MODE = 'constituency'; 
+      DRILL_LEVEL = 'ward';
+      TRACKER_LEVEL = 'ward';
+      const { data: c } = await db.from('constituencies').select('name').eq('id', USER.constituency).single();
+      scopeName = c ? toTitleCase(c.name) + ' Constituency' : 'Constituency';
+      
+    } else {
+      SCOPE_MODE = 'county'; 
+      DRILL_LEVEL = 'constituency';
+      TRACKER_LEVEL = 'constituency';
+      const { data: c } = await db.from('counties').select('name').eq('id', USER.county).single();
+      scopeName = c ? toTitleCase(c.name) + ' County' : 'County';
+    }
+    
+    document.getElementById('lockedScopeName').textContent = scopeName;
+    document.getElementById('lockedScopeWrap').style.display = 'flex';
+  }
+
+  updateTopMeta();
+  loadOverview();
+  startAutoRefresh();
+}
+
+  function switchAspCounty(countyId) {
+  CURRENT_COUNTY = countyId;
+  
+  if (!countyId) {
+    // User selected "All Counties"
+    DRILL_LEVEL = 'county';
+    DRILL_COUNTY_ID = '';
+    DRILL_COUNTY_NAME = '';
+  } else {
+    // User selected a specific county from the dropdown
+    DRILL_LEVEL = 'constituency';
+    DRILL_COUNTY_ID = countyId;
+    
+    var countyObj = OVERVIEW && OVERVIEW.counties ? OVERVIEW.counties.find(c => c.id === countyId) : null;
+    DRILL_COUNTY_NAME = countyObj ? countyObj.name : 'County';
+  }
+
+  // Clear deeper drill states
+  DRILL_CONST_ID = ''; DRILL_CONST_NAME = '';
+  DRILL_WARD = ''; DRILL_WARD_NAME = '';
+  DRILL_CENTRE = ''; DRILL_CENTRE_NAME = '';
+  
+  TRACKER_DATA = null;
+  loadOverview();
+}
+
+function startAutoRefresh() {
+  if (refreshTimer) clearInterval(refreshTimer);
+  refreshTimer = setInterval(function () {
+    if (document.hidden) return;
+      if (CURRENT_VIEW === 'results') {
+      if (DRILL_WARD || DRILL_CENTRE) return;
+      if (lastRefreshAt && Date.now() - lastRefreshAt < 4.5 * 60 * 1000) return; // Change this to 60 * 1000 (60 seconds)
+      silentRefresh();
+    } else if (CURRENT_VIEW === 'tracker') {
+      if (trackerRefreshAt && Date.now() - trackerRefreshAt < 80 * 1000) return; // Change this to 30 * 1000 (30 seconds)
+      loadTracker(true);
+    }
+  }, 30000);
+}
+
+function silentRefresh() { setPulse('loading'); loadOverview(true); }
+
+function manualRefresh() {
+  var icon = document.getElementById('topRefreshIcon');
+  if (icon) icon.classList.add('spin');
+  setPulse('loading');
+  if (CURRENT_VIEW === 'tracker') { loadTracker(true); }
+  else if (DRILL_WARD || DRILL_CENTRE) { loadDrill(true); }
+  else { loadOverview(true); }
+  if (icon) setTimeout(function () { icon.classList.remove('spin'); }, 900);
+}
+
+// ================================================================
+//  DATA LOADING (Supabase)
+// ================================================================
+async function loadOverview(silent) {
+  if (!silent) setPulse('loading');
+  try {
+    // 1. Fetch Geography
+    let constQuery = db.from('constituencies').select('*').order('id');
+    if (SCOPE_MODE === 'constituency') constQuery = constQuery.eq('id', USER.constituency);
+    else if (SCOPE_MODE === 'county') constQuery = constQuery.eq('county_id', USER.county);
+    const consts = await fetchAll(() => constQuery);
+
+    let wardsData = [];
+    if (SCOPE_MODE === 'ward') {
+        wardsData = await fetchAll(() => db.from('wards').select('*').eq('id', USER.ward).order('id'));
+    } else if (SCOPE_MODE === 'constituency') {
+        wardsData = await fetchAll(() => db.from('wards').select('*').eq('constituency_id', USER.constituency).order('id'));
+    } else if (SCOPE_MODE !== 'national') {
+        wardsData = await fetchIn('wards', '*', 'constituency_id', (consts||[]).map(c=>c.id), 'id');
+    } else {
+        wardsData = await fetchAll(() => db.from('wards').select('*').order('id'));
+    }
+
+    let centresData = [];
+    if (SCOPE_MODE === 'national' && !DRILL_COUNTY_ID) {
+        centresData = await fetchAll(() => db.from('centres').select('*').order('id'));
+    } else if (SCOPE_MODE === 'national' && DRILL_COUNTY_ID) {
+        const countyConstIds = (consts || []).filter(c => c.county_id === DRILL_COUNTY_ID).map(c => c.id);
+        const countyWardIds = (wardsData || []).filter(w => countyConstIds.includes(w.constituency_id)).map(w => w.id);
+        centresData = await fetchIn('centres', '*', 'ward_id', countyWardIds, 'id');
+    } else {
+        centresData = await fetchIn('centres', '*', 'ward_id', (wardsData||[]).map(w=>w.id), 'id');
+    }
+
+    let streamsData = [];
+    if (SCOPE_MODE === 'national' && DRILL_COUNTY_ID) {
+        streamsData = await fetchIn('streams', '*', 'centre_id', (centresData||[]).map(c=>c.id), 'code');
+    } else if (SCOPE_MODE === 'national') {
+        streamsData = await fetchAll(() => db.from('streams').select('*').order('code'));
+    } else {
+        streamsData = await fetchIn('streams', '*', 'centre_id', (centresData||[]).map(c=>c.id), 'code');
+    }
+
+    // 2. Fetch Candidates & Results
+let candQuery = db.from('candidates').select('*').eq('position', VIEW_POS).order('code');
+
+if (VIEW_POS !== 'President' && SCOPE_MODE !== 'national') {
+    if (VIEW_POS === 'Governor' || VIEW_POS === 'Senator' || VIEW_POS === 'Women Rep') {
+        // If the user is an MP, their USER.county is null. 
+        // We must find the county ID from their constituency.
+        let targetCounty = USER.county;
+        if (!targetCounty && SCOPE_MODE === 'constituency' && consts.length > 0) {
+            targetCounty = consts[0].county_id;
+        }
+        candQuery = candQuery.eq('county_id', targetCounty);
+        
+    } else if (VIEW_POS === 'MP') {
+        // Filter MPs by the constituency(ies) the user is allowed to see
+        const constIds = (consts || []).map(c => c.id);
+        if (constIds.length) candQuery = candQuery.in('constituency_id', constIds);
+        else candQuery = candQuery.eq('constituency_id', 'NONE'); 
+        
+    } else if (VIEW_POS === 'MCA') {
+        // Filter MCAs by the ward(s) the user is allowed to see
+        const wardIds = (wardsData || []).map(w => w.id);
+        if (wardIds.length) candQuery = candQuery.in('ward_id', wardIds);
+        else candQuery = candQuery.eq('ward_id', 'NONE'); 
+    }
+}
+    const cands = await fetchAll(() => candQuery);
+
+    const activeStreamCodes = (streamsData || []).map(s => s.code);
+    let allResultsData = [];
+    if (activeStreamCodes.length > 0) {
+        allResultsData = await fetchIn('results', 'stream_code, position, candidate_code, votes', 'stream_code', activeStreamCodes, 'stream_code');
+    }
+    const resultsData = (allResultsData || []).filter(r => r.position === VIEW_POS);
+
+    // ... REST OF THE LOGIC IS EXACTLY THE SAME ...
+    const candMap = {}; (cands || []).forEach(c => { c.photo_url = normalizeImageUrl(c.photo_url); candMap[c.code] = c; });
+    const streamMap = {}; (streamsData || []).forEach(s => streamMap[s.code] = s);
+    const centreMap = {}; (centresData || []).forEach(c => centreMap[c.id] = c);
+    const wardMap = {}; (wardsData || []).forEach(w => wardMap[w.id] = w);
+    const constMap = {}; (consts || []).forEach(c => constMap[c.id] = c);
+
+    let countiesData = [];
+    if (SCOPE_MODE === 'national') {
+      countiesData = await fetchAll(() => db.from('counties').select('*').order('name'));
+    }
+    
+    const votesByCounty = {}, votesByConst = {}, votesByWard = {}, votesByCentre = {}, votesByStream = {}, totalByCand = {};
+    const tabTotals = {}; POSITIONS.forEach(p => tabTotals[p] = 0);
+    const tabTotalsByLevel = { county: {}, const: {}, ward: {}, centre: {}, stream: {} };
+    POSITIONS.forEach(p => {
+      tabTotalsByLevel.county[p] = {}; tabTotalsByLevel.const[p] = {}; tabTotalsByLevel.ward[p] = {}; tabTotalsByLevel.centre[p] = {}; tabTotalsByLevel.stream[p] = {};
+    });
+
+    (resultsData || []).forEach(r => {
+      const stream = streamMap[r.stream_code]; if (!stream) return; 
+      const centre = centreMap[stream.centre_id]; if (!centre) return;
+      const ward = wardMap[centre.ward_id]; if (!ward) return;
+      const constituency = constMap[ward.constituency_id]; if (!constituency) return;
+      const countyId = constituency.county_id;
+
+      if (!totalByCand[r.candidate_code]) totalByCand[r.candidate_code] = 0;
+      totalByCand[r.candidate_code] += r.votes;
+
+      if (!votesByStream[r.stream_code]) votesByStream[r.stream_code] = {};
+      votesByStream[r.stream_code][r.candidate_code] = (votesByStream[r.stream_code][r.candidate_code]||0) + r.votes;
+      if (!votesByCentre[centre.id]) votesByCentre[centre.id] = {};
+      votesByCentre[centre.id][r.candidate_code] = (votesByCentre[centre.id][r.candidate_code]||0) + r.votes;
+      if (!votesByWard[ward.id]) votesByWard[ward.id] = {};
+      votesByWard[ward.id][r.candidate_code] = (votesByWard[ward.id][r.candidate_code]||0) + r.votes;
+      if (!votesByConst[constituency.id]) votesByConst[constituency.id] = {};
+      votesByConst[constituency.id][r.candidate_code] = (votesByConst[constituency.id][r.candidate_code]||0) + r.votes;
+      if (!votesByCounty[countyId]) votesByCounty[countyId] = {};
+      votesByCounty[countyId][r.candidate_code] = (votesByCounty[countyId][r.candidate_code]||0) + r.votes;
+    });
+
+    (allResultsData || []).forEach(r => {
+      if (tabTotals[r.position] !== undefined) tabTotals[r.position] += r.votes;
+      const stream = streamMap[r.stream_code]; if (!stream) return;
+      const centre = centreMap[stream.centre_id]; if (!centre) return;
+      const ward = wardMap[centre.ward_id]; if (!ward) return;
+      const constituency = constMap[ward.constituency_id]; if (!constituency) return;
+      const pos = r.position;
+
+      if (tabTotalsByLevel.county[pos]) {
+          tabTotalsByLevel.county[pos][constituency.county_id] = (tabTotalsByLevel.county[pos][constituency.county_id] || 0) + r.votes;
+          tabTotalsByLevel.const[pos][constituency.id] = (tabTotalsByLevel.const[pos][constituency.id] || 0) + r.votes;
+          tabTotalsByLevel.ward[pos][ward.id] = (tabTotalsByLevel.ward[pos][ward.id] || 0) + r.votes;
+          tabTotalsByLevel.centre[pos][centre.id] = (tabTotalsByLevel.centre[pos][centre.id] || 0) + r.votes;
+          tabTotalsByLevel.stream[pos][stream.code] = (tabTotalsByLevel.stream[pos][stream.code] || 0) + r.votes;
+      }
+    });
+
+    let leaderboard = (cands || []).map(c => ({
+      code: c.code, name: c.name, party: c.party, photo_url: c.photo_url, color: c.color || '#A5CF83', votes: totalByCand[c.code] || 0
+    })).sort((a,b) => b.votes - a.votes);
+    
+    let globalTotal = leaderboard.reduce((s, c) => s + c.votes, 0);
+    leaderboard.forEach(c => c.pct = globalTotal > 0 ? ((c.votes/globalTotal)*100).toFixed(1) : '0.0');
+
+    let ownRow = null; let ownRank = null;
+    if (!USER.isSpectator && USER.name) {
+        const idx = leaderboard.findIndex(c => c.name.trim().toLowerCase() === USER.name.trim().toLowerCase());
+        if (idx !== -1) { ownRow = leaderboard[idx]; ownRank = idx + 1; }
+    }
+
+    OVERVIEW = {
+      viewingPosition: VIEW_POS, leaderboard: leaderboard, globalTotal, ownRow, ownRank,
+      leader: leaderboard[0], runner: leaderboard[1], 
+      margin: leaderboard[0] && leaderboard[1] ? (leaderboard[0].votes - leaderboard[1].votes) : 0,
+      counties: countiesData, consts: consts || [], wards: wardsData || [], centres: centresData || [], streams: streamsData || [],
+      votesByCounty, votesByConst, votesByWard, votesByCentre, votesByStream, candMap, tabTotals, tabTotalsByLevel,
+      reported: (resultsData || []).length, totalStreams: (streamsData || []).length
+    };
+
+    renderTabs(); renderHero(); renderDrillGrid(); renderBoard();
+    setPulse('live');
+  } catch (err) { console.error(err); setPulse('stale'); if (!silent) toast('Connection error.', 'error'); }
+}
+
+async function loadDrill(silent) {
+  try {
+    const [ { data: cands }, { data: streamsData }, { data: centresData }, { data: resultsData } ] = await Promise.all([
+        db.from('candidates').select('*'), db.from('streams').select('*'),
+        db.from('centres').select('*'), db.from('results').select('*').eq('position', VIEW_POS)
+    ]);
+
+    // FIX: Call normalizeImageUrl here too
+    const candMap = {}; 
+    cands.forEach(c => { 
+      c.photo_url = normalizeImageUrl(c.photo_url); 
+      candMap[c.code] = c; 
+    });
+    
+    const reportedSet = new Set(resultsData.map(r => r.stream_code));
+
+    if (DRILL_CENTRE) {
+        const centreStreams = streamsData.filter(s => s.centre_id === DRILL_CENTRE);
+        DRILL_DATA = { level: 'stream', streams: centreStreams.map(s => {
+            const sResults = resultsData.filter(r => r.stream_code === s.code);
+            const sCandidates = sResults.map(r => {
+                const info = candMap[r.candidate_code] || {};
+                return { code: r.candidate_code, name: info.name, party: info.party, photo_url: info.photo_url, color: info.color || '#A5CF83', votes: r.votes };
+            }).sort((a, b) => b.votes - a.votes);
+            const total = sCandidates.reduce((sum, c) => sum + c.votes, 0);
+            return { streamCode: s.code, streamLabel: 'STR ' + String(s.stream_number).padStart(2, '0'), centreName: centresData.find(c => c.id === s.centre_id)?.name, candidates: sCandidates, leader: sCandidates[0] || null, totalVotes: total, leaderPct: total > 0 && sCandidates[0] ? ((sCandidates[0].votes / total) * 100).toFixed(1) : '0.0', submitted: reportedSet.has(s.code) };
+        }).sort((a, b) => a.streamCode.localeCompare(b.streamCode)) };
+    } else if (DRILL_WARD) {
+        const wardCentres = centresData.filter(c => c.ward_id === DRILL_WARD);
+        DRILL_DATA = { level: 'centre', centres: wardCentres.map(c => {
+            const cStreams = streamsData.filter(s => s.centre_id === c.id);
+            const cStreamCodes = new Set(cStreams.map(s => s.code));
+            const reportedInCentre = new Set(resultsData.filter(r => cStreamCodes.has(r.stream_code)).map(r => r.stream_code)).size;
+            const cCandidatesMap = {};
+            resultsData.filter(r => cStreamCodes.has(r.stream_code)).forEach(r => {
+                if (!cCandidatesMap[r.candidate_code]) cCandidatesMap[r.candidate_code] = { code: r.candidate_code, votes: 0 };
+                cCandidatesMap[r.candidate_code].votes += r.votes;
+            });
+            const cCandidates = Object.values(cCandidatesMap).map(item => {
+                const info = candMap[item.code] || {};
+                return { ...item, name: info.name, party: info.party, photo_url: info.photo_url, color: info.color || '#A5CF83' };
+            }).sort((a, b) => b.votes - a.votes);
+            const total = cCandidates.reduce((sum, x) => sum + x.votes, 0);
+            return { centreId: c.id, centreName: c.name, candidates: cCandidates, leader: cCandidates[0] || null, totalVotes: total, leaderPct: total > 0 && cCandidates[0] ? ((cCandidates[0].votes / total) * 100).toFixed(1) : '0.0', streamsTotal: cStreams.length, streamsDone: reportedInCentre };
+        }) };
+    }
+    renderDrillGrid(); renderBoard();
+  } catch (err) { console.error(err); }
+}
+
+async function loadTracker(silent) {
+  if (!silent) document.getElementById('trackerGrid').innerHTML = '<div class="load" style="grid-column:1/-1;"><i class="fas fa-spinner"></i>Loading…</div>';
+  try {
+    var filterWardIds = [];
+
+    let constQuery = db.from('constituencies').select('*').order('id');
+    if (SCOPE_MODE === 'constituency') constQuery = constQuery.eq('id', USER.constituency);
+    else if (SCOPE_MODE === 'county') constQuery = constQuery.eq('county_id', USER.county);
+    else if (SCOPE_MODE === 'national' && CURRENT_COUNTY) constQuery = constQuery.eq('county_id', CURRENT_COUNTY);
+    const constsData = await fetchAll(() => constQuery);
+
+    let wardsData = [];
+    if (SCOPE_MODE === 'ward') {
+        wardsData = await fetchAll(() => db.from('wards').select('*').eq('id', USER.ward).order('id'));
+    } else if (SCOPE_MODE === 'constituency') {
+        wardsData = await fetchAll(() => db.from('wards').select('*').eq('constituency_id', USER.constituency).order('id'));
+    } else {
+        wardsData = await fetchIn('wards', '*', 'constituency_id', (constsData||[]).map(c=>c.id), 'id');
+    }
+
+    filterWardIds = (wardsData || []).map(w => w.id);
+
+    let centresData = [];
+    let streamsData = [];
+    
+    if (SCOPE_MODE !== 'national' || CURRENT_COUNTY) {
+        centresData = await fetchIn('centres', '*', 'ward_id', filterWardIds, 'id');
+        streamsData = await fetchIn('streams', '*', 'centre_id', (centresData||[]).map(c=>c.id), 'code');
+    } else {
+        centresData = await fetchAll(() => db.from('centres').select('*').order('id'));
+        streamsData = await fetchAll(() => db.from('streams').select('*').order('code'));
+    }
+
+    var streamCodes = (streamsData || []).map(s => s.code);
+    
+    let resultsData = [];
+    let formsData = [];
+    if (streamCodes.length > 0) {
+        resultsData = await fetchIn('results', 'stream_code, position', 'stream_code', streamCodes, 'stream_code');
+        formsData = await fetchIn('form_photos', 'stream_code, position, photo_url', 'stream_code', streamCodes, 'stream_code');
+    }
+
+    TRACKER_FORMS = {};
+    (formsData || []).forEach(f => {
+        TRACKER_FORMS[f.stream_code + '_' + f.position] = f.photo_url;
+    });
+
+    const reportedMap = {};
+    (resultsData || []).forEach(r => {
+        if (!reportedMap[r.stream_code]) reportedMap[r.stream_code] = {};
+        reportedMap[r.stream_code][r.position] = true;
+    });
+
+    let totalCompleteStreams = 0;
+    const trackerWards = (wardsData || []).map(w => {
+        const wCentres = (centresData || []).filter(c => c.ward_id === w.id);
+        let wStreamsTotal = 0, wStreamsComplete = 0, wCellsDone = 0, wCellsTotal = 0;
+
+        const trackerCentres = wCentres.map(c => {
+            const cStreams = (streamsData || []).filter(s => s.centre_id === c.id);
+            let cStreamsTotal = cStreams.length, cStreamsComplete = 0, cCellsDone = 0, cCellsTotal = cStreamsTotal * POSITIONS.length;
+
+            const trackerStreams = cStreams.map(s => {
+                const pips = {}; let done = 0;
+                POSITIONS.forEach(p => {
+                    if (reportedMap[s.code] && reportedMap[s.code][p]) { pips[p] = { status: 'submitted' }; done++; }
+                    else { pips[p] = null; }
+                });
+                const isComplete = done === POSITIONS.length;
+                if (isComplete) cStreamsComplete++;
+                cCellsDone += done;
+                return { code: s.code, label: 'STR ' + String(s.stream_number).padStart(2, '0'), pips: pips, done: done, total: POSITIONS.length, isComplete: isComplete };
+            });
+
+            wStreamsTotal += cStreamsTotal; wStreamsComplete += cStreamsComplete; wCellsDone += cCellsDone; wCellsTotal += cCellsTotal;
+            return { centreId: c.id, centreName: c.name, streamsTotal: cStreamsTotal, streamsComplete: cStreamsComplete, cellsDone: cCellsDone, cellsTotal: cCellsTotal, streams: trackerStreams };
+        });
+
+        totalCompleteStreams += wStreamsComplete;
+        return { 
+            wardId: w.id, 
+            wardName: w.name, 
+            constituency_id: w.constituency_id, 
+            streamsTotal: wStreamsTotal, 
+            streamsComplete: wStreamsComplete, 
+            cellsDone: wCellsDone, 
+            cellsTotal: wCellsTotal, 
+            centres: trackerCentres 
+        };
+    });
+
+    TRACKER_DATA = {
+        isMCA: (!USER.isSpectator && USER.position === 'MCA'), scopedWardName: USER.ward || '',
+        positions: POSITIONS, 
+        consts: constsData || [],
+        wards: trackerWards,
+        summary: { totalStreams: streamsData.length, completeStreams: totalCompleteStreams, pendingStreams: streamsData.length - totalCompleteStreams, cellsDone: (resultsData || []).length, cellsTotal: streamsData.length * POSITIONS.length, staleCount: 0, lastSubmitAt: null }
+    };
+    renderTracker();
+  } catch (err) {
+    console.error(err); if (!silent) toast('Connection error.', 'error');
+  }
+}
+
+// ================================================================
+//  RENDERING — TABS & HERO
+// ================================================================
+function updateTopMeta() {
+  var topMeta = document.getElementById('topMeta'); if (!topMeta) return;
+  var label = USER.isSpectator ? 'Observer' : (USER.position || 'Viewer');
+  
+  // Add the County scope to the top bar
+  if (SCOPE_MODE === 'national') {
+    if (CURRENT_COUNTY) {
+      var cName = OVERVIEW && OVERVIEW.counties ? OVERVIEW.counties.find(c => c.id === CURRENT_COUNTY) : null;
+      label += ' · ' + (cName ? toTitleCase(cName.name) : 'County');
+    } else {
+      label += ' · National';
+    }
+  } else if (USER.ward && OVERVIEW && OVERVIEW.wards) {
+    var w = OVERVIEW.wards.find(x => x.id === USER.ward);
+    if (w) label += ' · ' + toTitleCase(w.name);
+  }
+  
+  var parts = [label]; 
+  if (USER.loginCode) parts.push(USER.loginCode);
+  topMeta.textContent = parts.join(' · ');
+}
+
+  function isTabRaceActive(pos) {
+  if (pos === 'President') return true;
+  if (SCOPE_MODE !== 'national') return true; 
+  
+  if (pos === 'Governor' || pos === 'Senator' || pos === 'Women Rep') return !!DRILL_COUNTY_ID;
+  if (pos === 'MP') return !!DRILL_CONST_ID;
+  if (pos === 'MCA') return !!DRILL_WARD;
+  return false;
+}
+
+function getDynamicTabTotal(pos) {
+  if (!OVERVIEW || !OVERVIEW.tabTotalsByLevel) return 0;
+  const L = OVERVIEW.tabTotalsByLevel;
+
+  if (DRILL_LEVEL === 'stream' && DRILL_CENTRE) return L.stream[pos][DRILL_CENTRE] || 0;
+  if (DRILL_LEVEL === 'centre' && DRILL_WARD) return L.centre[pos][DRILL_WARD] || 0;
+  
+  if (DRILL_LEVEL === 'ward') {
+    if (SCOPE_MODE === 'national' && DRILL_CONST_ID) return L.const[pos][DRILL_CONST_ID] || 0;
+    if (SCOPE_MODE === 'constituency' && USER.constituency) return L.const[pos][USER.constituency] || 0;
+  }
+  
+  if (DRILL_LEVEL === 'constituency') {
+    if (SCOPE_MODE === 'national' && DRILL_COUNTY_ID) return L.county[pos][DRILL_COUNTY_ID] || 0;
+    if (SCOPE_MODE === 'county' && USER.county) {
+      let sum = 0;
+      for (let k in L.const[pos]) sum += L.const[pos][k];
+      return sum;
+    }
+  }
+  
+  if (DRILL_LEVEL === 'county') {
+    let sum = 0;
+    for (let k in L.county[pos]) sum += L.county[pos][k];
+    return sum;
+  }
+  
+  if (SCOPE_MODE === 'ward' && DRILL_LEVEL === 'centre' && USER.ward) return L.ward[pos][USER.ward] || 0;
+  return 0;
+}
+function renderTabs() {
+  var el = document.getElementById('posTabs'); if (!OVERVIEW) return;
+  var ownPos = (!USER.isSpectator && USER.position) ? USER.position : '';
+
+  el.innerHTML = POSITIONS.map(function (p) {
+    var cls = 'postab' + (p === VIEW_POS ? ' active' : '') + (p === ownPos ? ' mine' : '');
+    var active = isTabRaceActive(p);
+    var pillText = '';
+
+    if (!active) {
+        if (p === 'Governor' || p === 'Senator' || p === 'Women Rep') pillText = 'Select County';
+        else if (p === 'MP') pillText = 'Select Constituency';
+        else if (p === 'MCA') pillText = 'Select Ward';
+    } else {
+        var total = getDynamicTabTotal(p);
+        var formattedTotal = total >= 1000 ? (total / 1000).toFixed(1) + 'K' : total;
+        pillText = formattedTotal + ' votes';
+        
+        // Keep the "wards" counting logic for MCA, but make it respect the current scope
+        if (p === 'MCA') {
+            var wardsWithVotes = 0;
+            var wardMap = OVERVIEW.tabTotalsByLevel && OVERVIEW.tabTotalsByLevel.ward['MCA'];
+            if (wardMap) {
+                if (DRILL_LEVEL === 'centre' && DRILL_WARD) {
+                    if (wardMap[DRILL_WARD] > 0) wardsWithVotes = 1;
+                } else if (DRILL_LEVEL === 'stream' && DRILL_CENTRE) {
+                    var c = OVERVIEW.centres.find(x => x.id === DRILL_CENTRE);
+                    if (c && wardMap[c.ward_id] > 0) wardsWithVotes = 1;
+                } else if (DRILL_LEVEL === 'ward' && DRILL_CONST_ID) {
+                    for (var k in wardMap) {
+                        var w = OVERVIEW.wards.find(x => x.id === k);
+                        if (w && w.constituency_id === DRILL_CONST_ID && wardMap[k] > 0) wardsWithVotes++;
+                    }
+                } else {
+                    for (var k in wardMap) {
+                        if (wardMap[k] > 0) wardsWithVotes++;
+                    }
+                }
+            }
+            pillText = wardsWithVotes + ' wards';
+        }
+    }
+
+    return '<button class="' + cls + '" data-pos="' + escAttr(p) + '" onclick="switchPosition(\'' + escAttr(p) + '\')">' + esc(p) + '<span class="pill">' + pillText + '</span></button>';
+  }).join('');
+}
+
+function switchPosition(pos) {
+  if (pos === VIEW_POS) return;
+  VIEW_POS = pos; 
+  DRILL_WARD = ''; DRILL_WARD_NAME = ''; 
+  DRILL_CENTRE = ''; DRILL_CENTRE_NAME = ''; 
+  DRILL_CONST_ID = ''; DRILL_CONST_NAME = '';
+  DRILL_DATA = null;
+  
+  // Reset to base level for this scope
+    if (SCOPE_MODE === 'national') {
+    DRILL_LEVEL = DRILL_COUNTY_ID ? 'constituency' : 'county';   // was always 'constituency'
+  } else if (SCOPE_MODE === 'county')        DRILL_LEVEL = 'constituency';
+  else if (SCOPE_MODE === 'constituency')    DRILL_LEVEL = 'ward';
+  else if (SCOPE_MODE === 'ward')            DRILL_LEVEL = 'centre';
+
+  renderTabs();
+  document.getElementById('heroCard').innerHTML = '<div class="hero-inner"><div class="load" style="color:#F0F0F0;"><i class="fas fa-spinner" style="color:#A5CF83;"></i>Loading…</div></div>';
+  document.getElementById('drillGrid').innerHTML = '<div class="load" style="grid-column:1/-1;"><i class="fas fa-spinner"></i>Loading…</div>';
+  loadOverview();
+}
+
+function renderHero() {
+  if (!OVERVIEW) return;
+  var el = document.getElementById('heroCard'); 
+  var liveText = timeAgo(lastRefreshAt);
+
+  // ================================================================
+  // FIX: If looking at the National Grid (47 counties) but NOT on President
+  // Show a summary card instead of a single leading candidate
+  // ================================================================
+  if (DRILL_LEVEL === 'county' && OVERVIEW.viewingPosition !== 'President') {
+    var activeCounties = Object.keys(OVERVIEW.votesByCounty || {}).length;
+    el.className = 'hero other';
+    el.innerHTML = '<div class="hero-inner"><div class="hero-top"><span class="hero-live"><span class="dot"></span>Live · ' + esc(liveText) + '</span></div><div class="hero-eyebrow">' + esc(OVERVIEW.viewingPosition) + ' · National Overview</div><div class="hero-name">' + activeCounties + ' Counties Reporting</div><div class="hero-meta">Select a specific county from the dropdown above to view the ' + esc(OVERVIEW.viewingPosition) + ' race</div></div>';
+    return;
+  }
+
+  // --- 1. HANDLE MCA (Ward Scope) ---
+  if (OVERVIEW.viewingPosition === 'MCA') {
+    var isDrilledToWard = (DRILL_LEVEL === 'centre' || DRILL_LEVEL === 'stream');
+    var targetWardId = DRILL_WARD || (SCOPE_MODE === 'ward' ? USER.ward : '');
+
+    if (isDrilledToWard && targetWardId) {
+      var votes = OVERVIEW.votesByWard[targetWardId] || {};
+      var cands = Object.keys(votes).map(code => ({ ...OVERVIEW.candMap[code], votes: votes[code] })).sort((a,b)=>b.votes-a.votes);
+      var total = cands.reduce((s,c)=>s+c.votes, 0);
+      var leader = cands[0];
+      var runner = cands[1];
+      var margin = (leader && runner) ? leader.votes - runner.votes : (leader ? leader.votes : 0);
+      var wardName = OVERVIEW.wards.find(w=>w.id===targetWardId)?.name || 'Ward';
+
+      if (!leader) {
+        el.className = 'hero other';
+        el.innerHTML = '<div class="hero-inner"><div class="empty" style="padding:20px 0;"><div class="empty-icon"><i class="fas fa-hourglass-half"></i></div><div class="empty-title">No results in ' + esc(wardName) + '</div></div></div>';
+        return;
+      }
+      
+      var pct = total > 0 ? ((leader.votes/total)*100).toFixed(1) : '0.0';
+      el.className = 'hero mca-hero other';
+      el.innerHTML = '<div class="hero-inner"><div class="hero-top"><span class="hero-live"><span class="dot"></span>Live · ' + esc(liveText) + '</span><div class="hero-badges"><span class="badge-status leading"><i class="fas fa-crown"></i> Leading</span></div></div><div class="hero-name-row"><div class="hero-avatar"><img src="' + escAttr(leader.photo_url) + '"></div><div><div class="hero-eyebrow">MCA · ' + esc(wardName) + '</div><div class="hero-name">' + esc(leader.name) + '</div><div class="hero-meta">' + esc(leader.party) + '</div></div></div><div class="hero-stats"><div><div class="hero-stat-num">' + leader.votes.toLocaleString() + '</div><div class="hero-stat-lbl">Votes</div></div><div><div class="hero-stat-num blue">' + pct + '%</div><div class="hero-stat-lbl">Share</div></div><div><div class="hero-stat-num">+' + margin.toLocaleString() + '</div><div class="hero-stat-lbl">Margin</div></div></div></div>';
+      return;
+    }
+
+    var contested = Object.keys(OVERVIEW.votesByWard).filter(w => Object.keys(OVERVIEW.votesByWard[w]).length > 0).length;
+    el.className = 'hero mca-hero other';
+    el.innerHTML = '<div class="hero-inner"><div class="hero-top"><span class="hero-live"><span class="dot"></span>Live · ' + esc(liveText) + '</span></div><div class="hero-eyebrow">MCA · Multi-Ward Race</div><div class="hero-name">' + contested + ' Ward Races</div><div class="hero-meta">Tap a ward below to view the specific MCA race</div></div>';
+    return;
+  }
+
+  // --- 2. HANDLE MP (Constituency Scope) ---
+  if (OVERVIEW.viewingPosition === 'MP') {
+    var isDrilledToConst = (DRILL_LEVEL !== 'constituency');
+    var targetConstId = DRILL_CONST_ID || (SCOPE_MODE === 'constituency' ? USER.constituency : '');
+
+    if (isDrilledToConst && targetConstId) {
+      var votes = OVERVIEW.votesByConst[targetConstId] || {};
+      var cands = Object.keys(votes).map(code => ({ ...OVERVIEW.candMap[code], votes: votes[code] })).sort((a,b)=>b.votes-a.votes);
+      var total = cands.reduce((s,c)=>s+c.votes, 0);
+      var leader = cands[0];
+      var runner = cands[1];
+      var margin = (leader && runner) ? leader.votes - runner.votes : (leader ? leader.votes : 0);
+      var constName = OVERVIEW.consts.find(c=>c.id===targetConstId)?.name || 'Constituency';
+
+      if (!leader) {
+        el.className = 'hero other';
+        el.innerHTML = '<div class="hero-inner"><div class="empty" style="padding:20px 0;"><div class="empty-icon"><i class="fas fa-hourglass-half"></i></div><div class="empty-title">No results in ' + esc(constName) + '</div></div></div>';
+        return;
+      }
+      
+      var pct = total > 0 ? ((leader.votes/total)*100).toFixed(1) : '0.0';
+      el.className = 'hero other';
+      el.innerHTML = '<div class="hero-inner"><div class="hero-top"><span class="hero-live"><span class="dot"></span>Live · ' + esc(liveText) + '</span><div class="hero-badges"><span class="badge-status leading"><i class="fas fa-crown"></i> Leading</span></div></div><div class="hero-name-row"><div class="hero-avatar"><img src="' + escAttr(leader.photo_url) + '"></div><div><div class="hero-eyebrow">MP · ' + esc(constName) + '</div><div class="hero-name">' + esc(leader.name) + '</div><div class="hero-meta">' + esc(leader.party) + '</div></div></div><div class="hero-stats"><div><div class="hero-stat-num">' + leader.votes.toLocaleString() + '</div><div class="hero-stat-lbl">Votes</div></div><div><div class="hero-stat-num blue">' + pct + '%</div><div class="hero-stat-lbl">Share</div></div><div><div class="hero-stat-num">+' + margin.toLocaleString() + '</div><div class="hero-stat-lbl">Margin</div></div></div></div>';
+      return;
+    }
+
+    var contested = Object.keys(OVERVIEW.votesByConst).filter(c => Object.keys(OVERVIEW.votesByConst[c]).length > 0).length;
+    el.className = 'hero other';
+    el.innerHTML = '<div class="hero-inner"><div class="hero-top"><span class="hero-live"><span class="dot"></span>Live · ' + esc(liveText) + '</span></div><div class="hero-eyebrow">MP · Multi-Constituency Race</div><div class="hero-name">' + contested + ' Constituency Races</div><div class="hero-meta">Tap a constituency below to view the specific MP race</div></div>';
+    return;
+  }
+
+  // --- 3. HANDLE COUNTY-WIDE POSITIONS & NATIONAL (President, Governor, Senator, Women Rep) ---
+  var scopedVotes = {};
+  var scopeLabel = '';
+  
+  if (DRILL_LEVEL === 'county') { 
+      scopedVotes = {}; 
+      var keys = Object.keys(OVERVIEW.votesByCounty || {}); 
+      keys.forEach(k => { 
+          for (let c in OVERVIEW.votesByCounty[k]) { 
+              scopedVotes[c] = (scopedVotes[c]||0) + OVERVIEW.votesByCounty[k][c]; 
+          } 
+      }); 
+      scopeLabel = 'Overall National'; 
+  }
+  else if (DRILL_LEVEL === 'constituency') { 
+      if (SCOPE_MODE === 'national') {
+          scopedVotes = OVERVIEW.votesByCounty[DRILL_COUNTY_ID] || {}; 
+          scopeLabel = DRILL_COUNTY_NAME; 
+      } else {
+          scopedVotes = {}; 
+          var constKeys = Object.keys(OVERVIEW.votesByConst || {}); 
+          constKeys.forEach(k => { 
+              for (let c in OVERVIEW.votesByConst[k]) { 
+                  scopedVotes[c] = (scopedVotes[c]||0) + OVERVIEW.votesByConst[k][c]; 
+              } 
+          }); 
+          scopeLabel = 'Overall County'; 
+      }
+  }
+  else if (DRILL_LEVEL === 'ward') { 
+    // Fallback for MP viewing county-wide positions
+    var targetConst = DRILL_CONST_ID || (SCOPE_MODE === 'constituency' ? USER.constituency : '');
+    var targetConstName = DRILL_CONST_NAME;
+    if (!targetConstName && SCOPE_MODE === 'constituency') {
+        var cObj = OVERVIEW.consts.find(c => c.id === targetConst);
+        if (cObj) targetConstName = cObj.name;
+    }
+    scopedVotes = OVERVIEW.votesByConst[targetConst] || {}; 
+    scopeLabel = targetConstName || 'Constituency'; 
+  }
+  else if (DRILL_LEVEL === 'centre') { 
+      scopedVotes = OVERVIEW.votesByWard[DRILL_WARD] || {}; 
+      scopeLabel = DRILL_WARD_NAME; 
+  }
+  else if (DRILL_LEVEL === 'stream') { 
+      scopedVotes = OVERVIEW.votesByCentre[DRILL_CENTRE] || {}; 
+      scopeLabel = DRILL_CENTRE_NAME; 
+  }
+
+  var cands = Object.keys(scopedVotes).map(code => ({ ...OVERVIEW.candMap[code], votes: scopedVotes[code] })).sort((a,b)=>b.votes-a.votes);
+  var total = cands.reduce((s,c)=>s+c.votes, 0);
+  var leader = cands[0];
+  var runner = cands[1];
+  var margin = (leader && runner) ? leader.votes - runner.votes : (leader ? leader.votes : 0);
+
+  if (!leader) {
+    el.className = 'hero other';
+    el.innerHTML = '<div class="hero-inner"><div class="empty" style="padding:20px 0;"><div class="empty-icon"><i class="fas fa-hourglass-half"></i></div><div class="empty-title">No results in ' + esc(scopeLabel) + '</div></div></div>';
+    return;
+  }
+
+  var isOwn = (!USER.isSpectator && OVERVIEW.viewingPosition === USER.position);
+  var focusPct = total > 0 ? ((leader.votes/total)*100).toFixed(1) : '0.0';
+  
+  el.className = 'hero' + (isOwn ? '' : ' other');
+  el.innerHTML = '<div class="hero-inner"><div class="hero-top"><span class="hero-live"><span class="dot"></span>Live · ' + esc(liveText) + '</span><div class="hero-badges"><span class="badge-status leading"><i class="fas fa-crown"></i> Leading</span></div></div><div class="hero-name-row"><div class="hero-avatar"><img src="' + escAttr(leader.photo_url) + '"></div><div><div class="hero-eyebrow">' + esc(OVERVIEW.viewingPosition) + ' · ' + esc(scopeLabel) + '</div><div class="hero-name">' + esc(leader.name) + '</div><div class="hero-meta">' + esc(leader.party) + '</div></div></div><div class="hero-stats"><div><div class="hero-stat-num">' + leader.votes.toLocaleString() + '</div><div class="hero-stat-lbl">Votes</div></div><div><div class="hero-stat-num blue">' + focusPct + '%</div><div class="hero-stat-lbl">Share</div></div><div><div class="hero-stat-num">+' + margin.toLocaleString() + '</div><div class="hero-stat-lbl">Margin</div></div></div></div>';
+}
+// ================================================================
+//  RENDERING — BREADCRUMB & DRILL GRID
+// ================================================================
+function renderBreadcrumb() {
+  var el = document.getElementById('breadcrumb');
+  if (!el) return;
+  var parts = [];
+
+  if (SCOPE_MODE === 'national') {
+      parts.push({ label: 'All Counties', active: DRILL_LEVEL === 'county', onclick: 'resetDrill()' });
+  } else if (SCOPE_MODE === 'county') {
+      parts.push({ label: 'All Constituencies', active: DRILL_LEVEL === 'constituency', onclick: 'resetDrill()' });
+  } else if (SCOPE_MODE === 'constituency') {
+      parts.push({ label: 'All Wards', active: DRILL_LEVEL === 'ward', onclick: 'resetDrill()' });
+  } else if (SCOPE_MODE === 'ward') {
+      parts.push({ label: 'All Centres', active: DRILL_LEVEL === 'centre', onclick: 'resetDrill()' });
+  }
+
+  if (DRILL_COUNTY_ID) parts.push({ label: DRILL_COUNTY_NAME, active: DRILL_LEVEL === 'constituency', onclick: `drillDown('constituency', '${DRILL_COUNTY_ID}', '${DRILL_COUNTY_NAME}')` });
+  if (DRILL_CONST_ID) parts.push({ label: DRILL_CONST_NAME, active: DRILL_LEVEL === 'ward', onclick: `drillDown('ward', '${DRILL_CONST_ID}', '${DRILL_CONST_NAME}')` });
+  if (DRILL_WARD) parts.push({ label: DRILL_WARD_NAME, active: DRILL_LEVEL === 'centre', onclick: `drillDown('centre', '${DRILL_WARD}', '${DRILL_WARD_NAME}')` });
+  if (DRILL_CENTRE) parts.push({ label: DRILL_CENTRE_NAME, active: DRILL_LEVEL === 'stream', onclick: `drillDown('stream', '${DRILL_CENTRE}', '${DRILL_CENTRE_NAME}')` });
+
+  el.innerHTML = parts.map((p, i) => {
+      var cls = 'bc-seg' + (p.active ? ' current' : '');
+      var attr = p.active ? '' : `onclick="${p.onclick}"`;
+      return (i > 0 ? '<i class="fas fa-chevron-right bc-sep"></i>' : '') +
+            `<button class="${cls}" ${attr}>${i===0 ? '<i class="fas fa-layer-group"></i> ' : ''}${esc(p.label)}</button>`;
+  }).join('');
+}
+
+function renderDrillGrid() {
+  var el = document.getElementById('drillGrid');
+  var title = document.getElementById('drillTitle');
+  var sub = document.getElementById('drillSub');
+
+  if (DRILL_LEVEL === 'county') { title.textContent = 'National Overview'; sub.textContent = 'Vote share by county'; }
+  else if (DRILL_LEVEL === 'constituency') { title.textContent = DRILL_COUNTY_NAME ? DRILL_COUNTY_NAME + ' Constituencies' : 'Constituency Breakdown'; sub.textContent = 'Vote share by constituency'; }
+  else if (DRILL_LEVEL === 'ward') { title.textContent = DRILL_CONST_NAME + ' Wards'; sub.textContent = 'Vote share by ward'; }
+  else if (DRILL_LEVEL === 'centre') { title.textContent = DRILL_WARD_NAME + ' Centres'; sub.textContent = 'Vote share by polling centre'; }
+  else if (DRILL_LEVEL === 'stream') { title.textContent = DRILL_CENTRE_NAME + ' Streams'; sub.textContent = 'Vote share by stream'; }
+  
+  document.getElementById('drillCount').textContent = ''; 
+  renderBreadcrumb();
+
+  function buildCard(item, votesMap, typeLabel, onClickAction) {
+    if (!item) return '';
+    var itemKey = item.id || item.code;
+    var votes = (votesMap && votesMap[itemKey]) ? votesMap[itemKey] : {};
+    var topCode = Object.keys(votes).sort((a,b) => votes[b] - votes[a])[0];
+    var topCand = OVERVIEW && OVERVIEW.candMap ? OVERVIEW.candMap[topCode] : null;
+    var total = Object.values(votes).reduce((s,v) => s+v, 0);
+    var pct = total > 0 && topCand ? ((votes[topCode]/total)*100).toFixed(1) : '0.0';
+    
+    var tintStyle = 'border-left: none !important;';
+    if (topCand && topCand.color && typeof tintBg === 'function') {
+      tintStyle += ` background: linear-gradient(to right, ${tintBg(topCand.color, 0.08)} 0%, #FFFFFF 50%) !important;`;
+    }
+    
+    var leaderHtml = topCand ? `
+      <div class="card-leader">
+        <div class="avatar-wrap with-crown">
+          <img src="${topCand.photo_url}" onerror="this.src='';this.parentElement.textContent='${topCand.name ? topCand.name.charAt(0) : '?'}'">
+          <span class="avatar-crown"><i class="fas fa-crown"></i></span>
+        </div>
+        <div class="card-leader-info">
+          <div class="card-leader-name">${esc(topCand.name)}</div>
+          <div class="card-leader-party">${esc(topCand.party)}</div>
+        </div>
+      </div>
+      <div class="card-numbers">
+        <span class="card-votes">${votes[topCode].toLocaleString()}</span>
+        <span class="card-pct">${pct}%</span>
+      </div>
+      <div class="card-bar">
+        <div class="card-bar-fill" style="width:${pct}%;background:${topCand.color || '#A5CF83'}"></div>
+      </div>
+    ` : `<div class="card-empty-body"><i class="fas fa-hourglass-half"></i>No votes yet</div>`;
+    
+    return `<div class="card" style="${tintStyle}" onclick="${onClickAction}">
+      <div class="card-head"><div><div class="card-name">${esc(item.name || item.code)}</div><div class="card-sub">${typeLabel}</div></div></div>
+      ${leaderHtml}
+    </div>`;
+  }
+
+  if (DRILL_LEVEL === 'county') {
+    var myCounties = OVERVIEW && OVERVIEW.counties ? OVERVIEW.counties : [];
+    el.innerHTML = myCounties.map(c => 
+      buildCard(c, OVERVIEW.votesByCounty, 'County', `drillDown('constituency', '${c.id}', '${c.name}')`)
+    ).join('');
+    return;
+  }
+
+  if (DRILL_LEVEL === 'constituency') {
+    var myConsts = OVERVIEW.consts ? OVERVIEW.consts.filter(c => SCOPE_MODE !== 'national' || c.county_id === DRILL_COUNTY_ID) : [];
+    el.innerHTML = myConsts.map(c => 
+      buildCard(c, OVERVIEW.votesByConst, 'Constituency', `drillDown('ward', '${c.id}', '${c.name}')`)
+    ).join('');
+    return;
+  }
+
+  if (DRILL_LEVEL === 'ward') {
+  // If user is locked to a constituency, use that. Otherwise use the drill ID.
+  var targetConstId = DRILL_CONST_ID || (SCOPE_MODE === 'constituency' ? USER.constituency : '');
+  var myWards = OVERVIEW.wards ? OVERVIEW.wards.filter(w => w.constituency_id === targetConstId) : [];
+  el.innerHTML = myWards.map(w => 
+    buildCard(w, OVERVIEW.votesByWard, 'Ward', `drillDown('centre', '${w.id}', '${w.name}')`)
+  ).join('');
+  return;
+  }
+
+  if (DRILL_LEVEL === 'centre') {
+    var myCentres = OVERVIEW.centres ? OVERVIEW.centres.filter(c => c.ward_id === DRILL_WARD) : [];
+    el.innerHTML = myCentres.map(c => 
+      buildCard(c, OVERVIEW.votesByCentre, 'Polling Centre', `drillDown('stream', '${c.id}', '${c.name}')`)
+    ).join('');
+    return;
+  }
+
+  if (DRILL_LEVEL === 'stream') {
+    var myStreams = OVERVIEW.streams ? OVERVIEW.streams.filter(s => s.centre_id === DRILL_CENTRE) : [];
+    el.innerHTML = myStreams.map(s => {
+      var streamLabel = 'STR ' + String(s.stream_number).padStart(2, '0');
+      return buildCard({ code: s.code, name: streamLabel }, OVERVIEW.votesByStream, s.code, `openStreamDetail('${s.code}')`);
+    }).join('');
+    return;
+  }
+}
+function drillDown(level, id, name) {
+  if (level === 'constituency') {
+    DRILL_COUNTY_ID = id; DRILL_COUNTY_NAME = name; DRILL_LEVEL = 'constituency';
+    DRILL_CONST_ID = ''; DRILL_CONST_NAME = '';
+    DRILL_WARD = ''; DRILL_WARD_NAME = '';
+    DRILL_CENTRE = ''; DRILL_CENTRE_NAME = '';
+    
+    // ---> THIS SYNCS THE DROPDOWN WHEN A CARD IS CLICKED <---
+    if (SCOPE_MODE === 'national') {
+      CURRENT_COUNTY = id;
+      const sel = document.getElementById('aspCountySelector');
+      if (sel) sel.value = id;
+    }
+  }
+  
+  if (level === 'ward') {
+    DRILL_CONST_ID = id; DRILL_CONST_NAME = name; DRILL_LEVEL = 'ward';
+    DRILL_WARD = ''; DRILL_WARD_NAME = '';
+    DRILL_CENTRE = ''; DRILL_CENTRE_NAME = '';
+  }
+  if (level === 'centre') {
+    DRILL_WARD = id; DRILL_WARD_NAME = name; DRILL_LEVEL = 'centre';
+    DRILL_CENTRE = ''; DRILL_CENTRE_NAME = '';
+  }
+  if (level === 'stream') {
+    DRILL_CENTRE = id; DRILL_CENTRE_NAME = name; DRILL_LEVEL = 'stream';
+  }
+  
+  renderDrillGrid(); renderBoard(); renderBreadcrumb(); renderTabs();
+  window.scrollTo({ top: document.getElementById('drillGrid').offsetTop - 100, behavior: 'smooth' });
+}
+
+function renderWardCard(w) {
+  var hasData = w.candidates && w.candidates.length > 0; var cls = 'card';
+  if (hasData && w.leader) { cls += isOwnCandidate(w.leader.name) ? ' leading' : ' trailing'; } else cls += ' empty';
+  var statusInfo = statusChip(w.streamsDone, w.streamsTotal); var cardTint = '';
+  if (hasData && w.leader && w.leader.color && !isOwnCandidate(w.leader.name)) { cardTint = 'background:' + tintBg(w.leader.color, 0.05) + ';'; }
+  var body;
+  if (hasData && w.leader) {
+    var initial = w.leader.name ? w.leader.name.charAt(0).toUpperCase() : '?'; var photoHtml = w.leader.photo_url ? '<img src="' + escAttr(w.leader.photo_url) + '" alt="" loading="lazy" onerror="this.style.display=\'none\';this.parentElement.textContent=\'' + escAttr(initial) + '\'">' : initial;
+    body = '<div class="card-leader"><div class="avatar-wrap with-crown' + (w.leader.photo_url ? '' : ' no-photo') + '">' + photoHtml + '<span class="avatar-crown"><i class="fas fa-crown"></i></span></div><div class="card-leader-info"><div class="card-leader-name">' + esc(w.leader.name) + '</div><div class="card-leader-party">' + esc(w.leader.party) + '</div></div></div><div><div class="card-numbers"><span class="card-votes">' + w.leader.votes.toLocaleString() + '</span><span class="card-pct">' + w.leaderPct + '%</span></div><div class="card-votes-lbl">Votes in ward</div></div><div class="card-bar"><div class="card-bar-fill" style="width:' + w.leaderPct + '%;background:' + (w.leader.color || '#A5CF83') + '"></div></div>';
+  } else { body = '<div class="card-empty-body"><i class="fas fa-hourglass-half"></i>Waiting for agent submissions</div>'; }
+  return '<div class="' + cls + '" style="' + cardTint + '" onclick="drillToWard(\'' + escAttr(w.wardId) + '\',\'' + escAttr(w.wardName) + '\')"><div class="card-head"><div><div class="card-name">' + esc(w.wardName) + '</div><div class="card-sub">' + w.candidates.length + ' candidates</div></div><span class="card-status ' + statusInfo.cls + '">' + statusInfo.label + '</span></div>' + body + '</div>';
+}
+
+function renderCentreCard(c) {
+  var hasData = c.candidates && c.candidates.length > 0; var cls = 'card';
+  if (hasData && c.leader) cls += isOwnCandidate(c.leader.name) ? ' leading' : ' trailing'; else cls += ' empty';
+  var statusInfo = statusChip(c.streamsDone, c.streamsTotal); var cardTint = '';
+  if (hasData && c.leader && c.leader.color && !isOwnCandidate(c.leader.name)) { cardTint = 'background:' + tintBg(c.leader.color, 0.05) + ';'; }
+  var body;
+  if (hasData && c.leader) {
+    var initial = c.leader.name ? c.leader.name.charAt(0).toUpperCase() : '?'; var photoHtml = c.leader.photo_url ? '<img src="' + escAttr(c.leader.photo_url) + '" alt="" loading="lazy" onerror="this.style.display=\'none\';this.parentElement.textContent=\'' + escAttr(initial) + '\'">' : initial;
+    body = '<div class="card-leader"><div class="avatar-wrap with-crown' + (c.leader.photo_url ? '' : ' no-photo') + '">' + photoHtml + '<span class="avatar-crown"><i class="fas fa-crown"></i></span></div><div class="card-leader-info"><div class="card-leader-name">' + esc(c.leader.name) + '</div><div class="card-leader-party">' + esc(c.leader.party) + '</div></div></div><div><div class="card-numbers"><span class="card-votes">' + c.leader.votes.toLocaleString() + '</span><span class="card-pct">' + c.leaderPct + '%</span></div><div class="card-votes-lbl">Votes in centre</div></div><div class="card-bar"><div class="card-bar-fill" style="width:' + c.leaderPct + '%;background:' + (c.leader.color || '#A5CF83') + '"></div></div>';
+  } else { body = '<div class="card-empty-body"><i class="fas fa-hourglass-half"></i>No submissions yet</div>'; }
+  return '<div class="' + cls + '" style="' + cardTint + '" onclick="drillToCentre(\'' + escAttr(c.centreId) + '\',\'' + escAttr(c.centreName) + '\')"><div class="card-head"><div><div class="card-name">' + esc(c.centreName) + '</div><div class="card-sub">' + c.candidates.length + ' candidates</div></div><span class="card-status ' + statusInfo.cls + '">' + statusInfo.label + '</span></div>' + body + '</div>';
+}
+
+function renderStreamCard(s) {
+  var hasData = s.candidates && s.candidates.length > 0; var cls = 'card';
+  if (!s.submitted) cls += ' empty'; else if (hasData && s.leader) cls += isOwnCandidate(s.leader.name) ? ' leading' : ' trailing';
+  var statusInfo = s.submitted ? { cls: 'done', label: '<i class="fas fa-circle-check"></i> Submitted' } : { cls: 'pending', label: '<i class="fas fa-circle"></i> Pending' };
+  var cardTint = '';
+  if (hasData && s.leader && s.leader.color && !isOwnCandidate(s.leader.name)) { cardTint = 'background:' + tintBg(s.leader.color, 0.05) + ';'; }
+  var body;
+  if (hasData && s.leader) {
+    var initial = s.leader.name ? s.leader.name.charAt(0).toUpperCase() : '?'; var photoHtml = s.leader.photo_url ? '<img src="' + escAttr(s.leader.photo_url) + '" alt="" loading="lazy" onerror="this.style.display=\'none\';this.parentElement.textContent=\'' + escAttr(initial) + '\'">' : initial;
+    body = '<div class="card-leader"><div class="avatar-wrap with-crown' + (s.leader.photo_url ? '' : ' no-photo') + '">' + photoHtml + '<span class="avatar-crown"><i class="fas fa-crown"></i></span></div><div class="card-leader-info"><div class="card-leader-name">' + esc(s.leader.name) + '</div><div class="card-leader-party">' + esc(s.leader.party) + '</div></div></div><div><div class="card-numbers"><span class="card-votes">' + s.leader.votes.toLocaleString() + '</span><span class="card-pct">' + s.leaderPct + '%</span></div><div class="card-votes-lbl">Votes in stream</div></div><div class="card-bar"><div class="card-bar-fill" style="width:' + s.leaderPct + '%;background:' + (s.leader.color || '#A5CF83') + '"></div></div>';
+  } else { body = '<div class="card-empty-body"><i class="fas fa-hourglass-half"></i>' + (s.submitted ? 'No votes recorded' : 'Waiting for submission') + '</div>'; }
+  var click = hasData ? ' onclick="openStreamDetail(\'' + escAttr(s.streamCode) + '\')"' : '';
+  return '<div class="' + cls + '" style="' + cardTint + '"' + click + '><div class="card-head"><div><div class="card-name">' + esc(s.streamLabel) + '</div><div class="card-sub">' + esc(s.streamCode) + '</div></div><span class="card-status ' + statusInfo.cls + '">' + statusInfo.label + '</span></div>' + body + '</div>';
+}
+
+function statusChip(done, total) {
+  if (total === 0) return { cls: 'pending', label: '—' };
+  var pct = done / total;
+  if (pct === 1) return { cls: 'done', label: '<i class="fas fa-circle-check"></i> ' + done + '/' + total };
+  if (pct > 0) return { cls: 'partial', label: '<i class="fas fa-circle-half-stroke"></i> ' + done + '/' + total };
+  return { cls: 'pending', label: '<i class="fas fa-circle"></i> 0/' + total };
+}
+function emptyGrid(title, sub) { return '<div class="empty" style="grid-column:1/-1;"><div class="empty-icon"><i class="fas fa-inbox"></i></div><div class="empty-title">' + title + '</div><div class="empty-sub">' + sub + '</div></div>'; }
+
+// ================================================================
+//  RENDERING — LEADERBOARD
+// ================================================================
+function getScopedLeaderboard() {
+  if (!OVERVIEW) return null;
+  if (DRILL_WARD && !DRILL_CENTRE) {
+    var ward = (OVERVIEW.wards || []).filter(function (w) { return w.wardId === DRILL_WARD; })[0];
+    if (!ward) return null;
+    return { candidates: ward.candidates || [], total: ward.totalVotes || 0, context: ward.wardName + ' Ward', streamsDone: ward.streamsDone, streamsTotal: ward.streamsTotal };
+  }
+  if (DRILL_CENTRE && DRILL_DATA && DRILL_DATA.level === 'stream') {
+    var byCode = {};
+    (DRILL_DATA.streams || []).forEach(function (s) { 
+      (s.candidates || []).forEach(function (c) { 
+        if (!byCode[c.code]) { 
+          // THIS IS THE FIX: It was 'photo', now it is 'photo_url'
+          byCode[c.code] = { code: c.code, name: c.name, party: c.party, photo_url: c.photo_url || '', votes: 0 }; 
+        } 
+        byCode[c.code].votes += c.votes; 
+      }); 
+    });
+    var arr = Object.keys(byCode).map(function (k) { return byCode[k]; }); 
+    var total = arr.reduce(function (s, c) { return s + c.votes; }, 0);
+    return { candidates: arr, total: total, context: DRILL_CENTRE_NAME + ' Centre', streamsDone: (DRILL_DATA.streams || []).filter(function (s) { return s.submitted; }).length, streamsTotal: (DRILL_DATA.streams || []).length };
+  }
+  return null;
+}
+
+// Is there an actual "race" to render at the current drill scope for this position?
+// Is there an actual "race" to render at the current drill scope for this position?
+function isRaceScopeActive() {
+  if (!OVERVIEW) return false;
+  const pos = OVERVIEW.viewingPosition;
+  
+  if (pos === 'President') return true; // National race — always valid
+  
+  // County-wide positions
+  if (pos === 'Governor' || pos === 'Senator' || pos === 'Women Rep') {
+      if (SCOPE_MODE === 'county') return true; // Governor locked to county
+      if (SCOPE_MODE === 'national') return !!DRILL_COUNTY_ID; // National must pick a county
+      return true; // If MP/MCA logs in, they still belong to a county, so show it
+  }
+  
+  // Constituency-wide position
+  if (pos === 'MP') {
+      if (SCOPE_MODE === 'constituency') return true; // MP locked to their constituency
+      return !!DRILL_CONST_ID; // Governor/National must drill down to a constituency
+  }
+  
+  // Ward-wide position
+  if (pos === 'MCA') {
+      if (SCOPE_MODE === 'ward') return true; // MCA locked to their ward
+      return !!DRILL_WARD; // Gov/MP/National must drill down to a ward
+  }
+  
+  return false;
+}
+
+function getRaceCandidates() {
+  if (!OVERVIEW) return [];
+  const pool = OVERVIEW.leaderboard || [];
+  const pos = OVERVIEW.viewingPosition;
+
+  // 1. President is National (no geographic filtering needed)
+  if (pos === 'President') return pool;
+
+  // 2. Governor, Senator, Women Rep (County-wide)
+  if (pos === 'Governor' || pos === 'Senator' || pos === 'Women Rep') {
+    if (SCOPE_MODE === 'national') {
+        if (!DRILL_COUNTY_ID) return []; // Must select a county first
+        // FIX: Filter the national pool down to just the selected county
+        return pool.filter(c => OVERVIEW.candMap[c.code] && OVERVIEW.candMap[c.code].county_id === DRILL_COUNTY_ID);
+    }
+    return pool; // If logged in as County scope, it's already filtered.
+  }
+
+  // 3. MP (Constituency-wide)
+  if (pos === 'MP') {
+    if (SCOPE_MODE === 'constituency') return pool;
+    if (!DRILL_CONST_ID) return [];
+    return pool.filter(c => OVERVIEW.candMap[c.code] && OVERVIEW.candMap[c.code].constituency_id === DRILL_CONST_ID);
+  }
+
+  // 4. MCA (Ward-wide)
+  if (pos === 'MCA') {
+    if (SCOPE_MODE === 'ward') return pool;
+    if (!DRILL_WARD) return [];
+    return pool.filter(c => OVERVIEW.candMap[c.code] && OVERVIEW.candMap[c.code].ward_id === DRILL_WARD);
+  }
+
+  return pool;
+}
+// Votes map for the current drill level (returns {} if none available)
+function getVotesForCurrentDrill() {
+  // FIX: When at Stream level, show the aggregate for the Centre.
+  if (DRILL_LEVEL === 'stream' && DRILL_CENTRE)   return OVERVIEW.votesByCentre[DRILL_CENTRE] || {};
+  // When at Centre level, show the aggregate for the Ward.
+  if (DRILL_LEVEL === 'centre' && DRILL_WARD)     return OVERVIEW.votesByWard[DRILL_WARD]     || {};
+  // When at Ward level, show the aggregate for the Constituency.
+  if (DRILL_LEVEL === 'ward' && DRILL_CONST_ID)   return OVERVIEW.votesByConst[DRILL_CONST_ID] || {};
+  // When at Constituency level (National scope), show the aggregate for the County.
+  if (DRILL_LEVEL === 'constituency' && SCOPE_MODE === 'national' && DRILL_COUNTY_ID)
+                                                  return OVERVIEW.votesByCounty[DRILL_COUNTY_ID] || {};
+  // fallback — global totals
+  const totals = {};
+  (OVERVIEW.leaderboard || []).forEach(c => totals[c.code] = c.votes);
+  return totals;
+}
+  
+function renderBoard() {
+  if (!OVERVIEW) return;
+  const el   = document.getElementById('board');
+  const head = document.getElementById('boardSectionHead');
+
+// --- 1. Handle empty state if there's no valid race at this drill level ---
+if (!isRaceScopeActive()) {
+  if (head) head.style.display = '';
+  if (el) el.style.display = '';
+  
+  // Dynamic Subtitle for Empty State
+  const subEl = document.getElementById('boardSub');
+  const pos = OVERVIEW.viewingPosition;
+  if (subEl) {
+      if (pos === 'MP') subEl.textContent = 'Select a constituency to view the MP race';
+      else if (pos === 'MCA') subEl.textContent = 'Select a ward to view the MCA race';
+  }
+
+  el.innerHTML = `<div class="empty" style="padding: 40px 20px; background: #FFFFFF; border: 1px dashed var(--border-strong); border-radius: var(--radius);">
+      <div class="empty-icon" style="color: var(--blue); background: var(--blue-soft);"><i class="fas fa-hand-pointer"></i></div>
+      <div class="empty-title">Select a ${pos === 'MP' ? 'Constituency' : 'Ward'}</div>
+      <div class="empty-sub">Click on the cards in the grid above to see the specific candidates for this ${pos} race.</div>
+  </div>`;
+  return;
+}
+
+// Make sure it's visible if the race is active
+if (el)   el.style.display   = '';
+if (head) head.style.display = '';
+
+// --- 2. Build scoped candidate list ---
+const racePool = getRaceCandidates();
+if (!racePool.length) {
+  el.innerHTML = '<div class="empty">No candidates configured for this race.</div>';
+  return;
+}
+
+const votesMap = getVotesForCurrentDrill();
+const scoped = racePool
+  .map(c => ({ ...c, votes: votesMap[c.code] || 0 }))
+  .sort((a, b) => b.votes - a.votes);
+
+const total = scoped.reduce((s, c) => s + c.votes, 0);
+
+// --- 3. Update the sub-heading text to reflect the scope dynamically ---
+const subEl = document.getElementById('boardSub');
+const pos = OVERVIEW.viewingPosition;
+if (subEl) {
+  if (pos === 'President') subEl.textContent = 'All candidates ranked nationally';
+  else if (pos === 'Governor' || pos === 'Senator' || pos === 'Women Rep') {
+      if (DRILL_LEVEL === 'constituency' && SCOPE_MODE === 'national') subEl.textContent = 'Candidates ranked in ' + (DRILL_COUNTY_NAME || 'this county');
+      else subEl.textContent = 'Candidates ranked in this county';
+  }
+  else if (pos === 'MP') {
+      if (DRILL_LEVEL === 'ward') subEl.textContent = 'Candidates ranked in ' + (DRILL_CONST_NAME || 'this constituency');
+      else if (DRILL_LEVEL === 'centre' || DRILL_LEVEL === 'stream') subEl.textContent = 'Candidates ranked in this constituency';
+  }
+  else if (pos === 'MCA') {
+      if (DRILL_LEVEL === 'centre') subEl.textContent = 'Candidates ranked in ' + (DRILL_WARD_NAME || 'this ward');
+      else if (DRILL_LEVEL === 'stream') subEl.textContent = 'Candidates ranked in this ward';
+  }
+}
+  // --- 4. Render ---
+  el.innerHTML = scoped.map((c, idx) => {
+    const pct    = total > 0 ? (c.votes / total * 100) : 0;
+    const isYou  = isOwnCandidate(c.name);
+    return `
+      <div class="board-row ${idx === 0 ? 'leader' : ''} ${isYou ? 'you' : ''}"
+           onclick="openCandidateDetail('${c.code}')">
+        <div class="avatar-wrap ${c.photo_url ? '' : 'no-photo'}">
+          ${c.photo_url ? `<img src="${c.photo_url}">` : c.name.charAt(0)}
+          <span class="avatar-rank">${idx + 1}</span>
+        </div>
+        <div class="board-info">
+          <div class="board-name">${esc(c.name)} ${isYou ? '<span class="board-you-pill">You</span>' : ''}</div>
+          <div class="board-party">${esc(c.party)}</div>
+        </div>
+        <div style="text-align:right;">
+          <div class="board-votes">${c.votes.toLocaleString()}</div>
+          <div class="board-pct">${pct.toFixed(1)}%</div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function resetDrill() {
+  DRILL_COUNTY_ID = ''; DRILL_COUNTY_NAME = '';
+  DRILL_CONST_ID  = ''; DRILL_CONST_NAME  = '';
+  DRILL_WARD      = ''; DRILL_WARD_NAME   = '';
+  DRILL_CENTRE    = ''; DRILL_CENTRE_NAME = '';
+
+  if (SCOPE_MODE === 'national') {
+    DRILL_LEVEL = 'county';
+    CURRENT_COUNTY = '';                                    // NEW
+    const sel = document.getElementById('aspCountySelector');
+    if (sel) sel.value = '';                                // NEW
+    TRACKER_DATA = null;                                    // NEW
+    loadOverview();                                         // refetch national
+    return;
+  }
+
+  if (SCOPE_MODE === 'county')        DRILL_LEVEL = 'constituency';
+  else if (SCOPE_MODE === 'constituency') DRILL_LEVEL = 'ward';
+  else if (SCOPE_MODE === 'ward')     DRILL_LEVEL = 'centre';
+
+  renderDrillGrid(); renderBoard(); renderBreadcrumb();
+}
+function drillToWard(wardId, wardName) { DRILL_WARD = wardId; DRILL_WARD_NAME = wardName; DRILL_CENTRE = ''; DRILL_CENTRE_NAME = ''; DRILL_DATA = null; renderHero(); renderBoard(); renderDrillGrid(); document.getElementById('drillGrid').innerHTML = '<div class="load" style="grid-column:1/-1;"><i class="fas fa-spinner"></i>Loading centres…</div>'; loadDrill(); window.scrollTo({ top: document.querySelector('.section-head').offsetTop - 120, behavior: 'smooth' }); }
+function drillToCentre(centreId, centreName) { DRILL_CENTRE = centreId; DRILL_CENTRE_NAME = centreName; DRILL_DATA = null; renderHero(); renderBoard(); renderDrillGrid(); document.getElementById('drillGrid').innerHTML = '<div class="load" style="grid-column:1/-1;"><i class="fas fa-spinner"></i>Loading streams…</div>'; loadDrill(); window.scrollTo({ top: document.querySelector('.section-head').offsetTop - 120, behavior: 'smooth' }); }
+
+// ================================================================
+//  VIEW SWITCHING & TRACKER RENDERING
+// ================================================================
+function switchView(view) {
+  if (view === CURRENT_VIEW) return; 
+  CURRENT_VIEW = view;
+  
+  document.querySelectorAll('.viewtab').forEach(function (t) { t.classList.toggle('active', t.dataset.view === view); });
+  document.body.classList.toggle('tracker-mode', view === 'tracker');
+  
+  var resultsView = document.getElementById('resultsView'); 
+  var trackerView = document.getElementById('trackerView');
+  var warRoomView = document.getElementById('warRoomView'); // NEW
+
+  if (resultsView) resultsView.style.display = view === 'results' ? '' : 'none'; 
+  if (trackerView) trackerView.style.display = view === 'tracker' ? '' : 'none';
+  if (warRoomView) warRoomView.style.display = view === 'warroom' ? '' : 'none'; // NEW
+
+  if (view === 'tracker') { if (!TRACKER_DATA) loadTracker(); else renderTracker(); }
+  if (view === 'warroom') { loadWarRoom(); } // NEW: Load Anomalies
+  
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function renderTracker() {
+  if (!TRACKER_DATA) return;
+  
+  // 1. Alert banner
+  var el = document.getElementById('trackerAlert'); 
+  var s = TRACKER_DATA.summary;
+  el.innerHTML = s.staleCount <= 5 ? '' : '<div class="tracker-alert"><i class="fas fa-triangle-exclamation"></i><div><strong>' + s.staleCount + ' streams</strong> haven\'t reported in over 2 hours</div></div>';
+
+  // 2. Summary tiles
+  var summaryEl = document.getElementById('trackerSummary');
+  var pct = s.totalStreams > 0 ? Math.round(s.completeStreams / s.totalStreams * 100) : 0;
+  var lastText = s.lastSubmitAt ? timeAgo(new Date(s.lastSubmitAt).getTime()) : 'Never';
+  summaryEl.innerHTML = '<div class="tracker-stat green"><div class="num">' + s.completeStreams + '/' + s.totalStreams + '</div><div class="lbl">Complete</div></div><div class="tracker-stat blue"><div class="num">' + s.pendingStreams + '</div><div class="lbl">Pending</div></div><div class="tracker-stat blue"><div class="num">' + pct + '%</div><div class="lbl">Progress</div></div><div class="tracker-stat"><div class="num small">' + esc(lastText) + '</div><div class="lbl">Last Submit</div></div>';
+
+  // 3. Tell the grid to render
+  renderTrackerBreadcrumb();
+  renderTrackerGrid();
+}
+
+function renderTrackerGrid() {
+  if (!TRACKER_DATA) return;
+
+  var gridEl = document.getElementById('trackerGrid'); 
+  var title = document.getElementById('trackerTitle'); 
+  var sub = document.getElementById('trackerSub'); 
+  var count = document.getElementById('trackerCount');
+
+  // --- LEVEL 1: CONSTITUENCIES ---
+  if (TRACKER_LEVEL === 'constituency') {
+    title.textContent = 'Constituency Status';
+    sub.textContent = 'Submission progress by constituency';
+    
+    // Group wards by constituency
+    var constGroups = {};
+    (TRACKER_DATA.consts || []).forEach(c => { constGroups[c.id] = { id: c.id, name: c.name, streamsTotal: 0, streamsComplete: 0, cellsDone: 0, cellsTotal: 0 }; });
+    
+    (TRACKER_DATA.wards || []).forEach(w => {
+      if (constGroups[w.constituency_id]) {
+        constGroups[w.constituency_id].streamsTotal += w.streamsTotal;
+        constGroups[w.constituency_id].streamsComplete += w.streamsComplete;
+        constGroups[w.constituency_id].cellsDone += w.cellsDone;
+        constGroups[w.constituency_id].cellsTotal += w.cellsTotal;
+      }
+    });
+
+    var groupsArr = Object.values(constGroups);
+    count.textContent = groupsArr.length + ' constituencies';
+    if (!groupsArr.length) { gridEl.innerHTML = '<div class="empty">No constituencies.</div>'; return; }
+
+    gridEl.innerHTML = groupsArr.map(c => {
+      var cellPct = c.cellsTotal > 0 ? (c.cellsDone / c.cellsTotal * 100) : 0; 
+      var isComplete = c.streamsTotal > 0 && c.streamsComplete === c.streamsTotal; 
+      var isPending = c.streamsComplete === 0;
+      var cls = 'card' + (isComplete ? ' leading' : (isPending ? ' empty' : ' trailing')); 
+      var chip = trackerChip(c.streamsComplete, c.streamsTotal);
+      
+      return `<div class="${cls}" onclick="trackerDrill('ward', '${c.id}', '${esc(c.name)}')">
+        <div class="card-head"><div><div class="card-name">${esc(c.name)}</div><div class="card-sub">Constituency</div></div><span class="card-status ${chip.cls}">${chip.label}</span></div>
+        <div><div class="card-numbers"><span class="card-votes">${c.streamsComplete} / ${c.streamsTotal}</span><span class="card-pct">${cellPct.toFixed(1)}%</span></div><div class="card-votes-lbl">Streams complete</div></div>
+        <div class="card-bar"><div class="card-bar-fill" style="width:${cellPct}%"></div></div>
+      </div>`;
+    }).join('');
+    return;
+  }
+
+  // --- LEVEL 2: WARDS ---
+    if (TRACKER_LEVEL === 'ward') {
+    // FIX: Fallback to USER.constituency if logged in as an MP
+    var targetConstId = TRACKER_CONST_ID || (SCOPE_MODE === 'constituency' ? USER.constituency : '');
+    var myWards = TRACKER_DATA.wards.filter(w => w.constituency_id === targetConstId);
+    title.textContent = TRACKER_CONST_NAME + ' Wards'; 
+    sub.textContent = 'Submission progress by ward';
+    count.textContent = myWards.length + ' wards';
+
+    gridEl.innerHTML = myWards.map(renderTrackerWardCard).join('');
+    return;
+  }
+
+  // --- LEVEL 3: CENTRES ---
+  if (TRACKER_LEVEL === 'centre') {
+    var ward = TRACKER_DATA.wards.find(w => w.wardId === TRACKER_WARD);
+    if (!ward) { gridEl.innerHTML = ''; return; }
+
+    title.textContent = ward.wardName + ' Centres'; 
+    sub.textContent = ward.streamsComplete + ' of ' + ward.streamsTotal + ' streams complete'; 
+    count.textContent = ward.centres.length + ' centres';
+    
+    gridEl.innerHTML = ward.centres.map(renderTrackerCentreCard).join(''); 
+    return;
+  }
+
+  // --- LEVEL 4: STREAMS ---
+  if (TRACKER_LEVEL === 'stream') {
+    var ward = TRACKER_DATA.wards.find(w => w.wardId === TRACKER_WARD);
+    var centre = ward ? ward.centres.find(c => c.centreId === TRACKER_CENTRE) : null;
+    if (!centre) { gridEl.innerHTML = ''; return; }
+    
+    title.textContent = centre.centreName + ' Streams'; 
+    sub.textContent = centre.streamsComplete + ' of ' + centre.streamsTotal + ' streams complete · all positions'; 
+    count.textContent = centre.streams.length + ' streams';
+    
+    gridEl.innerHTML = centre.streams.map(renderTrackerStreamCard).join('');
+    return;
+  }
+ }
+
+function renderTrackerWardCard(w) {
+  var cellPct = w.cellsTotal > 0 ? (w.cellsDone / w.cellsTotal * 100) : 0; 
+  var isComplete = w.streamsTotal > 0 && w.streamsComplete === w.streamsTotal; 
+  var isPending = w.streamsComplete === 0;
+  var cls = 'card' + (isComplete ? ' leading' : (isPending ? ' empty' : ' trailing')); 
+  var chip = trackerChip(w.streamsComplete, w.streamsTotal);
+  var lastHtml = w.lastAt ? '<div class="tracker-last"><i class="fas fa-clock"></i>Last ' + esc(timeAgo(new Date(w.lastAt).getTime())) + (w.lastBy ? ' · ' + esc(w.lastBy) : '') + '</div>' : '<div class="tracker-last empty">No submissions yet</div>';
+  
+  return `<div class="${cls}" onclick="trackerDrill('centre', '${escAttr(w.wardId)}', '${escAttr(w.wardName)}')">
+    <div class="card-head">
+      <div>
+        <div class="card-name">${esc(w.wardName)}</div>
+        <div class="card-sub">${w.centres.length} centres · ${w.streamsTotal} streams</div>
+      </div>
+      <span class="card-status ${chip.cls}">${chip.label}</span>
+    </div>
+    <div>
+      <div class="card-numbers">
+        <span class="card-votes">${w.streamsComplete} / ${w.streamsTotal}</span>
+        <span class="card-pct">${cellPct.toFixed(1)}%</span>
+      </div>
+      <div class="card-votes-lbl">Streams complete</div>
+    </div>
+    <div class="card-bar"><div class="card-bar-fill" style="width:${cellPct}%"></div></div>
+    ${lastHtml}
+  </div>`;
+}
+
+function renderTrackerCentreCard(c) {
+  var cellPct = c.cellsTotal > 0 ? (c.cellsDone / c.cellsTotal * 100) : 0; 
+  var isComplete = c.streamsTotal > 0 && c.streamsComplete === c.streamsTotal; 
+  var isPending = c.streamsComplete === 0;
+  var cls = 'card' + (isComplete ? ' leading' : (isPending ? ' empty' : ' trailing')); 
+  var chip = trackerChip(c.streamsComplete, c.streamsTotal);
+  
+  return `<div class="${cls}" onclick="trackerDrill('stream', '${escAttr(c.centreId)}', '${escAttr(c.centreName)}')">
+    <div class="card-head">
+      <div>
+        <div class="card-name">${esc(c.centreName)}</div>
+        <div class="card-sub">${c.streamsTotal} streams</div>
+      </div>
+      <span class="card-status ${chip.cls}">${chip.label}</span>
+    </div>
+    <div>
+      <div class="card-numbers">
+        <span class="card-votes">${c.streamsComplete} / ${c.streamsTotal}</span>
+        <span class="card-pct">${cellPct.toFixed(1)}%</span>
+      </div>
+      <div class="card-votes-lbl">Streams complete</div>
+    </div>
+    <div class="card-bar"><div class="card-bar-fill" style="width:${cellPct}%"></div></div>
+  </div>`;
+}
+
+function renderTrackerStreamCard(s) {
+  var cls = 'card'; if (s.isComplete) cls += ' leading'; else if (s.done === 0) cls += ' empty'; else cls += ' trailing';
+  var chip; if (s.isComplete) chip = { cls: 'done', label: '<i class="fas fa-circle-check"></i> Complete' }; else if (s.done > 0) chip = { cls: 'partial', label: '<i class="fas fa-circle-half-stroke"></i> ' + s.done + '/' + s.total }; else chip = { cls: 'pending', label: '<i class="fas fa-circle"></i> Pending' };
+  var pipsHtml = TRACKER_DATA.positions.map(function (pos) {
+  var hit = s.pips[pos]; 
+  var short = POSITION_SHORT[pos] || pos.charAt(0); 
+  var tip = hit ? pos + ' · tap to view results' : pos + ' · not submitted yet';
+  var click = hit ? ' onclick="openTrackerPip(\'' + escAttr(s.code) + '\',\'' + escAttr(pos) + '\')"' : '';
+  
+  // Check if this specific stream/position has a photo
+  var hasForm = !!TRACKER_FORMS[s.code + '_' + pos];
+  var formBadge = hasForm ? '<span style="position:absolute;bottom:-3px;right:-3px;background:var(--blue);color:white;border-radius:50%;width:12px;height:12px;display:flex;align-items:center;justify-content:center;border:1.5px solid #fff;box-shadow:0 2px 4px rgba(0,0,0,0.2);"><i class="fas fa-camera" style="font-size:6px;"></i></span>' : '';
+  
+  var tag = hit ? 'button' : 'span'; 
+  var tagClose = hit ? '</button>' : '</span>'; 
+  var extra = hit ? ' type="button"' : '';
+  
+  return '<' + tag + extra + ' class="pip ' + (hit ? 'pip-done' : 'pip-pending') + '" title="' + escAttr(tip) + '"' + click + '>' + short + formBadge + tagClose;
+}).join('');
+  var lastHtml = s.lastAt ? '<div class="tracker-last"><i class="fas fa-clock"></i>' + esc(timeAgo(new Date(s.lastAt).getTime())) + (s.lastBy ? ' · ' + esc(s.lastBy) : '') + '</div>' : '';
+  return '<div class="' + cls + '"><div class="card-head"><div><div class="card-name">' + esc(s.label) + '</div><div class="card-sub">' + esc(s.code) + '</div></div><span class="card-status ' + chip.cls + '">' + chip.label + '</span></div><div class="pips">' + pipsHtml + '</div>' + lastHtml + '</div>';
+}
+
+function findTrackerStreamContext(streamCode) {
+  if (!TRACKER_DATA) return null; var wards = TRACKER_DATA.wards || [];
+  for (var i = 0; i < wards.length; i++) { var centres = wards[i].centres || []; for (var j = 0; j < centres.length; j++) { var streams = centres[j].streams || []; for (var k = 0; k < streams.length; k++) { if (streams[k].code === streamCode) return { ward: wards[i], centre: centres[j], stream: streams[k] }; } } }
+  return null;
+}
+
+async function openTrackerPip(streamCode, position) {
+  var sheetBg = document.getElementById('sheetBg'); 
+  var sheet = document.getElementById('sheetContent');
+  if (!sheetBg || !sheet) { toast('Could not open sheet — please reload.', 'error'); return; }
+  
+  var ctx = findTrackerStreamContext(streamCode);
+  var label = ctx ? ctx.stream.label : streamCode; 
+  var centreName = ctx ? ctx.centre.centreName : ''; 
+  var wardName = ctx ? ctx.ward.wardName : '';
+
+  sheetBg.classList.add('active');
+  sheet.innerHTML = '<div class="sheet-head"><div><div class="sheet-title">' + esc(position) + ' · ' + esc(label) + '</div><div class="sheet-sub">' + esc(centreName) + ' · ' + esc(wardName) + ' Ward</div></div><button class="sheet-close" onclick="closeSheet()"><i class="fas fa-xmark"></i></button></div><div class="load"><i class="fas fa-spinner"></i>Loading results…</div>';
+
+  try {
+    // 1. Fetch Results
+    const { data: results } = await db.from('results')
+      .select('votes, submitted_by, created_at, candidates(name, party, photo_url)')
+      .eq('stream_code', streamCode).eq('position', position);
+
+    if (!results || results.length === 0) {
+      sheet.innerHTML = '<div class="sheet-head"><div><div class="sheet-title">' + esc(position) + ' · ' + esc(label) + '</div><div class="sheet-sub">' + esc(centreName) + ' · ' + esc(wardName) + ' Ward</div></div><button class="sheet-close" onclick="closeSheet()"><i class="fas fa-xmark"></i></button></div><div class="empty"><div class="empty-icon"><i class="fas fa-hourglass-half"></i></div><div class="empty-title">Not submitted yet</div></div>';
+      return;
+    }
+
+    const mappedResults = results.map(r => ({
+      candidateName: r.candidates.name, 
+      party: r.candidates.party, 
+      photo_url: normalizeImageUrl(r.candidates.photo_url), 
+      votes: r.votes
+    })).sort((a, b) => b.votes - a.votes);
+
+    // 2. Fetch Signed URL for the Form Photo (if it exists)
+    var formPhotoUrl = '';
+    var fileName = TRACKER_FORMS[streamCode + '_' + position];
+    if (fileName) {
+      const { data: signedData } = await db.storage.from('form-photos').createSignedUrl(fileName, 600); // Valid for 10 mins
+      if (signedData) formPhotoUrl = signedData.signedUrl;
+    }
+
+    const res = {
+        submitted: true, 
+        submittedBy: results[0].submitted_by, 
+        submittedByName: results[0].submitted_by, 
+        submittedAt: new Date(results[0].created_at).toLocaleString(), 
+        results: mappedResults
+    };
+    
+    renderTrackerPipResult(res, position, label, centreName, wardName, formPhotoUrl);
+  } catch (err) {
+    sheet.innerHTML = '<div class="sheet-head"><div><div class="sheet-title">' + esc(position) + '</div></div><button class="sheet-close" onclick="closeSheet()"><i class="fas fa-xmark"></i></button></div><div class="empty"><div class="empty-title">Connection error</div></div>';
+  }
+}
+
+function renderTrackerPipResult(res, position, label, centreName, wardName, formPhotoUrl) {
+  var sheet = document.getElementById('sheetContent'); 
+  var total = (res.results || []).reduce(function (s, r) { return s + (Number(r.votes) || 0); }, 0);
+  
+  var infoHtml = '<div class="pip-result-info"><div class="row"><i class="fas fa-user-check user"></i>Submitted by <strong>' + esc(res.submittedByName || res.submittedBy || 'Unknown') + '</strong></div><div class="row"><i class="fas fa-clock clock"></i>' + esc(res.submittedAt || 'Unknown time') + '</div><div class="row"><i class="fas fa-lock lock"></i>Locked · ' + total.toLocaleString() + ' total votes</div></div>';
+  
+  var rowsHtml = (res.results || []).map(function (c, idx) {
+    var votes = Number(c.votes) || 0; 
+    var pct = total > 0 ? (votes / total * 100).toFixed(1) : '0.0'; 
+    var isLead = idx === 0 && votes > 0; 
+    var medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : (idx + 1);
+    var initial = c.candidateName ? c.candidateName.charAt(0).toUpperCase() : '?'; 
+    var photoHtml = c.photo_url ? '<img src="' + escAttr(c.photo_url) + '" alt="" loading="lazy" onerror="this.style.display=\'none\';this.parentElement.textContent=\'' + escAttr(initial) + '\'">' : initial;
+    
+    return '<div class="board-row' + (isLead ? ' leader' : '') + '" style="cursor:default;"><div class="avatar-wrap' + (c.photo_url ? '' : ' no-photo') + '">' + photoHtml + '<span class="avatar-rank">' + medal + '</span></div><div class="board-info"><div class="board-name">' + esc(c.candidateName) + '</div><div class="board-party">' + esc(c.party) + '</div></div><div style="text-align:right;"><div class="board-votes" style="color:var(--ink);">' + votes.toLocaleString() + '</div><div class="board-pct">' + pct + '%</div></div><div></div></div>';
+  }).join('');
+
+  // NEW: Append the View Form Button if the photo exists
+  var formBtnHtml = '';
+if (formPhotoUrl) {
+  // If form exists, show the view button
+  formBtnHtml = `<div style="margin-top: 16px;">
+    <a href="${formPhotoUrl}" target="_blank" class="btn btn-ghost" style="width:100%; text-decoration:none; padding:14px; border-radius:12px; font-weight:700; color:var(--ink); border:1.5px solid var(--border-strong); display:flex; align-items:center; justify-content:center; gap:8px;">
+      <i class="fas fa-file-image" style="color:var(--blue); font-size:16px;"></i> View Statutory Form
+    </a>
+  </div>`;
+} else {
+  // If form is missing, show a subtle warning
+  formBtnHtml = `<div style="margin-top: 16px; padding: 12px; background: rgba(184, 134, 11, 0.08); border: 1px solid rgba(184, 134, 11, 0.2); border-radius: 12px; text-align: center; color: #b8860b; font-size: 12.5px; font-weight: 600;">
+    <i class="fas fa-exclamation-triangle"></i> Statutory form not uploaded yet.
+  </div>`;
+}
+
+  sheet.innerHTML = '<div class="sheet-head"><div><div class="sheet-title">' + esc(position) + ' · ' + esc(label) + '</div><div class="sheet-sub">' + esc(centreName) + ' · ' + esc(wardName) + ' Ward</div></div><button class="sheet-close" onclick="closeSheet()"><i class="fas fa-xmark"></i></button></div>' + infoHtml + '<div class="board" style="border:none;">' + rowsHtml + '</div>' + formBtnHtml;
+}
+
+function trackerChip(done, total) {
+  if (total === 0) return { cls: 'pending', label: '—' };
+  if (done === total) return { cls: 'done', label: '<i class="fas fa-circle-check"></i> ' + done + '/' + total };
+  if (done > 0) return { cls: 'partial', label: '<i class="fas fa-circle-half-stroke"></i> ' + done + '/' + total };
+  return { cls: 'pending', label: '<i class="fas fa-circle"></i> 0/' + total };
+}
+
+function trackerResetDrill() {
+  TRACKER_CONST_ID = ''; TRACKER_CONST_NAME = '';
+  TRACKER_WARD = ''; TRACKER_WARD_NAME = '';
+  TRACKER_CENTRE = ''; TRACKER_CENTRE_NAME = '';
+
+  if (SCOPE_MODE === 'national' || SCOPE_MODE === 'county') TRACKER_LEVEL = 'constituency';
+  else if (SCOPE_MODE === 'constituency') TRACKER_LEVEL = 'ward';
+  else if (SCOPE_MODE === 'ward') TRACKER_LEVEL = 'centre';
+
+  renderTrackerBreadcrumb(); renderTrackerGrid();
+}
+
+function trackerDrill(level, id, name) {
+  if (level === 'ward') { TRACKER_CONST_ID = id; TRACKER_CONST_NAME = name; TRACKER_LEVEL = 'ward'; }
+  if (level === 'centre') { TRACKER_WARD = id; TRACKER_WARD_NAME = name; TRACKER_LEVEL = 'centre'; }
+  if (level === 'stream') { TRACKER_CENTRE = id; TRACKER_CENTRE_NAME = name; TRACKER_LEVEL = 'stream'; }
+  renderTrackerBreadcrumb(); renderTrackerGrid();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function renderTrackerBreadcrumb() {
+  var el = document.getElementById('trackerBreadcrumb');
+  if (!el) return;
+  var parts = [];
+
+  // 1. Root Level
+  if (SCOPE_MODE === 'national' || SCOPE_MODE === 'county') {
+      parts.push({ label: 'All Constituencies', active: TRACKER_LEVEL === 'constituency', onclick: 'trackerResetDrill()' });
+  } else if (SCOPE_MODE === 'constituency') {
+      parts.push({ label: 'All Wards', active: TRACKER_LEVEL === 'ward', onclick: 'trackerResetDrill()' });
+  } else if (SCOPE_MODE === 'ward') {
+      parts.push({ label: 'All Centres', active: TRACKER_LEVEL === 'centre', onclick: 'trackerResetDrill()' });
+  }
+
+  // 2. THE FIX: Fallback for MP logged in
+  var currentConst = TRACKER_CONST_ID || (SCOPE_MODE === 'constituency' ? USER.constituency : '');
+  var currentConstName = TRACKER_CONST_NAME;
+  
+  // If we have an ID but no name, look it up in the loaded data
+  if (!currentConstName && currentConst && TRACKER_DATA && TRACKER_DATA.consts) {
+      var foundConst = TRACKER_DATA.consts.find(c => c.id === currentConst);
+      if (foundConst) currentConstName = foundConst.name;
+  }
+
+  // Add the Constituency to the breadcrumb if it exists
+  if (currentConst) {
+      parts.push({ 
+          label: currentConstName || 'Constituency', 
+          active: TRACKER_LEVEL === 'ward', 
+          onclick: `trackerDrill('ward', '${currentConst}', '${currentConstName || 'Constituency'}')` 
+      });
+  }
+
+  // 3. Deeper Levels
+  if (TRACKER_WARD) parts.push({ label: TRACKER_WARD_NAME, active: TRACKER_LEVEL === 'centre', onclick: `trackerDrill('centre', '${TRACKER_WARD}', '${TRACKER_WARD_NAME}')` });
+  if (TRACKER_CENTRE) parts.push({ label: TRACKER_CENTRE_NAME, active: TRACKER_LEVEL === 'stream', onclick: `trackerDrill('stream', '${TRACKER_CENTRE}', '${TRACKER_CENTRE_NAME}')` });
+
+  // 4. Render
+  el.innerHTML = parts.map((p, i) => {
+      var cls = 'bc-seg' + (p.active ? ' current' : '');
+      var attr = p.active ? '' : `onclick="${p.onclick}"`;
+      return (i > 0 ? '<i class="fas fa-chevron-right bc-sep"></i>' : '') +
+            `<button class="${cls}" ${attr}>${i===0 ? '<i class="fas fa-layer-group"></i> ' : ''}${esc(p.label)}</button>`;
+  }).join('');
+}
+// ================================================================
+//  STREAM/CANDIDATE DETAIL & HELPERS
+// ================================================================
+  function openStreamDetail(streamCode) {
+  if (!OVERVIEW) return;
+  
+  var stream = OVERVIEW.streams.find(s => s.code === streamCode);
+  if (!stream) return;
+  
+  // Get the votes for this specific stream
+  var votes = OVERVIEW.votesByStream[streamCode] || {};
+  var candidates = Object.keys(votes).map(code => {
+      var c = OVERVIEW.candMap[code] || {};
+      return { code: code, name: c.name, party: c.party, photo_url: c.photo_url, votes: votes[code] };
+  }).sort((a,b) => b.votes - a.votes);
+  
+  var total = candidates.reduce((sum, c) => sum + c.votes, 0);
+  var centre = OVERVIEW.centres.find(c => c.id === stream.centre_id);
+  var centreName = centre ? centre.name : 'Unknown Centre';
+  var streamLabel = 'STR ' + String(stream.stream_number).padStart(2, '0');
+  
+  // Build the HTML for the Bottom Sheet
+  var html = '<div class="sheet-head"><div><div class="sheet-title">' + esc(centreName) + ' · ' + esc(streamLabel) + '</div><div class="sheet-sub">' + total.toLocaleString() + ' total votes</div></div><button class="sheet-close" onclick="closeSheet()"><i class="fas fa-xmark"></i></button></div>';
+  
+  if (!candidates.length) {
+      html += '<div class="empty" style="padding:20px;"><div class="empty-title">No votes recorded</div></div>';
+  } else {
+      html += '<div class="board" style="border:none;">';
+      html += candidates.map((c, idx) => {
+          var pct = total > 0 ? (c.votes / total * 100).toFixed(1) : '0.0';
+          var isLead = idx === 0 && c.votes > 0;
+          var medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : (idx + 1);
+          var initial = c.name ? c.name.charAt(0).toUpperCase() : '?';
+          var photoHtml = c.photo_url ? '<img src="' + escAttr(c.photo_url) + '" loading="lazy" onerror="this.style.display=\'none\';this.parentElement.textContent=\'' + escAttr(initial) + '\'">' : initial;
+          
+          return '<div class="board-row' + (isLead ? ' leader' : '') + '" style="cursor:default;">' +
+              '<div class="avatar-wrap' + (c.photo_url ? '' : ' no-photo') + '">' + photoHtml + '<span class="avatar-rank">' + medal + '</span></div>' +
+              '<div class="board-info"><div class="board-name">' + esc(c.name) + '</div><div class="board-party">' + esc(c.party) + '</div></div>' +
+              // FIX: Forced the vote color to match the system charcoal black
+              '<div style="text-align:right;"><div class="board-votes" style="color: var(--ink);">' + c.votes.toLocaleString() + '</div><div class="board-pct">' + pct + '%</div></div>' +
+          '</div>';
+      }).join('');
+      html += '</div>';
+  }
+  
+  document.getElementById('sheetContent').innerHTML = html;
+  document.getElementById('sheetBg').classList.add('active');
+        }
+
+
+function openCandidateDetail(code) {
+  if (!OVERVIEW) return;
+  var sheetBg = document.getElementById('sheetBg'); var sheet = document.getElementById('sheetContent'); if (!sheetBg || !sheet) return;
+  var isMCA = OVERVIEW.viewingPosition === 'MCA'; var pool = null; var totalVotes = 0; var subtitleContext = OVERVIEW.viewingPosition;
+
+  if (isMCA && DRILL_WARD && DRILL_CENTRE && DRILL_DATA && DRILL_DATA.level === 'stream') {
+    var centreCandidates = {};
+    (DRILL_DATA.streams || []).forEach(function (s) { 
+      (s.candidates || []).forEach(function (c) { 
+        if (!centreCandidates[c.code]) { 
+          // THIS IS THE FIX: 'photo' is now 'photo_url'
+          centreCandidates[c.code] = { code: c.code, name: c.name, party: c.party, photo_url: c.photo_url || '', votes: 0 }; 
+        } 
+        centreCandidates[c.code].votes += c.votes; 
+      }); 
+    });
+    pool = Object.keys(centreCandidates).map(function (k) { return centreCandidates[k]; }); pool.sort(function (a, b) { return b.votes - a.votes; }); totalVotes = pool.reduce(function (s, c) { return s + c.votes; }, 0); subtitleContext = DRILL_CENTRE_NAME + ' · MCA';
+  } else if (isMCA && DRILL_WARD) {
+    // Filter the national leaderboard down to just this ward's MCAs
+    pool = (OVERVIEW.leaderboard || []).filter(function (c) {
+      var info = OVERVIEW.candMap[c.code];
+      return info && info.ward_id === DRILL_WARD;
+    });
+    totalVotes = pool.reduce(function (s, c) { return s + c.votes; }, 0);
+    var wObj = (OVERVIEW.wards || []).find(function (w) { return w.id === DRILL_WARD; });
+    subtitleContext = (wObj ? wObj.name : 'Ward') + ' · MCA';
+}
+
+  if (!pool) { pool = OVERVIEW.leaderboard || []; totalVotes = OVERVIEW.globalTotal || 0; subtitleContext = OVERVIEW.viewingPosition; }
+  var me = pool.filter(function (c) { return c.code === code; })[0]; if (!me) return;
+  var rank = pool.indexOf(me) + 1; var leader = pool[0]; var isYou = isOwnCandidate(me.name) && !USER.isSpectator; var myPct = totalVotes > 0 ? (me.votes / totalVotes * 100).toFixed(1) : '0.0';
+  
+  var ownRow = null; if (!USER.isSpectator && USER.name) { ownRow = pool.filter(function (c) { return String(c.name).toLowerCase().trim() === String(USER.name).toLowerCase().trim(); })[0]; }
+  var compareWith = (ownRow && ownRow.code !== me.code) ? ownRow : null;
+
+  if (compareWith) {
+    var aWins = me.votes > compareWith.votes; var comparePct = totalVotes > 0 ? (compareWith.votes / totalVotes * 100).toFixed(1) : '0.0'; var compareRank = pool.indexOf(compareWith) + 1;
+    sheet.innerHTML = '<div class="sheet-head"><div><div class="sheet-title">Head to Head</div><div class="sheet-sub">' + esc(subtitleContext) + ' · ' + totalVotes.toLocaleString() + ' total votes</div></div><button class="sheet-close" onclick="closeSheet()"><i class="fas fa-xmark"></i></button></div><div class="cmp-grid"><div class="cmp-card ' + (aWins ? 'winner' : '') + '"><div class="who">' + (aWins ? '<i class="fas fa-crown"></i> Leading' : 'Challenger') + '</div>' + (me.photo_url ? '<div class="cmp-avatar"><img src="' + escAttr(me.photo_url) + '" alt="" onerror="this.style.display=\'none\'"></div>' : '') + '<div class="cmp-name">' + esc(me.name) + '</div><div class="cmp-party">' + esc(me.party) + ' · #' + rank + '</div><div class="cmp-votes">' + me.votes.toLocaleString() + '</div><div class="cmp-pct">' + myPct + '% of votes</div></div><div class="cmp-card ' + (!aWins ? 'winner' : '') + '"><div class="who">' + (!aWins ? '<i class="fas fa-crown"></i> Leading' : 'You') + '</div>' + (compareWith.photo_url ? '<div class="cmp-avatar"><img src="' + escAttr(compareWith.photo_url) + '" alt="" onerror="this.style.display=\'none\'"></div>' : '') + '<div class="cmp-name">' + esc(compareWith.name) + '</div><div class="cmp-party">' + esc(compareWith.party) + ' · #' + compareRank + '</div><div class="cmp-votes">' + compareWith.votes.toLocaleString() + '</div><div class="cmp-pct">' + comparePct + '% of votes</div></div></div><div style="text-align:center;padding:14px;background:var(--canvas);border-radius:12px;font-size:13px;color:var(--slate);"><strong style="color:var(--ink);font-size:15px;">' + Math.abs(me.votes - compareWith.votes).toLocaleString() + '</strong> vote margin</div>';
+    sheetBg.classList.add('active'); return;
+  }
+
+  var behindText;
+  if (leader && leader.code !== me.code) { behindText = '<div style="padding:14px;background:var(--canvas);border-radius:12px;font-size:13px;color:var(--slate);text-align:center;">Behind <strong style="color:var(--ink);">' + esc(leader.name) + '</strong> by <strong style="color:var(--ink);">' + (leader.votes - me.votes).toLocaleString() + '</strong> votes</div>'; }
+  else { behindText = '<div style="padding:14px;background:var(--green-soft);border-radius:12px;font-size:13px;color:var(--green-dark);text-align:center;font-weight:600;"><i class="fas fa-crown"></i> Currently leading ' + esc(subtitleContext) + '</div>'; }
+
+  sheet.innerHTML = '<div class="sheet-head"><div><div class="sheet-title">' + esc(me.name) + '</div><div class="sheet-sub">' + esc(me.party) + ' · ' + esc(subtitleContext) + '</div></div><button class="sheet-close" onclick="closeSheet()"><i class="fas fa-xmark"></i></button></div><div class="cmp-grid"><div class="cmp-card ' + (rank === 1 ? 'winner' : '') + '"><div class="who">Rank</div><div class="cmp-votes">#' + rank + '</div></div><div class="cmp-card ' + (rank === 1 ? 'winner' : '') + '"><div class="who">' + (isYou ? 'Your votes' : 'Votes') + '</div><div class="cmp-votes">' + me.votes.toLocaleString() + '</div><div class="cmp-pct">' + myPct + '% share</div></div></div>' + behindText;
+  sheetBg.classList.add('active');
+}
+
+
+function closeSheet() { var bg = document.getElementById('sheetBg'); if (bg) bg.classList.remove('active'); }
+document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeSheet(); });
+
+// UTILS
+function isOwnCandidate(name) { if (!USER || USER.isSpectator || !USER.name) return false; return String(name).toLowerCase().trim() === String(USER.name).toLowerCase().trim(); }
+function setPulse(mode) { var el = document.getElementById('topPulse'); if (!el) return; el.className = 'pulse ' + (mode === 'live' ? '' : mode === 'loading' ? 'loading' : 'stale'); }
+function timeAgo(ts) { if (!ts) return 'updating…'; var s = Math.floor((Date.now() - ts) / 1000); if (s < 5) return 'just now'; if (s < 60) return s + 's ago'; var m = Math.floor(s / 60); if (m < 60) return m + 'm ago'; var h = Math.floor(m / 60); return h + 'h ago'; }
+function saveSnapshot(position, leaderboard) { try { var snap = { at: Date.now(), byCode: {} }; leaderboard.forEach(function (c) { snap.byCode[c.code] = c.votes; }); sessionStorage.setItem('snap_' + position, JSON.stringify(snap)); } catch (e) {} }
+function getSnapshot(position) { try { var raw = sessionStorage.getItem('snap_' + position); if (!raw) return null; var snap = JSON.parse(raw); return snap.byCode || null; } catch (e) { return null; } }
+function toTitleCase(str) {
+  if (!str) return '';
+  return str.replace(/\w\S*/g, function(txt){ return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase(); });
+}
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+function tintBg(hex, alpha) { if (!hex) return ''; hex = String(hex).trim(); if (hex.charAt(0) === '#') hex = hex.slice(1); if (hex.length === 3) hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2]; if (hex.length !== 6) return ''; var r = parseInt(hex.slice(0, 2), 16); var g = parseInt(hex.slice(2, 4), 16); var b = parseInt(hex.slice(4, 6), 16); if (isNaN(r) || isNaN(g) || isNaN(b)) return ''; return 'rgba(' + r + ',' + g + ',' + b + ',' + (alpha || 0.07) + ')'; }
+function escAttr(s) { return esc(s); }
+function toast(msg, type) { type = type || 'info'; var icons = { success: 'fa-circle-check', error: 'fa-circle-exclamation', info: 'fa-circle-info' }; var el = document.createElement('div'); el.className = 'toast ' + type; el.innerHTML = '<i class="fas ' + (icons[type] || icons.info) + '"></i><span></span>'; el.querySelector('span').textContent = msg; document.getElementById('toasts').appendChild(el); setTimeout(function () { if (el.parentElement) el.remove(); }, 4000); }
+
+function doLogout() {
+  thConfirm({
+    title: 'Sign out?',
+    message: 'You will need your login code to access the dashboard again.',
+    confirmText: 'Sign Out',
+    cancelText: 'Stay',
+    tone: 'danger',
+    icon: 'fa-right-from-bracket'
+  }).then(function (ok) { 
+    if (ok) {
+      db.auth.signOut().then(() => window.location.href = 'index.html'); 
+    }
+  });
+}
+
+setInterval(function () { var el = document.querySelector('.hero-live'); if (el && lastRefreshAt) { el.innerHTML = '<span class="dot"></span>Live · ' + esc(timeAgo(lastRefreshAt)); } }, 30000);
+function normalizeImageUrl(raw) {
+  if (!raw) return '';
+  raw = String(raw).trim();
+  if (!raw) return '';
+
+  // Already a CDN URL
+  if (raw.includes('cdn.jsdelivr.net/gh/') || raw.includes('lh3.googleusercontent.com/d/')) return raw;
+
+  // GitHub blob URL → jsDelivr CDN
+  var m = raw.match(/github\.com\/([^\/]+)\/([^\/]+)\/blob\/([^\/]+)\/(.+)$/);
+  if (m) return 'https://cdn.jsdelivr.net/gh/' + m[1] + '/' + m[2] + '@' + m[3] + '/' + m[4];
+
+  // Raw GitHub URL → jsDelivr CDN
+  m = raw.match(/raw\.githubusercontent\.com\/([^\/]+)\/([^\/]+)\/([^\/]+)\/(.+)$/);
+  if (m) return 'https://cdn.jsdelivr.net/gh/' + m[1] + '/' + m[2] + '@' + m[3] + '/' + m[4];
+
+  // Google Drive Links
+  m = raw.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+  if (m) return 'https://lh3.googleusercontent.com/d/' + m[1];
+  m = raw.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (m) return 'https://lh3.googleusercontent.com/d/' + m[1];
+  m = raw.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  if (m) return 'https://lh3.googleusercontent.com/d/' + m[1];
+
+  // Any other direct http/https URL
+  if (raw.startsWith('http://') || raw.startsWith('https://')) return raw;
+
+  // Bare Drive ID
+  if (/^[a-zA-Z0-9_-]{20,}$/.test(raw)) return 'https://lh3.googleusercontent.com/d/' + raw;
+
+  return '';
+}
+function thConfirm(opts) {
+  return new Promise(function (resolve) {
+    opts = opts || {};
+    var tone = opts.tone || 'warn';
+    var single = !!opts.alertOnly;
+    var iconMap = { warn: 'fa-exclamation-triangle', danger: 'fa-sign-out-alt', info: 'fa-circle-info' };
+    var icon = opts.icon || iconMap[tone] || 'fa-question-circle';
+    var confirmCls = tone === 'danger' ? 'th-btn-danger' : 'th-btn-primary';
+
+    var actions = single
+      ? '<button class="th-btn th-btn-primary" data-act="ok">' + esc(opts.confirmText || 'OK') + '</button>'
+      : '<button class="th-btn th-btn-ghost" data-act="cancel">' + esc(opts.cancelText || 'Cancel') + '</button>' +
+        '<button class="th-btn ' + confirmCls + '" data-act="ok">' + esc(opts.confirmText || 'Confirm') + '</button>';
+
+    var wrap = document.createElement('div');
+    wrap.className = 'th-modal-bg';
+    wrap.innerHTML =
+      '<div class="th-modal">' +
+        '<div class="th-modal-icon ' + tone + '"><i class="fas ' + icon + '"></i></div>' +
+        '<div class="th-modal-title">' + esc(opts.title || 'Confirm') + '</div>' +
+        (opts.message ? '<div class="th-modal-msg">' + opts.message + '</div>' : '') +
+        '<div class="th-modal-actions' + (single ? ' single' : '') + '">' + actions + '</div>' +
+      '</div>';
+
+    document.body.appendChild(wrap);
+    requestAnimationFrame(function () { wrap.classList.add('active'); });
+
+    var resolved = false;
+    function close(val) {
+      if (resolved) return;
+      resolved = true;
+      wrap.classList.remove('active');
+      setTimeout(function () { if (wrap.parentElement) wrap.remove(); }, 220);
+      document.removeEventListener('keydown', onKey);
+      resolve(val);
+    }
+    function onKey(e) {
+      if (e.key === 'Escape') close(false);
+      else if (e.key === 'Enter') close(true);
+    }
+    wrap.addEventListener('click', function (e) {
+      if (e.target === wrap) return close(false);
+      var act = e.target.closest('[data-act]');
+      if (!act) return;
+      close(act.dataset.act === 'ok');
+    });
+    document.addEventListener('keydown', onKey);
+    setTimeout(function () { var ok = wrap.querySelector('[data-act="ok"]'); if (ok) ok.focus(); }, 60);
+  });
+}
+// ================================================================
+//  CUSTOM PREMIUM DROPDOWN ENGINE
+// ================================================================
+var activeSelectElement = null;
+var isOpeningSelect = false; 
+
+function openCustomSelect(select) {
+  if (isOpeningSelect) return;
+  isOpeningSelect = true;
+  activeSelectElement = select;
+  
+  var title = select.getAttribute('data-title') || 'Select Option';
+  document.getElementById('customSelectTitle').textContent = title;
+
+  var list = document.getElementById('customSelectList');
+  list.innerHTML = '';
+
+  Array.from(select.options).forEach(function(opt) {
+    var isSelected = opt.value === select.value;
+    var div = document.createElement('div');
+    div.className = 'custom-select-option' + (isSelected ? ' selected' : '');
+    div.innerHTML = `<span>${opt.text}</span> <i class="fas fa-check"></i>`;
+    
+    div.onclick = function(e) {
+      e.stopPropagation();
+      select.value = opt.value;
+      // Trigger the original onchange event
+      select.dispatchEvent(new Event('change'));
+      closeCustomSelect();
+    };
+    list.appendChild(div);
+  });
+
+  document.getElementById('customSelectModal').classList.add('active');
+  
+  // Reset guard after animation
+  setTimeout(() => { isOpeningSelect = false; }, 300);
+}
+
+// 1. INTERCEPT MOBILE TOUCH (Stops the native Android/iOS menu)
+document.addEventListener('touchstart', function(e) {
+  var select = e.target.closest('select');
+  if (!select) return;
+  if (window.innerWidth > 768) return; // Only on mobile
+  
+  e.preventDefault(); // THIS STOPS THE NATIVE MENU
+  openCustomSelect(select);
+}, { passive: false, capture: true });
+
+// 2. INTERCEPT DESKTOP CLICKS / MOBILE EMULATORS
+document.addEventListener('mousedown', function(e) {
+  var select = e.target.closest('select');
+  if (!select) return;
+  if (window.innerWidth > 768) return;
+  
+  e.preventDefault(); 
+  openCustomSelect(select);
+}, { capture: true });
+
+function closeCustomSelect() {
+  document.getElementById('customSelectModal').classList.remove('active');
+  activeSelectElement = null;
+  isOpeningSelect = false;
+}
+  // ================================================================
+//  SECURITY: AUTO-LOGOUT AFTER 20 MINUTES OF INACTIVITY
+// ================================================================
+var idleTimer;
+var IDLE_TIMEOUT_MS = 20 * 60 * 1000; // 20 minutes
+
+function resetIdleTimer() {
+  clearTimeout(idleTimer);
+  idleTimer = setTimeout(forceLogout, IDLE_TIMEOUT_MS);
+}
+
+async function forceLogout() {
+  // Optional: Show a quick toast before kicking them out
+  if (typeof toast === 'function') {
+    toast('Session expired due to inactivity. Logging out...', 'error');
+  }
+  
+  // Give them 2 seconds to see the toast, then sign out
+  setTimeout(async () => {
+    await db.auth.signOut();
+    window.location.href = 'index.html';
+  }, 2000);
+}
+
+// These events detect if the user is actively using the phone/computer
+window.addEventListener('mousemove', resetIdleTimer, true);
+window.addEventListener('keydown', resetIdleTimer, true);
+window.addEventListener('scroll', resetIdleTimer, true);
+window.addEventListener('touchstart', resetIdleTimer, true); // For mobile phones
+window.addEventListener('click', resetIdleTimer, true);
+
+// Start the timer immediately when the page loads
+resetIdleTimer();
+  // ================================================================
+//  WAR ROOM LOGIC (FINAL FIXED HIERARCHY)
+// ================================================================
+var WAR_DATA = null;
+var WAR_DRILL_LEVEL = 'constituency'; // Always starts at constituency for Governor
+var WAR_DRILL_CONST = '';
+var WAR_DRILL_WARD = '';
+var WAR_DRILL_CENTRE = '';
+async function loadWarRoom() {
+  document.getElementById('warRoomGrid').innerHTML = '<div class="load" style="grid-column:1/-1;"><i class="fas fa-spinner"></i>Scanning database…</div>';
+  
+  try {
+    // 1. Fetch ONLY the turnout data for this specific position
+    const { data: turnout, error } = await db.from('stream_turnout').select('*').eq('position', VIEW_POS);
+    if (error) throw error;
+
+    // 2. Fetch ONLY the form photos for this specific position
+    const { data: forms } = await db.from('form_photos').select('stream_code').eq('position', VIEW_POS);
+    var formSet = new Set((forms || []).map(f => f.stream_code));
+
+    var reportedMap = {};
+    (turnout || []).forEach(t => { reportedMap[t.stream_code] = t; });
+
+    var centreMap = {}; 
+    (OVERVIEW.centres || []).forEach(c => centreMap[c.id] = c);
+    var wardMap = {}; 
+    (OVERVIEW.wards || []).forEach(w => wardMap[w.id] = w);
+
+    var anomalies = [];
+    var cleanCount = 0, missingFormCount = 0, anomalyCount = 0, silentCount = 0;
+
+    (OVERVIEW.streams || []).forEach(s => {
+      var centre = centreMap[s.centre_id];
+      var ward = centre ? wardMap[centre.ward_id] : null;
+      if (!ward) return; 
+
+      var t = reportedMap[s.code];
+      
+      if (!t) {
+        silentCount++;
+        anomalies.push({
+          streamCode: s.code, 
+          constId: ward.constituency_id, 
+          wardId: ward.id, 
+          centreId: centre.id, 
+          status: 'silent', 
+          hasAnomaly: false, hasForm: false, cast: 0, rejected: 0, valid: 0, registered: s.registered_voters || 0
+        });
+      } else {
+        var hasForm = formSet.has(t.stream_code);
+        var isAnomaly = t.has_anomaly;
+        
+        if (isAnomaly) anomalyCount++;
+        else if (!hasForm) missingFormCount++;
+        else cleanCount++;
+
+        anomalies.push({
+          streamCode: t.stream_code, 
+          constId: ward.constituency_id,
+          wardId: ward.id,
+          centreId: centre.id, 
+          status: isAnomaly ? 'anomaly' : (!hasForm ? 'no-form' : 'clean'), 
+          hasAnomaly: isAnomaly, hasForm: hasForm, 
+          cast: t.total_cast, rejected: t.rejected, valid: t.valid_votes, registered: t.registered_voters
+        });
+      }
+    });
+
+    document.getElementById('warGreenCount').textContent = cleanCount;
+    document.getElementById('warYellowCount').textContent = missingFormCount;
+    document.getElementById('warRedCount').textContent = anomalyCount;
+    if(document.getElementById('warGreyCount')) document.getElementById('warGreyCount').textContent = silentCount;
+
+    WAR_DATA = anomalies;
+    
+    if (SCOPE_MODE === 'national') WAR_DRILL_LEVEL = 'constituency'; 
+    else if (SCOPE_MODE === 'county') WAR_DRILL_LEVEL = 'constituency';
+    else if (SCOPE_MODE === 'constituency') WAR_DRILL_LEVEL = 'ward';
+    else WAR_DRILL_LEVEL = 'centre';
+
+    renderWarRoom();
+  } catch (err) {
+    console.error(err);
+    document.getElementById('warRoomGrid').innerHTML = '<div class="empty">Error loading War Room data.</div>';
+  }
+}
+
+function renderWarRoom() {
+  var grid = document.getElementById('warRoomGrid');
+  var bc = document.getElementById('warRoomBreadcrumb');
+  
+  // 1. Render Breadcrumbs
+  var bcHtml = `<button class="bc-seg ${WAR_DRILL_LEVEL === 'constituency' ? 'current' : ''}" onclick="resetWarRoom()">All Constituencies</button>`;
+  
+   if (targetConst) {
+      var cName = OVERVIEW.consts.find(c=>c.id===targetConst)?.name || 'Constituency';
+      bcHtml += ` <i class="fas fa-chevron-right bc-sep"></i> <button class="bc-seg ${WAR_DRILL_LEVEL === 'ward' ? 'current' : ''}" onclick="drillWarRoom('ward', '${targetConst}', '${esc(cName)}')">${esc(cName)}</button>`;
+  }
+  if (WAR_DRILL_WARD) {
+      var wName = OVERVIEW.wards.find(w=>w.id===WAR_DRILL_WARD)?.name || 'Ward';
+      bcHtml += ` <i class="fas fa-chevron-right bc-sep"></i> <button class="bc-seg ${WAR_DRILL_LEVEL === 'centre' ? 'current' : ''}" onclick="drillWarRoom('centre', '${WAR_DRILL_WARD}', '${esc(wName)}')">${esc(wName)}</button>`;
+  }
+  if (WAR_DRILL_CENTRE) {
+      var cenName = OVERVIEW.centres.find(c=>c.id===WAR_DRILL_CENTRE)?.name || 'Centre';
+      bcHtml += ` <i class="fas fa-chevron-right bc-sep"></i> <button class="bc-seg current">${esc(cenName)}</button>`;
+  }
+  bc.innerHTML = bcHtml;
+
+  // 2. Filter Data
+   // 2. Filter Data
+  var targetConst = WAR_DRILL_CONST || (SCOPE_MODE === 'constituency' ? USER.constituency : '');
+  
+  var filtered = WAR_DATA.filter(function(item) {
+      if (WAR_DRILL_LEVEL === 'constituency') return true; 
+      if (WAR_DRILL_LEVEL === 'ward') return item.constId === targetConst; // <-- FIXED
+      if (WAR_DRILL_LEVEL === 'centre') return item.wardId === WAR_DRILL_WARD;
+      if (WAR_DRILL_LEVEL === 'stream') return item.centreId === WAR_DRILL_CENTRE;
+      return true;
+  });
+
+  if (filtered.length === 0) {
+      grid.innerHTML = '<div class="empty" style="grid-column:1/-1;"><div class="empty-title">No Data</div></div>';
+      return;
+  }
+
+  var html = '';
+  
+  // HELPER FUNCTION: Builds the stat blocks inside the card
+  function buildStats(badCount, missCount, silentCount, cleanCount, color, icon) {
+      var statsHtml = '<div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 12px;">';
+      
+      if (badCount > 0) statsHtml += `<div style="background: rgba(196, 69, 58, 0.1); border-radius: 8px; padding: 8px 4px; text-align: center;"><div style="font-size: 20px; font-weight: 900; color: #C4453A; line-height: 1;">${badCount}</div><div style="font-size: 9px; font-weight: 800; color: #C4453A; text-transform: uppercase; margin-top: 2px;">Anomaly</div></div>`;
+      
+      if (missCount > 0) statsHtml += `<div style="background: rgba(184, 134, 11, 0.1); border-radius: 8px; padding: 8px 4px; text-align: center;"><div style="font-size: 20px; font-weight: 900; color: #b8860b; line-height: 1;">${missCount}</div><div style="font-size: 9px; font-weight: 800; color: #b8860b; text-transform: uppercase; margin-top: 2px;">No Form</div></div>`;
+      
+      if (silentCount > 0) statsHtml += `<div style="background: rgba(107, 124, 147, 0.1); border-radius: 8px; padding: 8px 4px; text-align: center;"><div style="font-size: 20px; font-weight: 900; color: #6B7C93; line-height: 1;">${silentCount}</div><div style="font-size: 9px; font-weight: 800; color: #6B7C93; text-transform: uppercase; margin-top: 2px;">Silent</div></div>`;
+      
+      if (cleanCount > 0) statsHtml += `<div style="background: rgba(74, 124, 58, 0.1); border-radius: 8px; padding: 8px 4px; text-align: center;"><div style="font-size: 20px; font-weight: 900; color: #4A7C3A; line-height: 1;">${cleanCount}</div><div style="font-size: 9px; font-weight: 800; color: #4A7C3A; text-transform: uppercase; margin-top: 2px;">Clean</div></div>`;
+      
+      statsHtml += '</div>';
+      
+      // If all are 0 (shouldn't happen but just in case), show all clean
+      if (badCount === 0 && missCount === 0 && silentCount === 0 && cleanCount === 0) {
+          statsHtml = '<div style="font-size:12px; color:#4A7C3A; margin-top:12px; text-align:center;">All streams perfect</div>';
+      }
+      
+      return statsHtml;
+  }
+
+  // LEVEL 1: CONSTITUENCIES
+  if (WAR_DRILL_LEVEL === 'constituency') {
+      var grouped = {};
+      filtered.forEach(f => { 
+          if (!grouped[f.constId]) {
+              var cName = OVERVIEW.consts.find(c=>c.id===f.constId)?.name || 'Constituency';
+              grouped[f.constId] = { name: cName, items: [] };
+          }
+          grouped[f.constId].items.push(f);
+      });
+
+      for (var id in grouped) {
+          var g = grouped[id];
+          var badCount = g.items.filter(i => i.status === 'anomaly').length;
+          var missCount = g.items.filter(i => i.status === 'no-form').length;
+          var silentCount = g.items.filter(i => i.status === 'silent').length;
+          var cleanCount = g.items.filter(i => i.status === 'clean').length;
+          
+          var color = badCount > 0 ? '#C4453A' : (missCount > 0 ? '#b8860b' : (silentCount > 0 ? '#6B7C93' : '#4A7C3A'));
+          var icon = badCount > 0 ? 'fa-triangle-exclamation' : (missCount > 0 ? 'fa-file-circle-xmark' : (silentCount > 0 ? 'fa-ghost' : 'fa-check-circle'));
+          
+          html += `<div class="card" onclick="drillWarRoom('ward', '${id}', '${esc(g.name)}')" style="border-left: 4px solid ${color}; padding: 16px;">
+            <div class="card-head" style="margin-bottom: 4px;">
+              <div><div class="card-name" style="font-size: 17px;">${esc(g.name)}</div><div class="card-sub">Constituency</div></div>
+              <div style="color:${color}; font-size:22px; background:${color}15; width:40px; height:40px; display:flex; align-items:center; justify-content:center; border-radius:50%;"><i class="fas ${icon}"></i></div>
+            </div>
+            ${buildStats(badCount, missCount, silentCount, cleanCount, color, icon)}
+          </div>`;
+      }
+  } 
+  
+  // LEVEL 2: WARDS
+  else if (WAR_DRILL_LEVEL === 'ward') {
+      var grouped = {};
+      filtered.forEach(f => { 
+          if (!grouped[f.wardId]) {
+              var wName = OVERVIEW.wards.find(w=>w.id===f.wardId)?.name || 'Ward';
+              grouped[f.wardId] = { name: wName, items: [] };
+          }
+          grouped[f.wardId].items.push(f);
+      });
+
+      for (var id in grouped) {
+          var g = grouped[id];
+          var badCount = g.items.filter(i => i.status === 'anomaly').length;
+          var missCount = g.items.filter(i => i.status === 'no-form').length;
+          var silentCount = g.items.filter(i => i.status === 'silent').length;
+          var cleanCount = g.items.filter(i => i.status === 'clean').length;
+          
+          var color = badCount > 0 ? '#C4453A' : (missCount > 0 ? '#b8860b' : (silentCount > 0 ? '#6B7C93' : '#4A7C3A'));
+          var icon = badCount > 0 ? 'fa-triangle-exclamation' : (missCount > 0 ? 'fa-file-circle-xmark' : (silentCount > 0 ? 'fa-ghost' : 'fa-check-circle'));
+          
+          html += `<div class="card" onclick="drillWarRoom('centre', '${id}', '${esc(g.name)}')" style="border-left: 4px solid ${color}; padding: 16px;">
+            <div class="card-head" style="margin-bottom: 4px;">
+              <div><div class="card-name" style="font-size: 17px;">${esc(g.name)}</div><div class="card-sub">Ward</div></div>
+              <div style="color:${color}; font-size:22px; background:${color}15; width:40px; height:40px; display:flex; align-items:center; justify-content:center; border-radius:50%;"><i class="fas ${icon}"></i></div>
+            </div>
+            ${buildStats(badCount, missCount, silentCount, cleanCount, color, icon)}
+          </div>`;
+      }
+  } 
+  
+  // LEVEL 3: CENTRES
+  else if (WAR_DRILL_LEVEL === 'centre') {
+      var grouped = {};
+      filtered.forEach(f => { 
+          if (!grouped[f.centreId]) {
+              var cenName = OVERVIEW.centres.find(c=>c.id===f.centreId)?.name || 'Centre';
+              grouped[f.centreId] = { name: cenName, items: [] };
+          }
+          grouped[f.centreId].items.push(f);
+      });
+
+      for (var id in grouped) {
+          var g = grouped[id];
+          var badCount = g.items.filter(i => i.status === 'anomaly').length;
+          var missCount = g.items.filter(i => i.status === 'no-form').length;
+          var silentCount = g.items.filter(i => i.status === 'silent').length;
+          var cleanCount = g.items.filter(i => i.status === 'clean').length;
+          
+          var color = badCount > 0 ? '#C4453A' : (missCount > 0 ? '#b8860b' : (silentCount > 0 ? '#6B7C93' : '#4A7C3A'));
+          var icon = badCount > 0 ? 'fa-triangle-exclamation' : (missCount > 0 ? 'fa-file-circle-xmark' : (silentCount > 0 ? 'fa-ghost' : 'fa-check-circle'));
+          
+          html += `<div class="card" onclick="drillWarRoom('stream', '${id}', '${esc(g.name)}')" style="border-left: 4px solid ${color}; padding: 16px;">
+            <div class="card-head" style="margin-bottom: 4px;">
+              <div><div class="card-name" style="font-size: 17px;">${esc(g.name)}</div><div class="card-sub">Polling Centre</div></div>
+              <div style="color:${color}; font-size:22px; background:${color}15; width:40px; height:40px; display:flex; align-items:center; justify-content:center; border-radius:50%;"><i class="fas ${icon}"></i></div>
+            </div>
+            ${buildStats(badCount, missCount, silentCount, cleanCount, color, icon)}
+          </div>`;
+      }
+  } 
+  
+  // LEVEL 4: STREAMS (Already looks good, just keeping it consistent)
+  else if (WAR_DRILL_LEVEL === 'stream') {
+      filtered.forEach(f => {
+          var color = f.status === 'anomaly' ? '#C4453A' : (f.status === 'no-form' ? '#b8860b' : (f.status === 'silent' ? '#6B7C93' : '#4A7C3A'));
+          var statusText = f.status === 'anomaly' ? 'MATH ANOMALY' : (f.status === 'no-form' ? 'MISSING FORM' : (f.status === 'silent' ? 'NOT REPORTED' : 'CLEAN'));
+          var icon = f.status === 'anomaly' ? 'fa-triangle-exclamation' : (f.status === 'no-form' ? 'fa-file-circle-xmark' : (f.status === 'silent' ? 'fa-ghost' : 'fa-check-circle'));
+          
+          html += `<div class="card" onclick="openWarRoomStream('${f.streamCode}')" style="border-left: 4px solid ${color}; padding: 16px;">
+            <div class="card-head" style="margin-bottom: 4px;">
+              <div><div class="card-name" style="font-size: 16px;">${esc(f.streamCode)}</div><div class="card-sub" style="color:${color}; font-weight:700;">${statusText}</div></div>
+              <div style="color:${color}; font-size:22px; background:${color}15; width:40px; height:40px; display:flex; align-items:center; justify-content:center; border-radius:50%;"><i class="fas ${icon}"></i></div>
+            </div>
+            ${f.status !== 'silent' ? `
+            <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:8px; margin-top:12px; background:rgba(0,0,0,0.03); padding:10px; border-radius:12px; text-align:center;">
+                <div><div style="font-size:10px; text-transform:uppercase; color:var(--slate); font-weight:700; margin-bottom:2px;">Cast</div><div style="font-size:18px; font-weight:900; color:var(--ink);">${f.cast}</div></div>
+                <div><div style="font-size:10px; text-transform:uppercase; color:var(--slate); font-weight:700; margin-bottom:2px;">Valid</div><div style="font-size:18px; font-weight:900; color:var(--green-dark);">${f.valid}</div></div>
+                <div><div style="font-size:10px; text-transform:uppercase; color:var(--slate); font-weight:700; margin-bottom:2px;">Reg</div><div style="font-size:18px; font-weight:900; color:var(--blue);">${f.registered}</div></div>
+            </div>` : '<div style="font-size:12px; color:#6B7C93; margin-top:12px; font-style:italic; text-align:center; padding:10px;">Agent has not submitted results yet.</div>'}
+          </div>`;
+      });
+  }
+
+  grid.innerHTML = html;
+}
+
+function drillWarRoom(level, id, name) {
+    if (level === 'ward') { 
+        WAR_DRILL_CONST = id; 
+        WAR_DRILL_LEVEL = 'ward'; 
+        WAR_DRILL_WARD = ''; 
+        WAR_DRILL_CENTRE = ''; 
+    }
+    if (level === 'centre') { 
+        WAR_DRILL_WARD = id; 
+        WAR_DRILL_LEVEL = 'centre'; 
+        WAR_DRILL_CENTRE = ''; 
+    }
+    if (level === 'stream') { 
+        WAR_DRILL_CENTRE = id; 
+        WAR_DRILL_LEVEL = 'stream'; 
+    }
+    renderWarRoom();
+}
+
+function resetWarRoom() {
+    WAR_DRILL_LEVEL = 'constituency';
+    WAR_DRILL_CONST = '';
+    WAR_DRILL_WARD = '';
+    WAR_DRILL_CENTRE = '';
+    renderWarRoom();
+}
+function openWarRoomStream(streamCode) {
+    var item = WAR_DATA.find(x => x.streamCode === streamCode);
+    if (!item) return;
+
+    var sheet = document.getElementById('sheetContent');
+    var bg = document.getElementById('sheetBg');
+    
+    var content = '';
+    
+    if (item.status === 'silent') {
+        content = `<div style="padding: 20px; text-align: center; color: var(--slate);">
+            <i class="fas fa-ghost" style="font-size: 40px; color: #6B7C93; margin-bottom: 10px;"></i>
+            <h3>No results submitted yet</h3>
+            <p>This stream has not reported. You can monitor this in the Live Tracker.</p>
+        </div>`;
+    } else {
+        var isAnomaly = item.status === 'anomaly';
+        var missingForm = item.status === 'no-form' || !item.hasForm;
+        
+        content = `
+        <div class="pip-result-info">
+            <div class="row"><i class="fas fa-users user"></i> Registered Voters: <strong>${item.registered}</strong></div>
+            <div class="row"><i class="fas fa-vote-yea clock"></i> Total Cast: <strong>${item.cast}</strong></div>
+            <div class="row"><i class="fas fa-ban lock"></i> Rejected: <strong>${item.rejected}</strong></div>
+            <div class="row" style="border-top:1px dashed #ccc; padding-top:8px; margin-top:8px;">
+                <i class="fas fa-check-circle user"></i> Valid Votes: <strong>${item.valid}</strong>
+            </div>
+        </div>
+        
+        ${isAnomaly ? `<div class="tracker-alert"><i class="fas fa-triangle-exclamation"></i><div><strong>Math Anomaly Detected!</strong><br>Candidate votes do not match valid votes, or cast > registered.</div></div>` : ''}
+        
+        ${missingForm ? `<div style="margin-top: 16px; padding: 12px; background: rgba(184, 134, 11, 0.08); border: 1px solid rgba(184, 134, 11, 0.2); border-radius: 12px; text-align: center; color: #b8860b; font-size: 12.5px; font-weight: 600;">
+            <i class="fas fa-exclamation-triangle"></i> Statutory form not uploaded yet.
+        </div>` : `<div style="margin-top: 16px; text-align: center; color: var(--success); font-weight: 700; font-size: 13px;"><i class="fas fa-check-circle"></i> Form 34A Verified</div>`}
+        `;
+    }
+
+    sheet.innerHTML = `<div class="sheet-head"><div><div class="sheet-title">${esc(streamCode)}</div><div class="sheet-sub">Stream Details</div></div><button class="sheet-close" onclick="closeSheet()"><i class="fas fa-xmark"></i></button></div>${content}`;
+    bg.classList.add('active');
+  }
+  // START
+init();
+</script>
+</body>
+</html>

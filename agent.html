@@ -1,0 +1,1881 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#FDFAF6">
+  <title>Agent — TallyHub</title>
+  
+  <!-- Font Awesome & Supabase -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  
+
+  <style>
+    /* ================================================================
+       YOUR EXACT CSS IS PASTED HERE (I have kept all of it, untouched)
+       ================================================================ */
+    .th-modal-bg { position: fixed; inset: 0; background: rgba(27, 33, 26, 0.5); display: none; align-items: center; justify-content: center; z-index: 10000; padding: 20px; opacity: 0; transition: opacity 0.18s ease; }
+    .th-modal-bg.active { display: flex; opacity: 1; }
+    .th-modal { background: var(--surface, #fff); border-radius: 20px; padding: 26px 24px 22px; width: 100%; max-width: 380px; box-shadow: 0 24px 72px rgba(27, 33, 26, 0.25); transform: scale(0.94) translateY(8px); transition: transform 0.22s cubic-bezier(0.34, 1.4, 0.64, 1); font-family: 'Segoe UI', system-ui, sans-serif; }
+    .th-modal-bg.active .th-modal { transform: scale(1) translateY(0); }
+    .th-modal-icon { width: 56px; height: 56px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 22px; margin: 0 auto 16px; }
+    .th-modal-icon.warn   { background: var(--warning-soft, rgba(184,134,11,0.12)); color: var(--warning, #b8860b); }
+    .th-modal-icon.danger { background: var(--danger-soft, rgba(196,69,58,0.08));   color: var(--danger, #c4453a); }
+    .th-modal-icon.info   { background: var(--primary-soft, rgba(165,207,131,0.15)); color: var(--primary-dark, #8bb869); }
+    .th-modal-title { font-size: 17px; font-weight: 700; text-align: center; margin-bottom: 6px; color: var(--text, #1B211A); letter-spacing: -0.2px; }
+    .th-modal-msg { font-size: 13.5px; color: var(--text-muted, #6b7a6a); text-align: center; line-height: 1.55; }
+    .th-modal-msg strong { color: var(--text, #1B211A); font-weight: 600; }
+    .th-modal-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 22px; }
+    .th-modal-actions.single { grid-template-columns: 1fr; }
+    .th-btn { padding: 12px 16px; border: none; border-radius: 11px; font-size: 14px; font-weight: 700; font-family: inherit; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: background-color 0.15s, color 0.15s, transform 0.1s; }
+    .th-btn:active { transform: scale(0.98); }
+    .th-btn-ghost { background: var(--bg, #FDFAF6); color: var(--text, #1B211A); border: 1.5px solid var(--border-strong, rgba(27,33,26,0.14)); }
+    .th-btn-ghost:hover { background: var(--primary-tint, rgba(165,207,131,0.07)); }
+    .th-btn-primary { background: var(--text, #1B211A); color: var(--bg, #FDFAF6); }
+    .th-btn-primary:hover { background: var(--primary-dark, #8bb869); color: var(--text, #1B211A); }
+    .th-btn-danger { background: var(--danger, #c4453a); color: #fff; }
+    .th-btn-danger:hover { background: #a93a30; }
+    .btn.is-loading, .btn-toggle.is-loading { opacity: 0.75; cursor: wait !important; pointer-events: none; }
+
+    :root { --primary: #A5CF83; --primary-dark: #8bb869; --primary-soft: rgba(165, 207, 131, 0.15); --primary-tint: rgba(165, 207, 131, 0.07); --text: #1B211A; --text-muted: #6b7a6a; --text-faint: #9ca89b; --bg: #FDFAF6; --surface: #ffffff; --border: rgba(27, 33, 26, 0.08); --border-strong: rgba(27, 33, 26, 0.14); --danger: #c4453a; --danger-soft: rgba(196, 69, 58, 0.08); --warning: #b8860b; --warning-soft: rgba(184, 134, 11, 0.12); --success: #4a7c3a; --shadow-sm: 0 1px 3px rgba(27, 33, 26, 0.06); --shadow-md: 0 8px 24px rgba(27, 33, 26, 0.10); --shadow-lg: 0 20px 48px rgba(27, 33, 26, 0.16); --radius: 14px; --radius-lg: 20px; --topbar-h: 60px; }
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { overscroll-behavior-y: contain; }
+    body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); min-height: 100dvh; -webkit-font-smoothing: antialiased; font-size: 15px; }
+
+    .topbar { background: linear-gradient(135deg, #A5CF83 0%, #8FBF6C 100%); color: #1A1A19; border-bottom: none; box-shadow: 0 2px 12px rgba(165, 207, 131, 0.35); padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 60px; position: sticky; top: 0; z-index: 100; }
+    .topbar-brand { display: flex; align-items: center; gap: 10px; min-width: 0; flex-shrink: 0; }
+    .topbar-mark { width: 38px; height: 38px; border-radius: 11px; background: #1A1A19; color: #A5CF83; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; box-shadow: 0 3px 10px rgba(26, 26, 25, 0.18); }
+    .brand-text { min-width: 0; }
+    .brand-name { font-size: 15px; font-weight: 800; color: #1A1A19; letter-spacing: -0.3px; line-height: 1.15; }
+    .brand-sub { font-size: 11px; color: rgba(26, 26, 25, 0.65); font-weight: 600; margin-top: 1px; }
+    .topbar-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; min-width: 0; }
+    .agent-chip { display: flex; align-items: center; gap: 8px; padding: 5px 12px 5px 5px; background: rgba(26, 26, 25, 0.12); border-radius: 22px; max-width: 220px; min-width: 0; }
+    .agent-chip-initial { width: 28px; height: 28px; border-radius: 50%; background: #1A1A19; color: #A5CF83; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; flex-shrink: 0; }
+    .agent-chip-info { min-width: 0; }
+    .agent-chip-name { font-size: 12.5px; font-weight: 800; color: #1A1A19; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .agent-chip-id { font-size: 10.5px; color: rgba(26, 26, 25, 0.60); font-weight: 700; letter-spacing: 0.3px; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .topbar-refresh { background: rgba(26, 26, 25, 0.10); border: none; width: 38px; height: 38px; border-radius: 11px; color: #1A1A19; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 14px; transition: background-color 0.15s, transform 0.12s; flex-shrink: 0; }
+    .topbar-refresh:hover { background: rgba(26, 26, 25, 0.20); }
+    .topbar-refresh:active { transform: scale(0.94); }
+    .topbar-refresh .spin { animation: spin 0.9s linear infinite; display: inline-block; }
+    .topbar-logout { background: rgba(26, 26, 25, 0.08); border: 1px solid rgba(26, 26, 25, 0.25); color: #1A1A19; padding: 8px 14px; border-radius: 11px; font-size: 12.5px; font-weight: 700; font-family: inherit; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: background-color 0.15s, border-color 0.15s, color 0.15s; flex-shrink: 0; }
+    .topbar-logout:hover { background: rgba(196, 69, 58, 0.15); border-color: #C4453A; color: #B23A32; }
+    .topbar-logout span { display: none; }
+    @media (min-width: 480px) { .topbar-logout span { display: inline; } }
+
+    .closed-banner { display: none; padding: 10px 14px; background: var(--danger-soft); border-bottom: 1px solid rgba(196, 69, 58, 0.15); color: var(--danger); font-size: 12.5px; font-weight: 600; align-items: center; gap: 8px; position: sticky; top: var(--topbar-h); z-index: 90; }
+    .closed-banner.active { display: flex; }
+    .closed-banner i { font-size: 14px; }
+
+    .screen { display: none; padding-bottom: 32px; }
+    .screen.active { display: block; }
+
+    .picker-header { padding: 22px 20px 12px; max-width: 1400px; margin: 0 auto; width: 100%; }
+    .picker-greeting { font-size: 12px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #7EAE5C; margin-bottom: 6px; }
+    .picker-name { font-size: clamp(24px, 4.5vw, 34px); font-weight: 800; color: #0F172A; letter-spacing: -0.7px; line-height: 1.1; margin-bottom: 6px; }
+    .picker-sub { font-size: 13.5px; color: #6B7C93; font-weight: 500; }
+    .stream-list { padding: 8px 12px 20px; max-width: 1400px; margin: 0 auto; }
+    .stream-card { background: #FFFFFF; border: 1px solid rgba(21, 145, 220, 0.10); box-shadow: 0 2px 10px rgba(21, 145, 220, 0.06); transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease; border-radius: var(--radius); padding: 14px 16px; margin-bottom: 10px; cursor: pointer; position: relative; overflow: hidden; }
+    .stream-card:hover { border-color: rgba(21, 145, 220, 0.35); box-shadow: 0 8px 24px -8px rgba(21, 145, 220, 0.25); transform: translateY(-2px); }
+    .stream-card:active { border-color: #1591DC; transform: scale(0.985); }
+    .stream-card::before { content: ''; position: absolute; top: 0; left: 0; width: 4px; height: 100%; background: #1591DC; }
+    .stream-card.status-complete::before { background: #7EAE5C; }
+    .stream-card.status-partial::before  { background: #1591DC; }
+    .stream-card.status-pending::before  { background: #9CA3AF; }
+    .stream-card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 8px; }
+    .stream-card-name { font-size: 15px; font-weight: 700; color: #0F172A; line-height: 1.25; flex: 1; min-width: 0; }
+    .stream-card-centre { font-size: 12px; color: #6B7C93; margin-top: 2px; font-weight: 500; }
+    .stream-card-badge { font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 20px; background: rgba(21, 145, 220, 0.10); color: #1591DC; white-space: nowrap; flex-shrink: 0; }
+    .stream-card.status-complete .stream-card-badge { background: rgba(165, 207, 131, 0.20); color: #4A7C3A; }
+    .stream-card.status-partial .stream-card-badge { background: rgba(21, 145, 220, 0.10); color: #1591DC; }
+    .progress-track { height: 8px; background: rgba(21, 145, 220, 0.10); border-radius: 20px; overflow: hidden; margin-bottom: 8px; }
+    .progress-fill { height: 100%; background: linear-gradient(90deg, #A5CF83 0%, #7EAE5C 100%); box-shadow: 0 0 8px rgba(165, 207, 131, 0.35); border-radius: 20px; transition: width 0.4s ease; }
+    .stream-card.status-partial .progress-fill { background: linear-gradient(90deg, #A5CF83 0%, #7EAE5C 100%); }
+    .stream-card.status-complete .progress-fill { background: linear-gradient(90deg, #7EAE5C 0%, #4A7C3A 100%); }
+    .stream-card-meta { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #6B7C93; font-weight: 500; }
+    .stream-card-meta .arrow { color: #1591DC; font-size: 13px; }
+
+    .sub-header { background: #FFFFFF; border-bottom: 1px solid rgba(21, 145, 220, 0.10); padding: 12px 14px; display: flex; align-items: center; gap: 12px; position: sticky; top: var(--topbar-h); z-index: 90; }
+    .back-btn { background: rgba(21, 145, 220, 0.08); border: 1px solid rgba(21, 145, 220, 0.15); color: #1591DC; width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; font-size: 15px; transition: background-color 0.15s, border-color 0.15s; }
+    .back-btn:active { background: rgba(21, 145, 220, 0.20); border-color: #1591DC; }
+    .sub-header-title { font-size: 15px; font-weight: 800; color: #0F172A; line-height: 1.2; min-width: 0; flex: 1; }
+    .sub-header-sub { font-size: 11.5px; color: #6B7C93; margin-top: 2px; font-weight: 500; }
+
+    .position-list { padding: 12px 12px 20px; max-width: 1400px; margin: 0 auto; }
+    .position-card { background: #FFFFFF; border: 1px solid rgba(21, 145, 220, 0.10); box-shadow: 0 2px 8px rgba(21, 145, 220, 0.05); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 10px; display: flex; align-items: center; gap: 14px; cursor: pointer; transition: transform 0.15s, border-color 0.15s; }
+    .position-card:active { transform: scale(0.985); border-color: #1591DC; background: rgba(21, 145, 220, 0.03); }
+    .position-card.submitted { cursor: pointer; border-left: 3px solid #7EAE5C; }
+    .position-card.pending { border-left: 3px solid #1591DC; }
+    .position-card.locked { border-left: 3px solid #CBD5E1; opacity: 0.55; cursor: not-allowed; }
+    .position-icon { width: 44px; height: 44px; border-radius: 12px; background: rgba(21, 145, 220, 0.10); color: #1591DC; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+    .position-card.pending .position-icon { background: rgba(21, 145, 220, 0.10); color: #1591DC; }
+    .position-card.submitted .position-icon { background: rgba(165, 207, 131, 0.18); color: #4A7C3A; }
+    .position-info { flex: 1; min-width: 0; }
+    .position-name { font-size: 15px; font-weight: 800; color: #0F172A; line-height: 1.2; }
+    .position-meta { font-size: 12px; color: #6B7C93; margin-top: 4px; display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+    .position-meta .by { color: #1591DC; font-weight: 700; }
+    .position-meta i { font-size: 11px; }
+    .position-chevron { color: var(--text-faint); font-size: 14px; flex-shrink: 0; }
+
+    .entry-form { padding: 14px 14px 240px; max-width: 800px; margin: 0 auto; }
+    .entry-hint { padding: 10px 14px; background: rgba(21, 145, 220, 0.06); color: #435663; border-left: 3px solid #1591DC; border-radius: 10px; font-size: 12.5px; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; line-height: 1.4; }
+    .entry-hint i { color: #1591DC; font-size: 14px; flex-shrink: 0; }
+    .candidate-entry { background: #FFFFFF; border: 1.5px solid rgba(21, 145, 220, 0.10); border-radius: var(--radius); padding: 12px 14px; margin-bottom: 8px; display: flex; align-items: center; gap: 12px; }
+    .candidate-entry.has-vote { border-color: #1591DC; background: linear-gradient(to right, rgba(21, 145, 220, 0.05) 0%, #FFFFFF 40%); box-shadow: 0 2px 8px rgba(21, 145, 220, 0.08); }
+    .candidate-entry.missing { border-color: rgba(184, 134, 11, 0.35); background: linear-gradient(to right, rgba(184, 134, 11, 0.05) 0%, var(--surface) 40%); }
+    .candidate-entry.missing .vote-input { border-color: rgba(184, 134, 11, 0.4); background: rgba(184, 134, 11, 0.04); }
+    .candidate-entry-info { flex: 1; min-width: 0; }
+    .candidate-entry-name { font-size: 14.5px; font-weight: 700; color: #0F172A; line-height: 1.2; word-wrap: break-word; }
+    .candidate-entry-party { font-size: 11.5px; color: #6B7C93; margin-top: 3px; font-weight: 500; }
+    .vote-input { width: 96px; padding: 12px 10px; border: 2px solid var(--border-strong); border-radius: 12px; font-size: 17px; font-weight: 700; font-family: 'SF Mono', Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; background: var(--bg); color: var(--text); text-align: right; transition: border-color 0.15s, background-color 0.15s, box-shadow 0.15s; -moz-appearance: textfield; }
+    .vote-input:focus { outline: none; border-color: #1591DC; background: var(--surface); box-shadow: 0 0 0 4px rgba(21, 145, 220, 0.15); }
+    .vote-input::-webkit-outer-spin-button, .vote-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    .candidate-entry.has-vote .vote-input { border-color: #1591DC; background: #FFFFFF; }
+
+    .entry-footer { position: fixed; left: 0; right: 0; bottom: 0; background: #FFFFFF; border-top: 1px solid rgba(21, 145, 220, 0.10); padding: 12px 14px calc(12px + env(safe-area-inset-bottom, 0px)); z-index: 200; box-shadow: 0 -6px 24px rgba(21, 145, 220, 0.06); }
+    @media (max-width: 640px) { .entry-footer { padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px)); } }
+    .entry-total { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px dashed var(--border); }
+    .entry-total-label { font-size: 12px; font-weight: 600; color: #6B7C93; text-transform: uppercase; letter-spacing: 0.5px; }
+    .entry-total-value { font-size: 20px; font-weight: 800; color: #0F172A; font-variant-numeric: tabular-nums; letter-spacing: -0.3px; }
+    .entry-total-value.warn { color: var(--danger); }
+    .entry-total-value.error { color: var(--danger); font-weight: 800; }
+    .entry-warn { display: none; align-items: flex-start; gap: 8px; padding: 10px 12px; border-radius: 10px; font-size: 12.5px; font-weight: 600; line-height: 1.4; margin-bottom: 10px; }
+    .entry-warn.warn { background: rgba(184, 134, 11, 0.12); border: 1px solid rgba(184, 134, 11, 0.25); color: #8a6508; }
+    .entry-warn.error { background: rgba(196, 69, 58, 0.08); border: 1px solid rgba(196, 69, 58, 0.2); color: #a93a30; }
+    .entry-warn i { font-size: 14px; flex-shrink: 0; margin-top: 1px; }
+    .submit-hint { font-size: 11.5px; text-align: center; margin-top: 6px; color: var(--text-muted, #6b7a6a); font-weight: 500; }
+
+    .entry-buttons { display: grid; grid-template-columns: 1fr 1.6fr; gap: 8px; }
+    .btn { padding: 14px 16px; border-radius: 12px; border: none; font-size: 14.5px; font-weight: 700; font-family: inherit; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: background-color 0.15s, color 0.15s, border-color 0.15s; touch-action: manipulation; }
+    .btn:active { transform: scale(0.98); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-ghost { background: #FFFFFF; color: #1591DC; border: 1.5px solid rgba(21, 145, 220, 0.25); }
+    .btn-ghost:active { background: rgba(21, 145, 220, 0.08); border-color: #1591DC; }
+    .btn-primary { background: linear-gradient(135deg, #1591DC 0%, #0F7BC0 100%); color: #FFFFFF; box-shadow: 0 4px 14px rgba(21, 145, 220, 0.30); }
+    .btn-primary:active { background: #0F7BC0; box-shadow: 0 2px 6px rgba(21, 145, 220, 0.35); }
+    .btn-primary:disabled { background: #CBD5E1; box-shadow: none; opacity: 1; }
+
+    .modal-bg { position: fixed; inset: 0; background: rgba(27, 33, 26, 0.55); display: none; align-items: center; justify-content: center; z-index: 1000; padding: 20px; }
+    .modal-bg.active { display: flex; }
+    .modal { background: var(--surface); border-radius: var(--radius-lg); padding: 24px 22px; width: 100%; max-width: 380px; box-shadow: var(--shadow-lg); }
+    .modal-icon { width: 52px; height: 52px; border-radius: 50%; background: rgba(21, 145, 220, 0.12); color: #1591DC; display: flex; align-items: center; justify-content: center; font-size: 22px; margin: 0 auto 14px; }
+    .modal-icon.danger { background: var(--danger-soft); color: var(--danger); }
+    .modal-title { font-size: 17px; font-weight: 700; text-align: center; color: var(--text); letter-spacing: -0.2px; line-height: 1.3; }
+    .modal-body { font-size: 13px; color: var(--text-muted); text-align: center; line-height: 1.5; margin-top: 8px; }
+    .modal-body strong { color: var(--text); font-weight: 600; }
+    .modal-body .warn-line { margin-top: 10px; padding: 8px 12px; background: var(--danger-soft); border-radius: 8px; color: var(--danger); font-weight: 600; font-size: 12px; }
+    .modal-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 20px; }
+    .modal-actions .btn { padding: 12px; font-size: 14px; }
+
+    .toasts { position: fixed; top: calc(var(--topbar-h) + 12px); left: 12px; right: 12px; z-index: 5000; display: flex; flex-direction: column; gap: 8px; pointer-events: none; align-items: center; }
+    .toast { padding: 11px 16px; background: var(--text); color: var(--bg); border-radius: 12px; font-size: 13.5px; font-weight: 600; box-shadow: var(--shadow-md); display: flex; align-items: center; gap: 9px; pointer-events: auto; max-width: 100%; animation: toastIn 0.22s ease; }
+    .toast i { font-size: 14px; flex-shrink: 0; }
+    .toast.success i { color: var(--primary); }
+    .toast.error i { color: #ff8b7e; }
+    .toast.info i { color: var(--primary); }
+    @keyframes toastIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+
+    .loading { text-align: center; padding: 40px 20px; color: var(--text-muted); font-size: 13.5px; }
+    .loading i { font-size: 22px; color: #1591DC; animation: spin 0.9s linear infinite; display: block; margin-bottom: 10px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .empty-state { text-align: center; padding: 48px 24px; }
+    .empty-state .icon-wrap { width: 64px; height: 64px; border-radius: 50%; background: rgba(21, 145, 220, 0.10); color: #1591DC; display: flex; align-items: center; justify-content: center; font-size: 26px; margin: 0 auto 16px; }
+    .empty-state .title { font-size: 16px; font-weight: 700; color: #0F172A; margin-bottom: 6px; }
+    .empty-state .sub { font-size: 13px; color: #6B7C93; line-height: 1.5; max-width: 320px; margin: 0 auto; }
+
+    body { background: #ECFAE5; background-image: radial-gradient(circle at 100% 0%, rgba(165, 207, 131, 0.20) 0%, transparent 55%), radial-gradient(circle at 0% 100%, rgba(165, 207, 131, 0.14) 0%, transparent 55%); background-attachment: fixed; }
+    
+    /* Read-only view CSS */
+    .readonly-body { padding: 14px 14px 20px; max-width: 800px; margin: 0 auto; }
+    .readonly-info { background: rgba(21, 145, 220, 0.06); border-left: 3px solid #1591DC; border-radius: 12px; padding: 12px 14px; margin-bottom: 14px; display: flex; flex-direction: column; gap: 6px; }
+    .readonly-info-row { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: #6B7C93; }
+    .readonly-info-row i { color: #1591DC; font-size: 12px; width: 14px; text-align: center; flex-shrink: 0; }
+    .readonly-info-row strong { color: #0F172A; font-weight: 600; }
+    .readonly-row { 
+  background: #FFFFFF; 
+  border: 1.5px solid rgba(21, 145, 220, 0.10); 
+  border-radius: var(--radius); 
+  padding: 12px 14px; 
+  margin-bottom: 8px; 
+  display: flex; 
+  align-items: center; 
+  gap: 12px; 
+  justify-content: space-between; /* This pushes the votes to the right */
+}
+
+.readonly-name { 
+  flex: 1; /* Takes up available space */
+  min-width: 0; /* Prevents text overflow from breaking layout */
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.readonly-name .n { 
+  font-size: 14.5px; 
+  font-weight: 800; 
+  color: #0F172A; 
+  line-height: 1.2; 
+  /* Allow 2 lines for long names so it doesn't squash the number */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.readonly-name .p { 
+  font-size: 11.5px; 
+  color: #6B7C93; 
+  margin-top: 2px; 
+}
+
+.readonly-votes { 
+  font-size: 20px; /* Made slightly bigger to stand out */
+  font-weight: 900; 
+  color: #0F172A; 
+  font-variant-numeric: tabular-nums; 
+  flex-shrink: 0; 
+  text-align: right;
+  padding-left: 10px; /* Gives space between the name and the number */
+  }
+    
+    .readonly-row.leader { border-color: #7EAE5C; background: linear-gradient(to right, rgba(165, 207, 131, 0.10) 0%, #FFFFFF 40%); }
+    .readonly-rank { width: 30px; height: 30px; border-radius: 50%; background: #F4F8FC; border: 1px solid rgba(21, 145, 220, 0.15); color: #6B7C93; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; flex-shrink: 0; }
+    .readonly-row.leader .readonly-rank { background: #A5CF83; border-color: #7EAE5C; color: #1A1A19; }
+    .readonly-name { flex: 1; min-width: 0; }
+    .readonly-name .n { font-size: 14.5px; font-weight: 800; color: #0F172A; line-height: 1.2; }
+    .readonly-name .p { font-size: 11.5px; color: #6B7C93; margin-top: 2px; }
+    .readonly-votes { font-size: 16px; font-weight: 800; color: #0F172A; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+    .readonly-row.leader .readonly-votes { color: #4A7C3A; }
+    
+    /* Avatars */
+    .avatar-wrap { position: relative; width: 44px; height: 44px; border-radius: 50%; flex-shrink: 0; background: linear-gradient(135deg, rgba(165, 207, 131, 0.35) 0%, rgba(126, 174, 92, 0.25) 100%); display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 800; color: #4A7C3A; border: 2px solid rgba(255, 255, 255, 0.7); box-shadow: 0 2px 8px rgba(26, 26, 25, 0.08); }
+    .avatar-wrap img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; }
+    .avatar-wrap.small { width: 36px; height: 36px; font-size: 14px; }
+    .avatar-rank { position: absolute; bottom: -3px; right: -3px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 20px; background: #1A1A19; color: #F0F0F0; font-size: 10px; font-weight: 800; display: flex; align-items: center; justify-content: center; border: 2px solid #FFFFFF; font-variant-numeric: tabular-nums; letter-spacing: -0.3px; }
+    .readonly-row.leader .avatar-rank { background: #7EAE5C; color: #FFFFFF; }
+    
+    @media (max-width: 640px) {
+      .topbar { padding: 8px 12px; gap: 8px; } .topbar-mark { width: 34px; height: 34px; font-size: 15px; } .brand-name { font-size: 14px; } .brand-sub { font-size: 10.5px; } .agent-chip { padding: 4px 6px; gap: 6px; } .agent-chip-info { display: none; } .agent-chip-initial { width: 30px; height: 30px; font-size: 13px; } .topbar-logout { padding: 8px 10px; } .picker-header { padding: 18px 16px 10px; } .picker-name { font-size: 26px; } .picker-sub { font-size: 13px; }
+      .avatar-wrap { width: 38px; height: 38px; font-size: 14px; } .avatar-wrap .avatar-rank { min-width: 16px; height: 16px; font-size: 9px; }
+    }
+        /* ================================================================
+       AGENT ENTRY AVATARS (The missing piece!)
+    ================================================================ */
+    .candidate-entry .entry-avatar {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      overflow: hidden;
+      flex-shrink: 0;
+      background: linear-gradient(135deg, rgba(165, 207, 131, 0.35) 0%, rgba(126, 174, 92, 0.25) 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      font-weight: 800;
+      color: #4A7C3A;
+      border: 1.5px solid rgba(255, 255, 255, 0.7);
+    }
+    .candidate-entry .entry-avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    
+    @media (max-width: 640px) {
+      .candidate-entry .entry-avatar { 
+        width: 34px; 
+        height: 34px; 
+        font-size: 13px; 
+      }
+    }
+    /* ================================================================
+   PREMIUM UI UPGRADE - FROSTED GLASS (ULTIMATE OVERRIDE)
+================================================================ */
+
+/* 1. The Canvas - A soft, cool grey/blue to make white pop */
+body { 
+  background: #E2E8F0 !important; 
+  background-image: 
+    radial-gradient(circle at 100% 0%, rgba(165, 207, 131, 0.4) 0%, transparent 50%),
+    radial-gradient(circle at 0% 100%, rgba(21, 145, 220, 0.2) 0%, transparent 50%) !important;
+  background-attachment: fixed !important;
+}
+
+/* 2. Frosted Glass Cards - Streams, Positions, Candidates */
+.stream-card, 
+.position-card, 
+.candidate-entry {
+  background: rgba(255, 255, 255, 0.55) !important;
+  backdrop-filter: blur(20px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.9) !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05) !important;
+  border-radius: 22px !important;
+  transition: all 0.2s ease !important;
+}
+
+/* 3. Make the cards lift up nicely when tapped */
+.stream-card:active, 
+.position-card:active {
+  background: rgba(255, 255, 255, 0.9) !important;
+  transform: scale(0.97) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08) !important;
+}
+
+/* 4. Sticky Headers & Footers */
+.sub-header, 
+.entry-footer {
+  background: rgba(226, 232, 240, 0.85) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  border-color: rgba(0, 0, 0, 0.05) !important;
+}
+
+/* 5. Entry Form Fine-Tuning */
+.candidate-entry {
+  margin-bottom: 12px !important;
+  padding: 14px 16px !important;
+}
+.candidate-entry.has-vote {
+  background: rgba(255, 255, 255, 0.95) !important;
+  border-color: #1591DC !important;
+  box-shadow: 0 8px 24px rgba(21, 145, 220, 0.15) !important;
+}
+.candidate-entry.missing {
+  background: rgba(255, 255, 255, 0.4) !important;
+  border-color: rgba(184, 134, 11, 0.4) !important;
+}
+
+/* 6. Make the total votes bar look clean */
+.entry-total {
+  border-bottom: 1px dashed rgba(0, 0, 0, 0.15) !important;
+      }
+        /* ================================================================
+       PREMIUM LOADING OVERLAY & SUCCESS ANIMATION
+    ================================================================ */
+    .app-loading-overlay {
+      position: fixed; inset: 0; z-index: 9999;
+      background: rgba(244, 247, 246, 0.7);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      opacity: 0; pointer-events: none; transition: opacity 0.3s ease;
+    }
+    .app-loading-overlay.active { opacity: 1; pointer-events: auto; }
+    
+    .app-spinner {
+      width: 40px; height: 40px;
+      border: 3px solid rgba(21, 145, 220, 0.2);
+      border-top-color: #1591DC;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-bottom: 16px;
+    }
+    .app-loading-text { font-size: 14px; font-weight: 600; color: #0F172A; }
+
+    /* Success Modal */
+    .success-overlay {
+      position: fixed; inset: 0; z-index: 10000;
+      background: rgba(15, 23, 42, 0.4);
+      backdrop-filter: blur(8px);
+      display: flex; align-items: center; justify-content: center;
+      opacity: 0; pointer-events: none; transition: opacity 0.3s ease;
+    }
+    .success-overlay.active { opacity: 1; pointer-events: auto; }
+    
+    .success-card {
+      background: rgba(255, 255, 255, 0.95);
+      border: 1px solid rgba(255, 255, 255, 1);
+      box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+      border-radius: 24px; padding: 40px 32px; text-align: center;
+      transform: scale(0.9) translateY(20px); transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .success-overlay.active .success-card { transform: scale(1) translateY(0); }
+
+    .success-svg { width: 80px; height: 80px; margin-bottom: 20px; }
+    .success-circle {
+      stroke-dasharray: 166; stroke-dashoffset: 166;
+      stroke-width: 4; stroke-miterlimit: 10; stroke: #7EAE5C; fill: none;
+      animation: stroke 0.6s cubic-bezier(0.65, 0, 0.45, 1) forwards;
+    }
+    .success-check {
+      transform-origin: 50% 50%; stroke-dasharray: 48; stroke-dashoffset: 48;
+      stroke-width: 5; stroke-linecap: round; stroke: #7EAE5C; fill: none;
+      animation: stroke 0.3s cubic-bezier(0.65, 0, 0.45, 1) 0.6s forwards;
+    }
+    @keyframes stroke { 100% { stroke-dashoffset: 0; } }
+    
+    .success-title { font-size: 20px; font-weight: 800; color: #0F172A; margin-bottom: 6px; }
+    .success-sub { font-size: 14px; color: #6B7C93; font-weight: 500; }
+    /* --- FORM UPLOAD PREMIUM UI --- */
+.action-sheet-option {
+  display: flex; align-items: center; gap: 16px; width: 100%;
+  padding: 16px; border-radius: 16px; border: 1px solid var(--border);
+  background: var(--surface); font-size: 15px; font-weight: 700; color: var(--text);
+  font-family: inherit; cursor: pointer; transition: all 0.15s ease;
+  margin-bottom: 10px; text-align: left;
+}
+.action-sheet-option:hover { background: var(--primary-tint); border-color: var(--primary); }
+.action-sheet-option i { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 16px; }
+
+.action-sheet-option.camera i { background: var(--primary-soft); color: var(--primary-dark); }
+.action-sheet-option.gallery i { background: var(--blue-soft); color: var(--blue); }
+
+.form-pending-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: rgba(184, 134, 11, 0.12); color: #b8860b;
+  padding: 3px 8px; border-radius: 20px; font-size: 10px; font-weight: 800; text-transform: uppercase;
+  margin-top: 6px;
+}
+
+.form-attach-btn {
+  width: 100%; padding: 16px; border-radius: 14px; border: 2px dashed var(--border-strong);
+  background: var(--bg); color: var(--text-muted); font-size: 14px; font-weight: 700;
+  display: flex; flex-direction: column; align-items: center; gap: 6px; cursor: pointer;
+  margin-top: 16px; transition: all 0.2s;
+}
+.form-attach-btn:hover { border-color: var(--primary); background: var(--primary-tint); color: var(--primary-dark); }
+
+.form-thumbnail-wrap {
+  margin-top: 16px; border-radius: 12px; overflow: hidden; border: 1px solid var(--border);
+  position: relative; cursor: pointer;
+}
+.form-thumbnail-wrap img { width: 100%; height: 120px; object-fit: cover; display: block; }
+.form-thumbnail-overlay {
+  position: absolute; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center;
+  color: white; font-weight: 700; font-size: 13px; gap: 6px; backdrop-filter: blur(2px);
+}
+    @media (max-width: 900px), (pointer: coarse) {
+  body { background-attachment: scroll !important; }
+  .stream-card, .position-card, .candidate-entry,
+  .sub-header, .entry-footer,
+  .app-loading-overlay, .success-overlay {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+  .stream-card, .position-card, .candidate-entry { background: rgba(255,255,255,0.92) !important; }
+  .sub-header, .entry-footer { background: rgba(226,232,240,0.97) !important; }
+}
+    /* ================================================================
+   PSYCHOLOGICAL TRICK: LIVE PULSING RED DOT
+================================================================ */
+.live-dot-red {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  background-color: #FF3B30; /* Vivid Red */
+  border-radius: 50%;
+  margin-left: 6px;
+  vertical-align: middle;
+  position: relative;
+  box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.7);
+  animation: pulse-red 1.5s infinite;
+}
+
+@keyframes pulse-red {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.7);
+  }
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 6px rgba(255, 59, 48, 0);
+  }
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(255, 59, 48, 0);
+  }
+}
+    /* NEW TURNOUT DASHBOARD STYLES */
+.turnout-card {
+  background: #FFFFFF;
+  border-radius: 16px;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  border: 1px solid rgba(21, 145, 220, 0.15);
+  box-shadow: 0 4px 12px rgba(21, 145, 220, 0.05);
+}
+.turnout-header {
+  font-size: 11px;
+  font-weight: 800;
+  color: #1591DC;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.turnout-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+}
+.turnout-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.turnout-item label {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #6B7C93;
+  text-transform: uppercase;
+}
+.turnout-input {
+  width: 100%;
+  padding: 10px 8px;
+  border: 2px solid #E2E8F0;
+  border-radius: 10px;
+  font-size: 18px;
+  font-weight: 800;
+  text-align: center;
+  color: #0F172A;
+  background: #F8FAFC;
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+  transition: all 0.2s ease;
+}
+.turnout-input:focus {
+  outline: none;
+  border-color: #1591DC;
+  background: #FFFFFF;
+  box-shadow: 0 0 0 3px rgba(21, 145, 220, 0.15);
+}
+.turnout-input.error {
+  border-color: #C4453A;
+  color: #C4453A;
+  background: rgba(196, 69, 58, 0.05);
+}
+.valid-box {
+  background: rgba(165, 207, 131, 0.12);
+  border-radius: 10px;
+  padding: 6px 8px;
+  border: 1px solid rgba(126, 174, 92, 0.2);
+  justify-content: center;
+}
+.valid-box label { color: #4A7C3A !important; }
+.turnout-valid-num {
+  font-size: 20px;
+  font-weight: 900;
+  color: #4A7C3A;
+  text-align: center;
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+  line-height: 1.2;
+  }
+
+  
+  </style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="topbar-brand">
+    <div class="topbar-mark"><i class="fas fa-vote-yea"></i></div>
+    <div class="brand-text">
+      <div class="brand-name">TallyHub <span class="live-dot-red"></span></div>
+      <div class="brand-sub">Presiding Agent</div>
+    </div>
+  </div>
+  <div class="topbar-right">
+    <div class="agent-chip">
+      <span class="agent-chip-initial" id="agentInitial">J</span>
+      <div class="agent-chip-info">
+        <div class="agent-chip-name" id="agentName">Agent</div>
+        <div class="agent-chip-id" id="agentSub">AGT001</div>
+      </div>
+    </div>
+    <button class="topbar-refresh" onclick="manualRefresh()" title="Refresh">
+      <i class="fas fa-arrows-rotate" id="topRefreshIcon"></i>
+    </button>
+    <button class="topbar-logout" onclick="doLogout()">
+      <i class="fas fa-sign-out-alt"></i>
+      <span>Logout</span>
+    </button>
+  </div>
+</div>
+
+<div class="closed-banner" id="closedBanner">
+  <i class="fas fa-lock"></i>
+  <span>Submission is currently closed — you can view only.</span>
+</div>
+
+<!-- SCREEN 1 — STREAM PICKER -->
+<div class="screen active" id="screenStreams">
+ <div class="picker-header">
+  <div class="picker-greeting" id="pickerGreeting">Welcome</div>
+  <h1 class="picker-name" id="pickerName">Agent</h1>
+  <div class="picker-sub" id="pickerSub">Loading your streams…</div>
+</div>
+  <div class="stream-list" id="streamList">
+    <div class="loading"><i class="fas fa-spinner"></i>Loading your streams…</div>
+  </div>
+</div>
+
+<!-- SCREEN 2 — POSITION LIST -->
+<div class="screen" id="screenPositions">
+  <div class="sub-header">
+    <button class="back-btn" onclick="goToStreams()"><i class="fas fa-arrow-left"></i></button>
+    <div style="flex:1; min-width:0;">
+      <div class="sub-header-title" id="posStreamName">Stream</div>
+      <div class="sub-header-sub" id="posStreamCode">—</div>
+    </div>
+  </div>
+  <div class="position-list" id="positionList"></div>
+</div>
+
+<!-- SCREEN 3 — ENTRY FORM -->
+<div class="screen" id="screenEntry">
+  <div class="sub-header">
+    <button class="back-btn" onclick="goToPositions()"><i class="fas fa-arrow-left"></i></button>
+    <div style="flex:1; min-width:0;">
+      <div class="sub-header-title" id="entryTitle">Position</div>
+      <div class="sub-header-sub" id="entrySub">—</div>
+    </div>
+  </div>
+<div class="entry-form" id="entryForm">
+    
+    <!-- NEW: THE TURNOUT CARD -->
+    <div class="turnout-card">
+      <div class="turnout-header">
+        <span><i class="fas fa-users"></i> STREAM TURNOUT</span>
+        <span id="entryRegVoters" style="font-size:11px; background:rgba(21,145,220,0.1); padding:2px 8px; border-radius:10px;">Reg: 0</span>
+      </div>
+      <div class="turnout-grid">
+        <div class="turnout-item">
+          <label>Total Cast</label>
+          <input type="number" inputmode="numeric" id="entryTotalCast" class="turnout-input" placeholder="0" oninput="calculateTurnout()">
+        </div>
+        <div class="turnout-item">
+          <label>Rejected</label>
+          <input type="number" inputmode="numeric" id="entryRejected" class="turnout-input" placeholder="0" oninput="calculateTurnout()">
+        </div>
+        <div class="turnout-item valid-box">
+          <label>Valid Votes</label>
+          <div id="entryValidVotes" class="turnout-valid-num">0</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Keep the draft pill below the turnout -->
+    <div class="draft-pill" id="draftPill" style="display:none; margin-bottom: 12px;">
+      <i class="fas fa-history"></i> Draft restored
+    </div>
+    
+    <div id="candidateEntryList"></div>
+</div>
+  <div class="entry-footer">
+    <div class="entry-total">
+      <span class="entry-total-label">Total Votes</span>
+      <span class="entry-total-value" id="entryTotal">0</span>
+    </div>
+    <div class="entry-buttons">
+      <button class="btn btn-ghost" onclick="goToPositions()">Cancel</button>
+      <button class="btn btn-primary" id="submitBtn" onclick="confirmSubmit()">
+        <i class="fas fa-lock"></i> Submit &amp; Lock
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- SCREEN 4 — READ-ONLY VIEW -->
+<div class="screen" id="screenReadonly">
+  <div class="sub-header">
+    <button class="back-btn" onclick="goToPositions()"><i class="fas fa-arrow-left"></i></button>
+    <div style="flex:1; min-width:0;">
+      <div class="sub-header-title" id="roTitle">Submitted</div>
+      <div class="sub-header-sub" id="roSub">—</div>
+    </div>
+  </div>
+  <div class="readonly-body" id="readonlyBody">
+    <div class="loading"><i class="fas fa-spinner"></i>Loading…</div>
+  </div>
+</div>
+
+<!-- CONFIRM MODAL -->
+<div class="modal-bg" id="confirmModal">
+  <div class="modal">
+    <div class="modal-icon" id="confirmIcon"><i class="fas fa-lock"></i></div>
+    <div class="modal-title" id="confirmTitle">Lock this submission?</div>
+    <div class="modal-body" id="confirmBody"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeConfirm()">Cancel</button>
+      <button class="btn btn-primary" id="confirmBtn" onclick="submitNow()">
+        <i class="fas fa-check"></i> Confirm
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- TOASTS -->
+<div class="toasts" id="toasts"></div>
+  <!-- APP LOADING OVERLAY -->
+<div class="app-loading-overlay" id="appLoader">
+  <div class="app-spinner"></div>
+  <div class="app-loading-text" id="appLoaderText">Securely connecting...</div>
+</div>
+
+<!-- ANIMATED SUCCESS MODAL -->
+<div class="success-overlay" id="successOverlay">
+  <div class="success-card">
+    <svg class="success-svg" viewBox="0 0 100 100">
+      <circle class="success-circle" cx="50" cy="50" r="40" />
+      <path class="success-check" d="M30 50 L45 65 L70 35" />
+    </svg>
+    <div class="success-title" id="successTitle">Submission Locked!</div>
+    <div class="success-sub" id="successSub">Redirecting to the next position...</div>
+  </div>
+</div>
+<!-- UPLOAD OPTIONS MODAL (Action Sheet) -->
+<div class="modal-bg" id="uploadOptionsModal" style="z-index: 10005;">
+  <div class="modal">
+    <div class="modal-icon" style="background: var(--primary-soft); color: var(--primary-dark);">
+      <i class="fas fa-file-image"></i>
+    </div>
+    <div class="modal-title" id="uploadModalTitle">Attach Form</div>
+    <div class="modal-body" style="margin-bottom: 20px;">
+      Please provide a clear, portrait photo of the statutory form.
+    </div>
+    
+    <!-- Hidden Input (Gallery / Native Camera) -->
+    <input type="file" id="galleryInput" accept="image/*" style="display:none;" onchange="handleFormUpload(event)">
+
+    <button class="action-sheet-option gallery" onclick="document.getElementById('galleryInput').click()">
+      <i class="fas fa-images"></i> Choose from Gallery
+    </button>
+    <button class="btn" style="margin-top: 12px; width: 100%; background: rgba(196, 69, 58, 0.08) !important; color: var(--danger) !important; border: 1.5px solid rgba(196, 69, 58, 0.15) !important; border-radius: 16px; font-weight: 800; box-shadow: 0 6px 16px rgba(196, 69, 58, 0.08); transition: all 0.2s ease;" onclick="closeUploadModal()">
+      Cancel
+    </button>
+   
+  </div>
+</div>
+
+<!-- FORM PREVIEW & UPLOAD MODAL -->
+<div class="modal-bg" id="formPreviewModal" style="z-index: 10006;">
+  <div class="modal">
+    <div class="modal-title">Confirm Upload</div>
+    <div id="previewImageWrap" style="margin: 16px 0; border-radius: 12px; overflow: hidden; border: 1px solid var(--border);">
+      <img id="previewImage" style="width: 100%; max-height: 250px; object-fit: contain; display: block; background: #000;">
+    </div>
+    <div id="uploadStatusText" style="font-size: 12px; text-align: center; color: var(--text-muted); margin-bottom: 16px;">Checking image quality...</div>
+    
+    <div class="modal-actions" style="grid-template-columns: 1fr 1fr;">
+      <button class="btn btn-ghost" onclick="retakePhoto()">Retake</button>
+      <button class="btn btn-primary" id="confirmUploadBtn" onclick="executeFormUpload()" disabled>
+        <i class="fas fa-cloud-upload-alt"></i> Upload
+      </button>
+    </div>
+  </div>
+</div>
+  <!-- FULL SCREEN IMAGE VIEWER -->
+<div class="modal-bg" id="imageViewerModal" style="z-index: 10007; background: rgba(0,0,0,0.85);" onclick="if(event.target===this) this.classList.remove('active')">
+  <div style="width: 100%; max-width: 500px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px;">
+    <img id="imageViewerImg" src="" style="width: 100%; max-height: 80vh; object-fit: contain; border-radius: 12px;">
+    <button class="btn btn-ghost" style="margin-top: 16px; background: white; color: black; width: 100%;" onclick="document.getElementById('imageViewerModal').classList.remove('active')">
+      <i class="fas fa-times"></i> Close
+    </button>
+  </div>
+</div>
+  
+
+<script>
+// ================================================================
+//  SUPABASE INITIALIZATION
+// ================================================================
+const supabaseUrl = 'https://qkkhtglsstinsvbdmclt.supabase.co';
+const supabaseKey = 'sb_publishable_AEFOxR5dWWyQu9ZIaYMwLQ_4dPU-RM0';
+const db = window.supabase.createClient(supabaseUrl, supabaseKey);
+// Helper to get/generate a unique device ID
+function getDeviceId() {
+  let devId = localStorage.getItem('tallyhub_device_id');
+  if (!devId) {
+    devId = 'DEV-' + Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
+    localStorage.setItem('tallyhub_device_id', devId);
+  }
+  return devId;
+}
+
+// ================================================================
+//  STATE & CONSTANTS
+// ================================================================
+var USER = null;
+var STREAMS = [];
+var STATUSES = {};
+var SUBMISSION_OPEN = true;
+var currentStream = null;
+var currentPosition = null;
+var currentCandidates = [];
+var draftSaveTimer = null;
+var refreshTimer = null;
+var STREAM_MAX = 700;
+var isPoppingState = false;
+
+const POSITIONS = ['President', 'Governor', 'Senator', 'MP', 'Women Rep', 'MCA'];
+const POSITION_ICONS = {
+  'President': 'fa-flag', 'Governor': 'fa-landmark', 'Senator': 'fa-university',
+  'MP': 'fa-user-tie', 'Women Rep': 'fa-female', 'MCA': 'fa-map-pin'
+};
+
+// ================================================================
+//  AUTH & INIT
+// ================================================================
+async function init() {
+  const { data: { user } } = await db.auth.getUser();
+  if (!user) { window.location.href = 'index.html'; return; }
+
+  // --- DEVICE LOCK CHECK ---
+  const devId = getDeviceId();
+  const { data: deviceCheck, error: devErr } = await db.rpc('verify_and_register_device', {
+    p_auth_id: user.id,
+    p_device_id: devId,
+    p_role: 'agent'
+  });
+  
+  if (devErr || !deviceCheck.success) {
+    db.auth.signOut();
+    alert(deviceCheck?.message || 'Device limit reached. Contact Admin.');
+    window.location.href = 'index.html';
+    return;
+  }
+  // --------------------------
+
+  // Fetch agent profile
+  const { data: profile } = await db.from('agents').select('*').eq('auth_user_id', user.id).single();
+  if (!profile) { alert("Agent profile not found!"); window.location.href = 'index.html'; return; }
+  
+  USER = profile;
+
+  // Setup UI
+  var fullName = USER.name || 'Agent';
+  var initial = fullName.trim().charAt(0).toUpperCase();
+  document.getElementById('agentInitial').textContent = initial;
+  document.getElementById('agentName').textContent = fullName;
+  document.getElementById('agentSub').textContent = USER.id + ' · Agent';
+
+  var h = new Date().getHours();
+  document.getElementById('pickerGreeting').textContent = h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
+  document.getElementById('pickerName').textContent = fullName;
+
+  loadStreams();
+  loadCountingStatus();
+  startAutoRefresh();
+}
+
+// ================================================================
+//  DATA LOADING (SUPABASE)
+// ================================================================
+async function loadStreams(silent) {
+  if (!silent) {
+    document.getElementById('appLoader').classList.add('active');
+    document.getElementById('appLoaderText').textContent = "Loading your assigned streams...";
+  }
+  
+  try {
+    const { data: streamsData, error: streamErr } = await db.from('streams')
+        .select('code, stream_number, centre_id, ward_id, centres(name)')
+        .in('code', USER.assigned_streams || []);
+    if (streamErr) throw streamErr;
+    
+    const { data: existingResults, error: resErr } = await db.from('results')
+        .select('stream_code, position')
+        .in('stream_code', USER.assigned_streams || []);
+    if (resErr) throw resErr;
+
+    // Wrap form fetch in try/catch just in case RLS blocks it
+    let existingForms = [];
+    try {
+      const { data } = await db.from('form_photos')
+          .select('stream_code, position')
+          .in('stream_code', USER.assigned_streams || []);
+      existingForms = data || [];
+    } catch (e) { console.warn("Could not load forms:", e); }
+
+    STREAMS = (streamsData || []).map(s => ({
+      code: s.code,
+      centreId: s.centre_id,
+      centreName: s.centres ? s.centres.name : 'Unknown Centre',
+      streamNumber: s.stream_number,
+      wardId: s.ward_id
+    })).sort((a,b) => a.streamNumber - b.streamNumber);
+
+    STATUSES = {};
+    STREAMS.forEach(st => {
+      STATUSES[st.code] = {};
+      POSITIONS.forEach(pos => {
+        const isSubmitted = existingResults?.find(r => r.stream_code === st.code && r.position === pos);
+        STATUSES[st.code][pos] = isSubmitted ? { status: 'submitted' } : { status: 'pending' };
+      });
+    });
+
+    window.FORMS = {};
+    (existingForms || []).forEach(f => {
+      if (!FORMS[f.stream_code]) FORMS[f.stream_code] = {};
+      FORMS[f.stream_code][f.position] = true;
+    });
+
+    renderStreams();
+
+    // --- CRASH RECOVERY LOGIC ---
+    var pending = sessionStorage.getItem('pending_upload');
+    if (pending && !window.__recovered) {
+      window.__recovered = true;
+      try {
+        var pu = JSON.parse(pending);
+        toast('Page reloaded while taking the photo. Please try again.', 'info');
+        goToPositions(pu.s);
+        setTimeout(() => openUploadModal(pu.s, pu.p), 400);
+      } catch (e) { console.warn("Recovery failed", e); }
+    }
+    // ----------------------------
+
+  } catch (e) {
+    console.error("Load Streams Error:", e);
+    if (!silent) toast('Connection error.', 'error');
+  } finally {
+    if (!silent) document.getElementById('appLoader').classList.remove('active');
+  }
+}
+async function loadCountingStatus() {
+  try {
+    const { data } = await db.from('config').select('value').eq('key', 'SubmissionOpen').single();
+    SUBMISSION_OPEN = (data && data.value === 'TRUE');
+    const banner = document.getElementById('closedBanner');
+    if (SUBMISSION_OPEN) banner.classList.remove('active');
+    else banner.classList.add('active');
+  } catch(e) { console.error(e); }
+}
+
+// ================================================================
+//  RENDERERS & NAVIGATION
+// ================================================================
+function renderStreams() {
+  var el = document.getElementById('streamList');
+  var pickerSub = document.getElementById('pickerSub');
+
+  if (pickerSub) pickerSub.textContent = STREAMS.length ? 'You have ' + STREAMS.length + ' stream(s) assigned' : 'No streams assigned';
+
+  if (!STREAMS.length) {
+    el.innerHTML = '<div class="empty-state"><div class="icon-wrap"><i class="fas fa-inbox"></i></div><div class="title">No streams assigned</div><div class="sub">Contact your coordinator.</div></div>';
+    return;
+  }
+
+  el.innerHTML = STREAMS.map(st => {
+    var statuses = STATUSES[st.code] || {};
+    var submitted = POSITIONS.filter(p => statuses[p] && statuses[p].status === 'submitted').length;
+    var total = POSITIONS.length;
+    var pct = Math.round(submitted / total * 100);
+    var cls = submitted === total ? 'status-complete' : submitted > 0 ? 'status-partial' : 'status-pending';
+    var badgeText = submitted === total ? 'Complete' : submitted > 0 ? submitted + '/' + total + ' done' : 'Not started';
+    var num = st.streamNumber < 10 ? '0' + st.streamNumber : String(st.streamNumber);
+
+    return '<div class="stream-card ' + cls + '" onclick="goToPositions(\'' + st.code + '\')">' +
+      '<div class="stream-card-top"><div style="min-width:0;">' +
+          '<div class="stream-card-name">' + esc(st.centreName) + '</div>' +
+          '<div class="stream-card-centre">STR ' + num + ' · ' + esc(st.code) + '</div>' +
+      '</div><span class="stream-card-badge">' + badgeText + '</span></div>' +
+      '<div class="progress-track"><div class="progress-fill" style="width:' + pct + '%"></div></div>' +
+      '<div class="stream-card-meta"><span>' + submitted + ' of ' + total + ' positions submitted</span><span class="arrow"><i class="fas fa-chevron-right"></i></span></div></div>';
+  }).join('');
+}
+
+function goToStreams() {
+  showScreen('screenStreams');
+  currentStream = null; currentPosition = null;
+  loadStreams(true);
+}
+
+function goToPositions(streamCode) {
+  if (streamCode) currentStream = STREAMS.find(s => s.code === streamCode);
+  if (!currentStream) { goToStreams(); return; }
+
+  var num = currentStream.streamNumber < 10 ? '0' + currentStream.streamNumber : String(currentStream.streamNumber);
+  document.getElementById('posStreamName').textContent = currentStream.centreName + ' · STR ' + num;
+  document.getElementById('posStreamCode').textContent = currentStream.code;
+  
+  var statuses = STATUSES[currentStream.code] || {};
+  
+  document.getElementById('positionList').innerHTML = POSITIONS.map(pos => {
+    var hit = statuses[pos] || { status: 'pending' };
+    var isSubmitted = hit.status === 'submitted';
+    
+    // NEW LOGIC: Check if submission is closed AND it hasn't been submitted yet
+    var isLocked = !isSubmitted && !SUBMISSION_OPEN;
+
+    var cls = isSubmitted ? 'submitted' : (isLocked ? 'locked' : 'pending');
+    
+    var metaHtml = '';
+    if (isSubmitted) {
+  var hasForm = FORMS[currentStream.code] && FORMS[currentStream.code][pos];
+  if (hasForm) {
+    metaHtml = '<div class="position-meta"><i class="fas fa-check-circle" style="color:var(--success);"></i> Submitted · <i class="fas fa-file-image" style="color:var(--success);"></i> Form Attached</div>';
+  } else {
+    metaHtml = '<div class="position-meta" style="flex-direction:column;align-items:flex-start;gap:4px;"><div><i class="fas fa-check-circle" style="color:var(--success);"></i> Submitted</div><div class="form-pending-badge"><i class="fas fa-exclamation-triangle"></i> Form Pending</div></div>';
+  }
+    }
+     else if (isLocked) {
+      metaHtml = '<div class="position-meta"><i class="fas fa-lock"></i> Submission closed</div>';
+    } else {
+      metaHtml = '<div class="position-meta"><i class="fas fa-pen" style="color:var(--warning);"></i> Tap to enter results</div>';
+    }
+
+    // NEW LOGIC: Prevent clicking if it is locked
+    var onclick = isSubmitted 
+        ? 'goToReadonly(\'' + currentStream.code + '\',\'' + pos + '\')' 
+        : (isLocked 
+            ? 'toast(\'Submission is currently closed.\', \'error\')' 
+            : 'goToEntry(\'' + currentStream.code + '\',\'' + pos + '\')');
+    
+    return '<div class="position-card ' + cls + '" onclick="' + onclick + '">' +
+      '<div class="position-icon"><i class="fas ' + (POSITION_ICONS[pos] || 'fa-user') + '"></i></div>' +
+      '<div class="position-info"><div class="position-name">' + esc(pos) + '</div>' + metaHtml + '</div>' +
+      '<i class="fas fa-chevron-right position-chevron"></i></div>';
+  }).join('');
+
+  showScreen('screenPositions');
+}
+
+// ================================================================
+//  ENTRY FORM
+// ================================================================
+async function goToEntry(streamCode, position) {
+  // --- GUARD CLAUSE: Prevent editing if already submitted ---
+  if (STATUSES[streamCode] && STATUSES[streamCode][position]?.status === 'submitted') {
+    goToReadonly(streamCode, position);
+    return;
+  }
+
+  currentStream = STREAMS.find(s => s.code === streamCode);
+  currentPosition = position;
+  var num = currentStream.streamNumber < 10 ? '0' + currentStream.streamNumber : String(currentStream.streamNumber);
+  
+  document.getElementById('entryTitle').textContent = position;
+  document.getElementById('entrySub').textContent = currentStream.centreName + ' · STR ' + num;
+  document.getElementById('candidateEntryList').innerHTML = '<div class="loading"><i class="fas fa-spinner"></i>Loading candidates…</div>';
+  showScreen('screenEntry');
+  // Fetch the registered voters for this stream
+try {
+  const { data: streamData } = await db.from('streams').select('registered_voters').eq('code', streamCode).single();
+  document.getElementById('entryRegVoters').textContent = 'Reg: ' + (streamData?.registered_voters || 0);
+} catch(e) { console.warn("Could not load registered voters", e); }
+
+// Clear previous turnout inputs
+document.getElementById('entryTotalCast').value = '';
+document.getElementById('entryRejected').value = '';
+document.getElementById('entryValidVotes').textContent = '0';
+
+  try {
+    // 1. Get candidates for this position
+    let query = db.from('candidates').select('*').eq('position', position);
+    
+    // 2. Apply Geographic Filters based on the Stream's location (Zero-Trust)
+    if (position !== 'President') {
+      if (!currentStream.wardId) {
+        throw new Error("Stream does not have a Ward ID assigned.");
+      }
+
+      // Fetch the Constituency ID for this Ward
+      const { data: wardInfo } = await db.from('wards').select('constituency_id').eq('id', currentStream.wardId).single();
+      
+      if (wardInfo) {
+        if (position === 'MP') {
+          // MPs are scoped to the Constituency
+          query = query.eq('constituency_id', wardInfo.constituency_id);
+        } else if (position === 'MCA') {
+          // MCAs are scoped to the Ward
+          query = query.eq('ward_id', currentStream.wardId);
+        } else {
+          // Governor, Senator, Women Rep are scoped to the County
+          const { data: constInfo } = await db.from('constituencies').select('county_id').eq('id', wardInfo.constituency_id).single();
+          if (constInfo) {
+            query = query.eq('county_id', constInfo.county_id);
+          }
+        }
+      }
+    }
+    
+    const { data: cands, error } = await query;
+    if (error) throw error;
+
+    currentCandidates = (cands || []).map(c => ({ ...c, photo_url: normalizeImageUrl(c.photo_url) }));
+    renderEntryForm();
+  } catch (e) {
+    console.error(e);
+    document.getElementById('candidateEntryList').innerHTML = '<div class="empty-state"><div class="title">No candidates found</div><div class="sub">' + esc(e.message) + '</div></div>';
+  }
+}
+
+function renderEntryForm() {
+  if (!currentCandidates.length) {
+    document.getElementById('candidateEntryList').innerHTML = '<div class="empty-state"><div class="title">No candidates</div></div>';
+    return;
+  }
+
+  var draft = loadDraft(currentStream.code, currentPosition);
+  
+  // Correctly closing the .map() and adding .join('')
+  var html = currentCandidates.map(c => {
+    var val = (draft && draft[c.code]) ? String(draft[c.code]) : '';
+    var cls = val !== '' ? ' has-vote' : ' missing';
+    var initial = c.name ? c.name.charAt(0).toUpperCase() : '?';
+    var photoHtml = c.photo_url ? '<img src="' + c.photo_url + '" onerror="this.style.display=\'none\'">' : initial;
+
+    return '<div class="candidate-entry' + cls + '" data-code="' + c.code + '">' +
+      '<div class="entry-avatar">' + photoHtml + '</div>' +
+      '<div class="candidate-entry-info"><div class="candidate-entry-name">' + esc(c.name) + '</div><div class="candidate-entry-party">' + esc(c.party) + '</div></div>' +
+      '<input type="number" inputmode="numeric" min="0" max="700" class="vote-input" placeholder="—" value="' + val + '" oninput="onVoteInput(this)" onfocus="this.select()"></div>';
+  }).join(''); // <--- THIS WAS MISSING
+
+  document.getElementById('candidateEntryList').innerHTML = html;
+  
+  // This needs to be called AFTER the inputs are put on the screen
+  updateEntryTotal(); 
+}
+
+function onVoteInput(input) {
+  var v = parseInt(input.value.replace(/[^0-9]/g, ''), 10);
+  if (isNaN(v)) v = null;
+  if (v !== null && v > 700) v = 700;
+  input.value = v === null ? '' : String(v);
+
+  var row = input.closest('.candidate-entry');
+  if (v !== null) { row.classList.add('has-vote'); row.classList.remove('missing'); }
+  else { row.classList.remove('has-vote'); row.classList.add('missing'); }
+
+  updateEntryTotal();
+  if (draftSaveTimer) clearTimeout(draftSaveTimer);
+  draftSaveTimer = setTimeout(saveDraftFromForm, 400);
+}
+
+function calculateTurnout() {
+  var totalCast = parseInt(document.getElementById('entryTotalCast').value) || 0;
+  var rejected = parseInt(document.getElementById('entryRejected').value) || 0;
+  var registered = parseInt(document.getElementById('entryRegVoters').textContent.replace('Reg: ', '')) || 0;
+
+  var castInput = document.getElementById('entryTotalCast');
+  
+  // Flag if votes cast exceeds registered
+  if (totalCast > registered && registered > 0) {
+    castInput.classList.add('error');
+  } else {
+    castInput.classList.remove('error');
+  }
+
+  var valid = totalCast - rejected;
+  if (valid < 0) valid = 0;
+  document.getElementById('entryValidVotes').textContent = valid;
+  
+  updateEntryTotal();
+}
+
+function updateEntryTotal() {
+  var inputs = document.querySelectorAll('#candidateEntryList .vote-input');
+  var candidateSum = 0;
+  var filled = 0;
+  
+  inputs.forEach(inp => { 
+    if (inp.value.trim() !== '') { 
+      filled++; 
+      candidateSum += parseInt(inp.value, 10) || 0; 
+    } 
+  });
+  
+  var totalCast = parseInt(document.getElementById('entryTotalCast').value) || 0;
+  var rejected = parseInt(document.getElementById('entryRejected').value) || 0;
+  var validVotes = totalCast - rejected;
+  if (validVotes < 0) validVotes = 0;
+
+  var totalEl = document.getElementById('entryTotal');
+  totalEl.textContent = candidateSum; 
+  
+  var submitBtn = document.getElementById('submitBtn');
+  var mathMatches = (candidateSum === validVotes);
+  var allFieldsFilled = (filled === inputs.length);
+  
+  // Allow submit IF:
+  // 1. The math matches perfectly AND all candidate fields are filled
+  // OR
+  // 2. The math DOES NOT match (anomaly) but all candidate fields are filled (Force Submit)
+  if (allFieldsFilled && totalCast > 0) {
+    submitBtn.disabled = false;
+    
+    if (mathMatches) {
+      submitBtn.innerHTML = '<i class="fas fa-lock"></i> Submit & Lock';
+      submitBtn.style.background = 'linear-gradient(135deg, #1591DC 0%, #0F7BC0 100%)';
+      totalEl.style.color = '#4A7C3A';
+    } else {
+      // Anomaly Detected - Turn button Red
+      submitBtn.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Submit as Anomaly';
+      submitBtn.style.background = '#C4453A';
+      totalEl.style.color = '#C4453A';
+    }
+  } else {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="fas fa-lock"></i> Submit & Lock';
+    submitBtn.style.background = '#CBD5E1';
+    totalEl.style.color = '#0F172A';
+  }
+}
+
+// ================================================================
+//  DRAFT SAVING
+// ================================================================
+function draftKey(code, pos) { return 'draft_' + code + '_' + pos; }
+function saveDraftFromForm() {
+  if (!currentStream || !currentPosition) return;
+  var obj = {};
+  document.querySelectorAll('#candidateEntryList .vote-input').forEach(inp => {
+    var code = inp.closest('.candidate-entry').getAttribute('data-code');
+    var n = parseInt(inp.value, 10);
+    if (!isNaN(n) && n > 0) obj[code] = n;
+  });
+  if (Object.keys(obj).length) localStorage.setItem(draftKey(currentStream.code, currentPosition), JSON.stringify(obj));
+  else localStorage.removeItem(draftKey(currentStream.code, currentPosition));
+}
+function loadDraft(code, pos) { try { return JSON.parse(localStorage.getItem(draftKey(code, pos))); } catch(e) { return null; } }
+function clearDraft(code, pos) { localStorage.removeItem(draftKey(code, pos)); }
+
+// ================================================================
+//  SUBMIT
+// ================================================================
+function confirmSubmit() {
+  var votes = collectVotes();
+  var total = votes.reduce((s, v) => s + v.votes, 0);
+  
+  // Format the stream number with leading zeros
+  var num = currentStream.streamNumber < 10 ? '0' + currentStream.streamNumber : currentStream.streamNumber;
+  var streamLabel = currentStream.centreName + ' · STR ' + num;
+
+  document.getElementById('confirmTitle').textContent = 'Lock ' + currentPosition + '?';
+  
+  // Update the HTML to match the GAS version exactly
+  document.getElementById('confirmBody').innerHTML = 
+    'Stream: <strong>' + esc(streamLabel) + '</strong><br>' +
+    'Total votes: <strong>' + total + '</strong>' +
+    '<div class="warn-line"><i class="fas fa-lock"></i> This cannot be changed after submitting.</div>';
+    
+  document.getElementById('confirmModal').classList.add('active');
+}
+function closeConfirm() { document.getElementById('confirmModal').classList.remove('active'); }
+
+function collectVotes() {
+  return [].map.call(document.querySelectorAll('#candidateEntryList .vote-input'), inp => ({
+    candidate_code: inp.closest('.candidate-entry').getAttribute('data-code'), // <--- FIXED
+    votes: parseInt(inp.value, 10) || 0
+  }));
+    }
+
+async function submitNow() {
+  closeConfirm();
+  var btn = document.getElementById('submitBtn');
+  btn.disabled = true; 
+  
+  var streamCode = currentStream.code;
+  var position = currentPosition;
+  var payload = collectVotes();
+  var totalCast = parseInt(document.getElementById('entryTotalCast').value) || 0;
+  var rejected = parseInt(document.getElementById('entryRejected').value) || 0;
+  
+  // Calculate math for the warning
+  var candidateSum = payload.reduce((sum, v) => sum + v.votes, 0);
+  var validVotes = totalCast - rejected;
+  var isAnomaly = (candidateSum !== validVotes);
+
+  let maxRetries = 5;
+  let success = false;
+  let attempt = 0;
+
+  while (attempt < maxRetries && !success) {
+    attempt++;
+    btn.innerHTML = attempt === 1 
+      ? '<i class="fas fa-spinner fa-spin"></i> Securing votes…' 
+      : `<i class="fas fa-sync-alt fa-spin"></i> Retrying (${attempt}/${maxRetries})…`;
+
+    try {
+      // Pass the new parameters to the RPC
+      const { data, error } = await db.rpc('submit_election_results', {
+        p_stream_code: streamCode,
+        p_position: position,
+        p_votes: payload,
+        p_total_cast: totalCast,
+        p_rejected: rejected
+      });
+
+      if (error) throw error;
+
+      if (!data.success) {
+        if (data.message.includes('already submitted')) {
+          toast('These votes are already locked.', 'info');
+          goToPositions(streamCode);
+          return;
+        }
+        throw new Error(data.message);
+      }
+
+      success = true;
+} catch (err) {
+  console.warn(`Attempt ${attempt} failed:`, err.message);
+  
+  alert("DATABASE ERROR: " + err.message); // <--- ADD THIS LINE
+  
+  // If it's the last attempt, stop and show error
+  if (attempt >= maxRetries) {
+    
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-lock"></i> Submit & Lock';
+        toast('Network too weak. Move to a better spot and try again.', 'error');
+        return;
+      }
+      
+      toast('Network unstable. Retrying securely...', 'info');
+      await new Promise(r => setTimeout(r, 3000));
+    }
+  }
+
+  // --- SUCCESS BLOCK ---
+  if (success) {
+    clearDraft(streamCode, position);
+    STATUSES[streamCode][position] = { status: 'submitted' };
+
+    btn.innerHTML = '<i class="fas fa-check-circle"></i> Votes Locked';
+    btn.style.background = 'var(--primary)';
+    btn.style.color = 'var(--text)';
+
+    document.getElementById('successTitle').textContent = position + ' Secured!';
+    document.getElementById('successSub').textContent = 'Data securely locked. Please upload the form.';
+    document.getElementById('successOverlay').classList.add('active');
+
+    setTimeout(() => {
+      document.getElementById('successOverlay').classList.remove('active');
+      btn.style.background = '';
+      btn.style.color = '';
+      
+      setTimeout(() => {
+        openUploadModal(streamCode, position);
+      }, 300);
+    }, 2000);
+  }
+ }
+
+function advanceAfterSubmit(streamCode, position) {
+  var statuses = STATUSES[streamCode] || {};
+  var next = POSITIONS.find(p => p !== position && statuses[p]?.status !== 'submitted');
+  var allDone = POSITIONS.every(p => statuses[p]?.status === 'submitted');
+  
+  if (allDone) { toast('🎉 All 6 positions complete!', 'success'); setTimeout(goToStreams, 900); }
+  else if (next) { toast('Next: ' + next, 'info'); setTimeout(() => goToEntry(streamCode, next), 700); }
+  else { goToStreams(); }
+}
+
+// ================================================================
+//  READ-ONLY VIEW
+// ================================================================
+async function goToReadonly(streamCode, position) {
+  var stream = STREAMS.find(s => s.code === streamCode);
+  
+  var hasForm = FORMS[streamCode] && FORMS[streamCode][position];
+  var localPreview = localStorage.getItem('form_preview_' + streamCode + '_' + position);
+  
+  var formHtml = '';
+  if (hasForm || localPreview) {
+    var imgSrc = localPreview || ''; 
+    formHtml = `<div class="form-thumbnail-wrap" onclick="viewAgentForm('${streamCode}', '${position}')">
+      <img id="formThumb_${streamCode}_${position}" src="${imgSrc}" alt="Form" onerror="this.style.display='none'">
+      <div class="form-thumbnail-overlay"><i class="fas fa-search-plus"></i> View Form</div>
+    </div>
+    <button class="btn" style="width: 100%; margin-top: 8px; font-size: 13px; padding: 10px; background: var(--primary) !important; color: var(--text) !important; font-weight: 800; border: none; box-shadow: 0 4px 12px rgba(165, 207, 131, 0.3);" onclick="openUploadModal('${streamCode}', '${position}')">
+    <i class="fas fa-sync-alt"></i> Replace Photo
+  </button>`;
+  
+  if (!localPreview && hasForm) {
+    db.storage.from('form-photos').createSignedUrl(streamCode + '_' + position.replace(/\s+/g, '') + '.jpg', 600).then(({data}) => {
+       if (data) {
+          var el = document.getElementById('formThumb_' + streamCode + '_' + position);
+          if (el) el.src = data.signedUrl;
+       }
+    });
+  }
+  } else {
+    formHtml = `<button class="form-attach-btn" onclick="openUploadModal('${streamCode}', '${position}')">
+      <i class="fas fa-camera" style="font-size: 24px;"></i>
+      Attach Statutory Form
+    </button>`;
+  }
+
+  currentStream = stream;
+  currentPosition = position;
+  document.getElementById('roTitle').textContent = position;
+  document.getElementById('roSub').textContent = currentStream ? currentStream.centreName : '';
+  document.getElementById('readonlyBody').innerHTML = '<div class="loading"><i class="fas fa-spinner"></i>Loading…</div>';
+  showScreen('screenReadonly');
+
+  try {
+    // 1. Fetch the raw results
+    const { data: results, error: resError } = await db.from('results')
+      .select('votes, submitted_by, created_at, candidate_code, total_votes_cast, rejected_votes')
+      .eq('stream_code', streamCode).eq('position', position);
+
+    if (resError) throw resError;
+
+    if (!results || !results.length) { 
+      goToEntry(streamCode, position); 
+      return; 
+    }
+
+    // 2. Fetch the candidates manually to guarantee names load
+    const { data: allCands, error: candError } = await db.from('candidates')
+      .select('code, name, party, photo_url').eq('position', position);
+      
+    if (candError) throw candError;
+
+    // 3. Build a map for quick lookup
+    var candMap = {};
+    (allCands || []).forEach(c => { candMap[c.code] = c; });
+
+    // 4. Extract Turnout Data from the first result row
+    var totalCast = results[0].total_votes_cast || 0;
+    var rejected = results[0].rejected_votes || 0;
+    var validVotes = totalCast - rejected;
+
+    // 5. Build the Read-Only HTML
+    var html = '<div class="readonly-info">' +
+      '<div class="readonly-info-row"><i class="fas fa-user-check"></i> Submitted by <strong>' + esc(results[0].submitted_by) + '</strong></div>' +
+      '<div class="readonly-info-row"><i class="fas fa-clock"></i> ' + new Date(results[0].created_at).toLocaleString() + '</div>' +
+      '<div class="readonly-info-row"><i class="fas fa-lock"></i> Locked</div>' +
+    '</div>';
+
+    // Add Turnout Stats block
+    if (totalCast > 0) {
+      html += '<div class="turnout-card" style="margin-bottom: 16px; background: #F8FAFC; border: 1px solid #E2E8F0;">' +
+        '<div class="turnout-header" style="color: #6B7C93;"><span><i class="fas fa-users"></i> TURNOUT DATA</span></div>' +
+        '<div class="turnout-grid">' +
+          '<div class="turnout-item"><label>Total Cast</label><div class="turnout-valid-num" style="color:#0F172A;">' + totalCast + '</div></div>' +
+          '<div class="turnout-item"><label>Rejected</label><div class="turnout-valid-num" style="color:#C4453A;">' + rejected + '</div></div>' +
+          '<div class="turnout-item valid-box"><label>Valid Votes</label><div class="turnout-valid-num">' + validVotes + '</div></div>' +
+        '</div>' +
+      '</div>';
+    }
+    
+    // 6. Render Candidates
+    results.sort((a,b) => b.votes - a.votes).forEach((r, idx) => {
+      var rank = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : (idx + 1);
+      
+      var candInfo = candMap[r.candidate_code] || {};
+      
+      var candName = candInfo.name || 'Unknown';
+      var candParty = candInfo.party || '';
+      var rawPhoto = candInfo.photo_url || '';
+      var initial = candName.charAt(0).toUpperCase();
+      var photoUrl = normalizeImageUrl(rawPhoto);
+      
+      var photoHtml = photoUrl
+        ? '<img src="' + escAttr(photoUrl) + '" alt="" loading="lazy" onerror="this.style.display=\'none\';this.parentElement.textContent=\'' + escAttr(initial) + '\'">'
+        : initial;
+
+      html += '<div class="readonly-row ' + (idx === 0 ? 'leader' : '') + '">' +
+        '<div class="avatar-wrap small' + (photoUrl ? '' : ' no-photo') + '">' +
+          photoHtml +
+          '<span class="avatar-rank">' + rank + '</span>' +
+        '</div>' +
+        '<div class="readonly-name"><div class="n">' + esc(candName) + '</div><div class="p">' + esc(candParty) + '</div></div>' +
+        '<div class="readonly-votes">' + r.votes.toLocaleString() + '</div></div>';
+    });
+    
+    document.getElementById('readonlyBody').innerHTML = html + formHtml;
+
+  } catch (err) {
+    console.error("Readonly Error:", err);
+    document.getElementById('readonlyBody').innerHTML = '<div class="empty-state"><div class="title">Error loading results</div><div class="sub">' + esc(err.message) + '</div></div>';
+  }
+}
+// ================================================================
+//  UTILS & UI HELPERS
+// ================================================================
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id === id));
+  window.scrollTo(0, 0);
+  
+  // Push a new state to the browser history so the back button works
+  if (!isPoppingState) {
+    history.pushState({ screen: id }, '', '#' + id);
+  }
+}
+
+function startAutoRefresh() {
+  if (refreshTimer) clearInterval(refreshTimer);
+  refreshTimer = setInterval(() => {
+    if (document.getElementById('screenStreams').classList.contains('active')) loadStreams(true);
+  }, 15000);
+}
+
+function manualRefresh() {
+  document.getElementById('topRefreshIcon').classList.add('spin');
+  loadStreams(true);
+  setTimeout(() => document.getElementById('topRefreshIcon').classList.remove('spin'), 900);
+}
+
+function toast(msg, type) {
+  var el = document.createElement('div');
+  el.className = 'toast ' + (type || 'info');
+  el.innerHTML = '<i class="fas fa-info-circle"></i><span></span>';
+  el.querySelector('span').textContent = msg;
+  document.getElementById('toasts').appendChild(el);
+  setTimeout(() => el.remove(), 4000);
+}
+function thConfirm(opts) {
+  return new Promise(function (resolve) {
+    opts = opts || {};
+    var tone = opts.tone || 'warn';
+    var single = !!opts.alertOnly;
+    var iconMap = { warn: 'fa-exclamation-triangle', danger: 'fa-sign-out-alt', info: 'fa-info-circle' };
+    var icon = opts.icon || iconMap[tone] || 'fa-question-circle';
+    var confirmCls = tone === 'danger' ? 'th-btn-danger' : 'th-btn-primary';
+
+    var actions = single
+      ? '<button class="th-btn th-btn-primary" data-act="ok">' + esc(opts.confirmText || 'OK') + '</button>'
+      : '<button class="th-btn th-btn-ghost" data-act="cancel">' + esc(opts.cancelText || 'Cancel') + '</button>' +
+        '<button class="th-btn ' + confirmCls + '" data-act="ok">' + esc(opts.confirmText || 'Confirm') + '</button>';
+
+    var wrap = document.createElement('div');
+    wrap.className = 'th-modal-bg';
+    wrap.innerHTML =
+      '<div class="th-modal">' +
+        '<div class="th-modal-icon ' + tone + '"><i class="fas ' + icon + '"></i></div>' +
+        '<div class="th-modal-title">' + esc(opts.title || 'Confirm') + '</div>' +
+        (opts.message ? '<div class="th-modal-msg">' + opts.message + '</div>' : '') +
+        '<div class="th-modal-actions' + (single ? ' single' : '') + '">' + actions + '</div>' +
+      '</div>';
+
+    document.body.appendChild(wrap);
+    requestAnimationFrame(function () { wrap.classList.add('active'); });
+
+    var resolved = false;
+    function close(val) {
+      if (resolved) return;
+      resolved = true;
+      wrap.classList.remove('active');
+      setTimeout(function () { if (wrap.parentElement) wrap.remove(); }, 220);
+      document.removeEventListener('keydown', onKey);
+      resolve(val);
+    }
+    function onKey(e) {
+      if (e.key === 'Escape') close(false);
+      else if (e.key === 'Enter') close(true);
+    }
+    wrap.addEventListener('click', function (e) {
+      if (e.target === wrap) return close(false);
+      var act = e.target.closest('[data-act]');
+      if (!act) return;
+      close(act.dataset.act === 'ok');
+    });
+    document.addEventListener('keydown', onKey);
+    setTimeout(function () { var ok = wrap.querySelector('[data-act="ok"]'); if (ok) ok.focus(); }, 60);
+  });
+}
+  
+  // ================================================================
+//  FORM UPLOAD ENGINE
+// ================================================================
+var currentFormFile = null;
+var currentFormStream = '';
+var currentFormPos = '';
+
+function openUploadModal(streamCode, position) {
+  currentFormStream = streamCode;
+  currentFormPos = position;
+  document.getElementById('uploadModalTitle').textContent = 'Attach ' + position + ' Form';
+  
+  // Reset the gallery input
+  document.getElementById('galleryInput').value = '';
+  
+  document.getElementById('uploadOptionsModal').classList.add('active');
+}
+
+function closeUploadModal() {
+  document.getElementById('uploadOptionsModal').classList.remove('active');
+  
+  // If they cancel the upload, gracefully take them back to the Position List
+  // because the votes are already securely locked in the database.
+  if (currentFormStream) {
+    goToPositions(currentFormStream);
+  }
+}
+
+var previewObjectUrl = null;
+
+async function shrinkImage(file, maxSize, quality) {
+  let bmp;
+  try {
+    // Decodes directly at reduced size (full-size bitmap never exists)
+    bmp = await createImageBitmap(file, {
+      resizeWidth: maxSize,
+      resizeQuality: 'medium',
+      imageOrientation: 'from-image'
+    });
+  } catch (e) {
+    // Fallback for older browsers
+    bmp = await new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Image load failed')); };
+      img.src = url;
+    });
+  }
+
+  const scale = Math.min(1, maxSize / Math.max(bmp.width, bmp.height));
+  const w = Math.round(bmp.width * scale);
+  const h = Math.round(bmp.height * scale);
+
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  canvas.getContext('2d').drawImage(bmp, 0, 0, w, h);
+  if (bmp.close) bmp.close();
+
+  const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', quality));
+  canvas.width = canvas.height = 0; // free canvas memory
+  if (!blob) throw new Error('Canvas failed');
+
+  return { file: new File([blob], 'form.jpg', { type: 'image/jpeg' }), width: w, height: h };
+}
+
+async function handleFormUpload(event) {
+  var file = event.target.files[0];
+  if (!file) return;
+  closeUploadModal();
+
+  if (!file.type.startsWith('image/')) {
+    toast('Invalid file. Please upload an image.', 'error');
+    return;
+  }
+
+  // Compress FIRST, before anything else touches the photo
+  document.getElementById('appLoaderText').textContent = 'Preparing photo...';
+  document.getElementById('appLoader').classList.add('active');
+
+  try {
+    const result = await shrinkImage(file, 1600, 0.85);
+
+    if (result.width > result.height) {
+      toast('Invalid format. Please take a portrait (vertical) photo.', 'error');
+      return;
+    }
+
+    currentFormFile = result.file; // already small (~200-400 KB)
+
+    if (previewObjectUrl) URL.revokeObjectURL(previewObjectUrl);
+    previewObjectUrl = URL.createObjectURL(result.file);
+    document.getElementById('previewImage').src = previewObjectUrl;
+    document.getElementById('uploadStatusText').innerHTML =
+      '<span style="color:var(--success);"><i class="fas fa-check-circle"></i> Image looks good. Ready to upload.</span>';
+    document.getElementById('confirmUploadBtn').disabled = false;
+    document.getElementById('formPreviewModal').classList.add('active');
+  } catch (err) {
+    console.error(err);
+    toast('Could not process photo. Try again or choose from gallery.', 'error');
+  } finally {
+    document.getElementById('appLoader').classList.remove('active');
+  }
+}
+
+function retakePhoto() {
+  document.getElementById('formPreviewModal').classList.remove('active');
+  openUploadModal(currentFormStream, currentFormPos);
+}
+
+  async function executeFormUpload() {
+  if (!currentFormFile) return;
+
+  var btn = document.getElementById('confirmUploadBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uploading...';
+
+  try {
+    var fileName = currentFormStream + '_' + currentFormPos.replace(/\s+/g, '') + '.jpg';
+    const { error: uploadError } = await db.storage
+      .from('form-photos')
+      .upload(fileName, currentFormFile, { upsert: true, contentType: 'image/jpeg' });
+    if (uploadError) throw new Error(uploadError.message);
+
+    const { error: dbError } = await db.from('form_photos').upsert({
+      stream_code: currentFormStream,
+      position: currentFormPos,
+      photo_url: fileName,
+      uploaded_by: USER.name
+    }, { onConflict: 'stream_code,position' });
+    if (dbError) throw new Error(dbError.message);
+
+    // Tiny thumbnail cache; never allowed to break the upload
+    try {
+      const thumb = await shrinkImage(currentFormFile, 400, 0.7);
+      const dataUrl = await new Promise((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => res(r.result);
+        r.onerror = rej;
+        r.readAsDataURL(thumb.file);
+      });
+      localStorage.setItem('form_preview_' + currentFormStream + '_' + currentFormPos, dataUrl);
+    } catch (e) { console.warn('Thumbnail skipped', e); }
+
+    toast('Form uploaded securely!', 'success');
+    document.getElementById('formPreviewModal').classList.remove('active');
+    
+    // Cleanup
+    if (previewObjectUrl) { URL.revokeObjectURL(previewObjectUrl); previewObjectUrl = null; }
+    document.getElementById('previewImage').src = '';
+    currentFormFile = null;
+    sessionStorage.removeItem('pending_upload');
+
+    if (!FORMS[currentFormStream]) FORMS[currentFormStream] = {};
+    FORMS[currentFormStream][currentFormPos] = true;
+    goToPositions(currentFormStream);
+
+  } catch (err) {
+    console.error(err);
+    toast('Upload failed: ' + err.message, 'error');
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-cloud-upload-alt"></i> Retry Upload';
+  }
+}
+  async function viewAgentForm(streamCode, position) {
+  var fileName = streamCode + '_' + position.replace(/\s+/g, '') + '.jpg';
+  
+  // Show loading state
+  document.getElementById('imageViewerImg').src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" stroke="%23A5CF83" stroke-width="5" fill="none" stroke-dasharray="1, 10"/></svg>'; // tiny loading circle
+  document.getElementById('imageViewerModal').classList.add('active');
+
+  try {
+    // 1. TRY TO GET THE HIGH-RES IMAGE FROM SUPABASE
+    const { data, error } = await db.storage.from('form-photos').createSignedUrl(fileName, 600);
+    
+    if (error || !data) {
+      throw new Error("Could not load high-res image.");
+    }
+    
+    // Set the high-res image
+    document.getElementById('imageViewerImg').src = data.signedUrl;
+    
+  } catch (err) {
+    console.warn("Falling back to local thumbnail", err);
+    // 2. FALLBACK TO LOCAL THUMBNAIL ONLY IF OFFLINE/ERROR
+    var localPreview = localStorage.getItem('form_preview_' + streamCode + '_' + position);
+    if (localPreview) {
+      document.getElementById('imageViewerImg').src = localPreview;
+    } else {
+      toast('Could not load form. Check your internet connection.', 'error');
+      document.getElementById('imageViewerModal').classList.remove('active');
+    }
+  }
+}
+function doLogout() {
+  thConfirm({
+    title: 'Sign out?',
+    message: 'Any unsaved entries will be kept as drafts on this device.',
+    confirmText: 'Sign Out',
+    cancelText: 'Stay',
+    tone: 'danger',
+    icon: 'fa-sign-out-alt'
+  }).then(function (ok) {
+    if (ok) {
+      db.auth.signOut().then(() => window.location.href = 'index.html');
+    }
+  });
+}
+
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function normalizeImageUrl(raw) {
+  if (!raw) return '';
+  raw = String(raw).trim();
+  if (!raw) return '';
+
+  // Already a CDN URL
+  if (raw.includes('cdn.jsdelivr.net/gh/') || raw.includes('lh3.googleusercontent.com/d/')) return raw;
+
+  // GitHub blob URL → jsDelivr CDN
+  var m = raw.match(/github\.com\/([^\/]+)\/([^\/]+)\/blob\/([^\/]+)\/(.+)$/);
+  if (m) return 'https://cdn.jsdelivr.net/gh/' + m[1] + '/' + m[2] + '@' + m[3] + '/' + m[4];
+
+  // Raw GitHub URL → jsDelivr CDN
+  m = raw.match(/raw\.githubusercontent\.com\/([^\/]+)\/([^\/]+)\/([^\/]+)\/(.+)$/);
+  if (m) return 'https://cdn.jsdelivr.net/gh/' + m[1] + '/' + m[2] + '@' + m[3] + '/' + m[4];
+
+  // Google Drive Links
+  m = raw.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+  if (m) return 'https://lh3.googleusercontent.com/d/' + m[1];
+  m = raw.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (m) return 'https://lh3.googleusercontent.com/d/' + m[1];
+  m = raw.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  if (m) return 'https://lh3.googleusercontent.com/d/' + m[1];
+
+  // Any other direct http/https URL
+  if (raw.startsWith('http://') || raw.startsWith('https://')) return raw;
+
+  // Bare Drive ID
+  if (/^[a-zA-Z0-9_-]{20,}$/.test(raw)) return 'https://lh3.googleusercontent.com/d/' + raw;
+
+  return '';
+}
+  function escAttr(s) { return esc(s); }
+// ================================================================
+//  HANDLE PHONE BACK BUTTON (History API)
+// ================================================================
+window.addEventListener('popstate', function(event) {
+  if (event.state && event.state.screen) {
+    isPoppingState = true; // Tell showScreen NOT to push another history state
+    
+    if (event.state.screen === 'screenStreams') {
+      goToStreams();
+    } else if (event.state.screen === 'screenPositions') {
+      goToPositions(currentStream ? currentStream.code : null);
+    } else if (event.state.screen === 'screenEntry') {
+      goToEntry(currentStream ? currentStream.code : null, currentPosition);
+    } else if (event.state.screen === 'screenReadonly') {
+      goToReadonly(currentStream ? currentStream.code : null, currentPosition);
+    }
+    
+    isPoppingState = false; // Reset the flag
+  }
+});
+  // ================================================================
+//  SECURITY: AUTO-LOGOUT AFTER 20 MINUTES OF INACTIVITY
+// ================================================================
+var idleTimer;
+var IDLE_TIMEOUT_MS = 20 * 60 * 1000; // 20 minutes
+
+function resetIdleTimer() {
+  clearTimeout(idleTimer);
+  idleTimer = setTimeout(forceLogout, IDLE_TIMEOUT_MS);
+}
+
+async function forceLogout() {
+  // Optional: Show a quick toast before kicking them out
+  if (typeof toast === 'function') {
+    toast('Session expired due to inactivity. Logging out...', 'error');
+  }
+  
+  // Give them 2 seconds to see the toast, then sign out
+  setTimeout(async () => {
+    await db.auth.signOut();
+    window.location.href = 'index.html';
+  }, 2000);
+}
+
+// These events detect if the user is actively using the phone/computer
+window.addEventListener('mousemove', resetIdleTimer, true);
+window.addEventListener('keydown', resetIdleTimer, true);
+window.addEventListener('scroll', resetIdleTimer, true);
+window.addEventListener('touchstart', resetIdleTimer, true); // For mobile phones
+window.addEventListener('click', resetIdleTimer, true);
+
+// Start the timer immediately when the page loads
+resetIdleTimer();
+  // Start
+init();
+  
+</script>
+</body>
+</html>
