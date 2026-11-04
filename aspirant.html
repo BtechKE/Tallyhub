@@ -784,22 +784,7 @@ var POSITION_SHORT = { 'President': 'P', 'Governor': 'G', 'Senator': 'S', 'MP': 
 async function init() {
   const { data: { user } } = await db.auth.getUser();
   if (!user) { window.location.href = 'index.html'; return; }
-
-  // --- DEVICE LOCK CHECK ---
-  const devId = getDeviceId();
-  const { data: deviceCheck, error: devErr } = await db.rpc('verify_and_register_device', {
-    p_auth_id: user.id,
-    p_device_id: devId,
-    p_role: 'aspirant'
-  });
-  
-  if (devErr || !deviceCheck.success) {
-    db.auth.signOut();
-    alert(deviceCheck?.message || 'Device limit reached. Contact Admin.');
-    window.location.href = 'index.html';
-    return;
-  }
-  // --------------------------
+// V3: Device lock removed for now. Will be re-implemented with backend RLS later.
 
   const { data: profile } = await db.from('aspirants').select('*').eq('auth_user_id', user.id).single();
   if (!profile) { alert("Profile not found"); doLogout(); return; }
