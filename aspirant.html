@@ -1104,45 +1104,17 @@ async function loadDrill(silent) {
 
 async function loadTracker(silent) {
   if (!silent) document.getElementById('trackerGrid').innerHTML = '<div class="load" style="grid-column:1/-1;"><i class="fas fa-spinner"></i>Loading…</div>';
+  
   try {
-    var filterWardIds = [];
-
-    let constQuery = db.from('constituencies').select('*').order('id');
-    if (SCOPE_MODE === 'constituency') constQuery = constQuery.eq('id', USER.constituency);
-    else if (SCOPE_MODE === 'county') constQuery = constQuery.eq('county_id', USER.county);
-    else if (SCOPE_MODE === 'national' && CURRENT_COUNTY) constQuery = constQuery.eq('county_id', CURRENT_COUNTY);
-    const constsData = await fetchAll(() => constQuery);
-
-    let wardsData = [];
-    if (SCOPE_MODE === 'ward') {
-        wardsData = await fetchAll(() => db.from('wards').select('*').eq('id', USER.ward).order('id'));
-    } else if (SCOPE_MODE === 'constituency') {
-        wardsData = await fetchAll(() => db.from('wards').select('*').eq('constituency_id', USER.constituency).order('id'));
-    } else {
-        wardsData = await fetchIn('wards', '*', 'constituency_id', (constsData||[]).map(c=>c.id), 'id');
+    var streamCodes = (OVERVIEW.streams || []).map(s => s.code);
+    if (!streamCodes.length) {
+       document.getElementById('trackerGrid').innerHTML = '<div class="empty">No streams found.</div>';
+       return;
     }
 
-    filterWardIds = (wardsData || []).map(w => w.id);
-
-    let centresData = [];
-    let streamsData = [];
-    
-    if (SCOPE_MODE !== 'national' || CURRENT_COUNTY) {
-        centresData = await fetchIn('centres', '*', 'ward_id', filterWardIds, 'id');
-        streamsData = await fetchIn('streams', '*', 'centre_id', (centresData||[]).map(c=>c.id), 'code');
-    } else {
-        centresData = await fetchAll(() => db.from('centres').select('*').order('id'));
-        streamsData = await fetchAll(() => db.from('streams').select('*').order('code'));
-    }
-
-    var streamCodes = (streamsData || []).map(s => s.code);
-    
-    let resultsData = [];
-    let formsData = [];
-    if (streamCodes.length > 0) {
-        resultsData = await fetchIn('results', 'stream_code, position', 'stream_code', streamCodes, 'stream_code');
-        formsData = await fetchIn('form_photos', 'stream_code, position, photo_url', 'stream_code', streamCodes, 'stream_code');
-    }
+    // 1. Fetch ONLY the results and forms for the streams we already have
+    let resultsData = await fetchIn('results', 'stream_code, position', 'stream_code', streamCodes, 'stream_code');
+    let formsData = await fetchIn('form_photos', 'stream_code, position, photo_url', 'stream_code', streamCodes, 'stream_code');
 
     TRACKER_FORMS = {};
     (formsData || []).forEach(f => {
@@ -1156,12 +1128,14 @@ async function loadTracker(silent) {
     });
 
     let totalCompleteStreams = 0;
-    const trackerWards = (wardsData || []).map(w => {
-        const wCentres = (centresData || []).filter(c => c.ward_id === w.id);
+    
+    // 2. Use OVERVIEW.wards directly (V3 Magic - no more zigzag tree building)
+    const trackerWards = (OVERVIEW.wards || []).map(w => {
+        const wCentres = (OVERVIEW.centres || []).filter(c => c.ward_id === w.id);
         let wStreamsTotal = 0, wStreamsComplete = 0, wCellsDone = 0, wCellsTotal = 0;
 
         const trackerCentres = wCentres.map(c => {
-            const cStreams = (streamsData || []).filter(s => s.centre_id === c.id);
+            const cStreams = (OVERVIEW.streams || []).filter(s => s.centre_id === c.id);
             let cStreamsTotal = cStreams.length, cStreamsComplete = 0, cCellsDone = 0, cCellsTotal = cStreamsTotal * POSITIONS.length;
 
             const trackerStreams = cStreams.map(s => {
@@ -1196,16 +1170,16 @@ async function loadTracker(silent) {
     TRACKER_DATA = {
         isMCA: (!USER.isSpectator && USER.position === 'MCA'), scopedWardName: USER.ward || '',
         positions: POSITIONS, 
-        consts: constsData || [],
+        consts: OVERVIEW.consts || [], // Use the consts from OVERVIEW
         wards: trackerWards,
-        summary: { totalStreams: streamsData.length, completeStreams: totalCompleteStreams, pendingStreams: streamsData.length - totalCompleteStreams, cellsDone: (resultsData || []).length, cellsTotal: streamsData.length * POSITIONS.length, staleCount: 0, lastSubmitAt: null }
+        summary: { totalStreams: OVERVIEW.streams.length, completeStreams: totalCompleteStreams, pendingStreams: OVERVIEW.streams.length - totalCompleteStreams, cellsDone: (resultsData || []).length, cellsTotal: OVERVIEW.streams.length * POSITIONS.length, staleCount: 0, lastSubmitAt: null }
     };
+    
     renderTracker();
   } catch (err) {
     console.error(err); if (!silent) toast('Connection error.', 'error');
   }
 }
-
 // ================================================================
 //  RENDERING — TABS & HERO
 // ================================================================
@@ -2610,39 +2584,31 @@ async function loadWarRoom() {
   document.getElementById('warRoomGrid').innerHTML = '<div class="load" style="grid-column:1/-1;"><i class="fas fa-spinner"></i>Scanning database…</div>';
   
   try {
-    // 1. Fetch ONLY the turnout data for this specific position
+    // 1. Fetch the turnout and forms ONLY for this position
     const { data: turnout, error } = await db.from('stream_turnout').select('*').eq('position', VIEW_POS);
     if (error) throw error;
 
-    // 2. Fetch ONLY the form photos for this specific position
     const { data: forms } = await db.from('form_photos').select('stream_code').eq('position', VIEW_POS);
     var formSet = new Set((forms || []).map(f => f.stream_code));
 
     var reportedMap = {};
     (turnout || []).forEach(t => { reportedMap[t.stream_code] = t; });
 
-    var centreMap = {}; 
-    (OVERVIEW.centres || []).forEach(c => centreMap[c.id] = c);
-    var wardMap = {}; 
-    (OVERVIEW.wards || []).forEach(w => wardMap[w.id] = w);
-
     var anomalies = [];
     var cleanCount = 0, missingFormCount = 0, anomalyCount = 0, silentCount = 0;
 
+    // 2. Loop through OVERVIEW.streams (which are already scoped by RLS to the user's county/constituency)
     (OVERVIEW.streams || []).forEach(s => {
-      var centre = centreMap[s.centre_id];
-      var ward = centre ? wardMap[centre.ward_id] : null;
-      if (!ward) return; 
-
       var t = reportedMap[s.code];
       
+      // V3 FIX: No more looking up centre and ward maps! The stream has the IDs directly.
       if (!t) {
         silentCount++;
         anomalies.push({
           streamCode: s.code, 
-          constId: ward.constituency_id, 
-          wardId: ward.id, 
-          centreId: centre.id, 
+          constId: s.constituency_id, // Direct from stream table
+          wardId: s.ward_id,          // Direct from stream table
+          centreId: s.centre_id,      // Direct from stream table
           status: 'silent', 
           hasAnomaly: false, hasForm: false, cast: 0, rejected: 0, valid: 0, registered: s.registered_voters || 0
         });
@@ -2656,9 +2622,9 @@ async function loadWarRoom() {
 
         anomalies.push({
           streamCode: t.stream_code, 
-          constId: ward.constituency_id,
-          wardId: ward.id,
-          centreId: centre.id, 
+          constId: s.constituency_id,
+          wardId: s.ward_id,
+          centreId: s.centre_id, 
           status: isAnomaly ? 'anomaly' : (!hasForm ? 'no-form' : 'clean'), 
           hasAnomaly: isAnomaly, hasForm: hasForm, 
           cast: t.total_cast, rejected: t.rejected, valid: t.valid_votes, registered: t.registered_voters
@@ -2684,7 +2650,6 @@ async function loadWarRoom() {
     document.getElementById('warRoomGrid').innerHTML = '<div class="empty">Error loading War Room data.</div>';
   }
 }
-
 function renderWarRoom() {
   var grid = document.getElementById('warRoomGrid');
   var bc = document.getElementById('warRoomBreadcrumb');
