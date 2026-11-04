@@ -891,14 +891,9 @@ function startAutoRefresh() {
   if (refreshTimer) clearInterval(refreshTimer);
   refreshTimer = setInterval(function () {
     if (document.hidden) return;
-      if (CURRENT_VIEW === 'results') {
-      if (DRILL_WARD || DRILL_CENTRE) return;
-      if (lastRefreshAt && Date.now() - lastRefreshAt < 4.5 * 60 * 1000) return; // Change this to 60 * 1000 (60 seconds)
-      silentRefresh();
-    } else if (CURRENT_VIEW === 'tracker') {
-      if (trackerRefreshAt && Date.now() - trackerRefreshAt < 80 * 1000) return; // Change this to 30 * 1000 (30 seconds)
-      loadTracker(true);
-    }
+    // Just refresh the whole overview silently. It's fast enough in V3.
+    if (lastRefreshAt && Date.now() - lastRefreshAt < 4.5 * 60 * 1000) return; 
+    silentRefresh();
   }, 30000);
 }
 
@@ -908,12 +903,12 @@ function manualRefresh() {
   var icon = document.getElementById('topRefreshIcon');
   if (icon) icon.classList.add('spin');
   setPulse('loading');
-  if (CURRENT_VIEW === 'tracker') { loadTracker(true); }
-  else if (DRILL_WARD || DRILL_CENTRE) { loadDrill(true); }
-  else { loadOverview(true); }
+  
+  // V3 MAGIC: One function to rule them all
+  loadOverview(true);
+  
   if (icon) setTimeout(function () { icon.classList.remove('spin'); }, 900);
 }
-
 // ================================================================
 //  DATA LOADING (Supabase)
 // ================================================================
@@ -1052,55 +1047,6 @@ async function loadOverview(silent) {
   }
 }
 
-async function loadDrill(silent) {
-  try {
-    const [ { data: cands }, { data: streamsData }, { data: centresData }, { data: resultsData } ] = await Promise.all([
-        db.from('candidates').select('*'), db.from('streams').select('*'),
-        db.from('centres').select('*'), db.from('results').select('*').eq('position', VIEW_POS)
-    ]);
-
-    // FIX: Call normalizeImageUrl here too
-    const candMap = {}; 
-    cands.forEach(c => { 
-      c.photo_url = normalizeImageUrl(c.photo_url); 
-      candMap[c.code] = c; 
-    });
-    
-    const reportedSet = new Set(resultsData.map(r => r.stream_code));
-
-    if (DRILL_CENTRE) {
-        const centreStreams = streamsData.filter(s => s.centre_id === DRILL_CENTRE);
-        DRILL_DATA = { level: 'stream', streams: centreStreams.map(s => {
-            const sResults = resultsData.filter(r => r.stream_code === s.code);
-            const sCandidates = sResults.map(r => {
-                const info = candMap[r.candidate_code] || {};
-                return { code: r.candidate_code, name: info.name, party: info.party, photo_url: info.photo_url, color: info.color || '#A5CF83', votes: r.votes };
-            }).sort((a, b) => b.votes - a.votes);
-            const total = sCandidates.reduce((sum, c) => sum + c.votes, 0);
-            return { streamCode: s.code, streamLabel: 'STR ' + String(s.stream_number).padStart(2, '0'), centreName: centresData.find(c => c.id === s.centre_id)?.name, candidates: sCandidates, leader: sCandidates[0] || null, totalVotes: total, leaderPct: total > 0 && sCandidates[0] ? ((sCandidates[0].votes / total) * 100).toFixed(1) : '0.0', submitted: reportedSet.has(s.code) };
-        }).sort((a, b) => a.streamCode.localeCompare(b.streamCode)) };
-    } else if (DRILL_WARD) {
-        const wardCentres = centresData.filter(c => c.ward_id === DRILL_WARD);
-        DRILL_DATA = { level: 'centre', centres: wardCentres.map(c => {
-            const cStreams = streamsData.filter(s => s.centre_id === c.id);
-            const cStreamCodes = new Set(cStreams.map(s => s.code));
-            const reportedInCentre = new Set(resultsData.filter(r => cStreamCodes.has(r.stream_code)).map(r => r.stream_code)).size;
-            const cCandidatesMap = {};
-            resultsData.filter(r => cStreamCodes.has(r.stream_code)).forEach(r => {
-                if (!cCandidatesMap[r.candidate_code]) cCandidatesMap[r.candidate_code] = { code: r.candidate_code, votes: 0 };
-                cCandidatesMap[r.candidate_code].votes += r.votes;
-            });
-            const cCandidates = Object.values(cCandidatesMap).map(item => {
-                const info = candMap[item.code] || {};
-                return { ...item, name: info.name, party: info.party, photo_url: info.photo_url, color: info.color || '#A5CF83' };
-            }).sort((a, b) => b.votes - a.votes);
-            const total = cCandidates.reduce((sum, x) => sum + x.votes, 0);
-            return { centreId: c.id, centreName: c.name, candidates: cCandidates, leader: cCandidates[0] || null, totalVotes: total, leaderPct: total > 0 && cCandidates[0] ? ((cCandidates[0].votes / total) * 100).toFixed(1) : '0.0', streamsTotal: cStreams.length, streamsDone: reportedInCentre };
-        }) };
-    }
-    renderDrillGrid(); renderBoard();
-  } catch (err) { console.error(err); }
-}
 
 async function loadTracker(silent) {
   if (!silent) document.getElementById('trackerGrid').innerHTML = '<div class="load" style="grid-column:1/-1;"><i class="fas fa-spinner"></i>Loading…</div>';
@@ -1883,8 +1829,35 @@ function resetDrill() {
 
   renderDrillGrid(); renderBoard(); renderBreadcrumb();
 }
-function drillToWard(wardId, wardName) { DRILL_WARD = wardId; DRILL_WARD_NAME = wardName; DRILL_CENTRE = ''; DRILL_CENTRE_NAME = ''; DRILL_DATA = null; renderHero(); renderBoard(); renderDrillGrid(); document.getElementById('drillGrid').innerHTML = '<div class="load" style="grid-column:1/-1;"><i class="fas fa-spinner"></i>Loading centres…</div>'; loadDrill(); window.scrollTo({ top: document.querySelector('.section-head').offsetTop - 120, behavior: 'smooth' }); }
-function drillToCentre(centreId, centreName) { DRILL_CENTRE = centreId; DRILL_CENTRE_NAME = centreName; DRILL_DATA = null; renderHero(); renderBoard(); renderDrillGrid(); document.getElementById('drillGrid').innerHTML = '<div class="load" style="grid-column:1/-1;"><i class="fas fa-spinner"></i>Loading streams…</div>'; loadDrill(); window.scrollTo({ top: document.querySelector('.section-head').offsetTop - 120, behavior: 'smooth' }); }
+function drillToWard(wardId, wardName) { 
+  DRILL_WARD = wardId; 
+  DRILL_WARD_NAME = wardName; 
+  DRILL_CENTRE = ''; 
+  DRILL_CENTRE_NAME = ''; 
+  DRILL_DATA = null; 
+  
+  // V3 MAGIC: Instant rendering, no database query needed
+  renderHero(); 
+  renderBoard(); 
+  renderDrillGrid(); 
+  renderBreadcrumb(); 
+  
+  window.scrollTo({ top: document.querySelector('.section-head').offsetTop - 120, behavior: 'smooth' }); 
+}
+
+function drillToCentre(centreId, centreName) { 
+  DRILL_CENTRE = centreId; 
+  DRILL_CENTRE_NAME = centreName; 
+  DRILL_DATA = null; 
+  
+  // V3 MAGIC: Instant rendering, no database query needed
+  renderHero(); 
+  renderBoard(); 
+  renderDrillGrid(); 
+  renderBreadcrumb(); 
+  
+  window.scrollTo({ top: document.querySelector('.section-head').offsetTop - 120, behavior: 'smooth' }); 
+}
 
 // ================================================================
 //  VIEW SWITCHING & TRACKER RENDERING
