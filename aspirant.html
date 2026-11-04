@@ -920,140 +920,44 @@ function manualRefresh() {
 async function loadOverview(silent) {
   if (!silent) setPulse('loading');
   try {
-    // 1. Fetch Geography
-    let constQuery = db.from('constituencies').select('*').order('id');
-    if (SCOPE_MODE === 'constituency') constQuery = constQuery.eq('id', USER.constituency);
-    else if (SCOPE_MODE === 'county') constQuery = constQuery.eq('county_id', USER.county);
-    const consts = await fetchAll(() => constQuery);
-
-    let wardsData = [];
-    if (SCOPE_MODE === 'ward') {
-        wardsData = await fetchAll(() => db.from('wards').select('*').eq('id', USER.ward).order('id'));
-    } else if (SCOPE_MODE === 'constituency') {
-        wardsData = await fetchAll(() => db.from('wards').select('*').eq('constituency_id', USER.constituency).order('id'));
-    } else if (SCOPE_MODE !== 'national') {
-        wardsData = await fetchIn('wards', '*', 'constituency_id', (consts||[]).map(c=>c.id), 'id');
-    } else {
-        wardsData = await fetchAll(() => db.from('wards').select('*').order('id'));
-    }
-
-    let centresData = [];
-    if (SCOPE_MODE === 'national' && !DRILL_COUNTY_ID) {
-        centresData = await fetchAll(() => db.from('centres').select('*').order('id'));
+    // 1. Fetch the scoped Leaderboard directly from the Materialized View
+    let boardQuery = db.from('county_leaderboard').select('*').eq('position', VIEW_POS);
+    
+    // If they are an MP or MCA, the backend RLS handles the county lock anyway, 
+    // but we filter by their specific geography for the leaderboard view.
+    if (SCOPE_MODE === 'county' && USER.county) {
+        boardQuery = boardQuery.eq('county_id', USER.county);
     } else if (SCOPE_MODE === 'national' && DRILL_COUNTY_ID) {
-        const countyConstIds = (consts || []).filter(c => c.county_id === DRILL_COUNTY_ID).map(c => c.id);
-        const countyWardIds = (wardsData || []).filter(w => countyConstIds.includes(w.constituency_id)).map(w => w.id);
-        centresData = await fetchIn('centres', '*', 'ward_id', countyWardIds, 'id');
-    } else {
-        centresData = await fetchIn('centres', '*', 'ward_id', (wardsData||[]).map(w=>w.id), 'id');
-    }
-
-    let streamsData = [];
-    if (SCOPE_MODE === 'national' && DRILL_COUNTY_ID) {
-        streamsData = await fetchIn('streams', '*', 'centre_id', (centresData||[]).map(c=>c.id), 'code');
-    } else if (SCOPE_MODE === 'national') {
-        streamsData = await fetchAll(() => db.from('streams').select('*').order('code'));
-    } else {
-        streamsData = await fetchIn('streams', '*', 'centre_id', (centresData||[]).map(c=>c.id), 'code');
-    }
-
-    // 2. Fetch Candidates & Results
-let candQuery = db.from('candidates').select('*').eq('position', VIEW_POS).order('code');
-
-if (VIEW_POS !== 'President' && SCOPE_MODE !== 'national') {
-    if (VIEW_POS === 'Governor' || VIEW_POS === 'Senator' || VIEW_POS === 'Women Rep') {
-        // If the user is an MP, their USER.county is null. 
-        // We must find the county ID from their constituency.
-        let targetCounty = USER.county;
-        if (!targetCounty && SCOPE_MODE === 'constituency' && consts.length > 0) {
-            targetCounty = consts[0].county_id;
-        }
-        candQuery = candQuery.eq('county_id', targetCounty);
-        
-    } else if (VIEW_POS === 'MP') {
-        // Filter MPs by the constituency(ies) the user is allowed to see
-        const constIds = (consts || []).map(c => c.id);
-        if (constIds.length) candQuery = candQuery.in('constituency_id', constIds);
-        else candQuery = candQuery.eq('constituency_id', 'NONE'); 
-        
-    } else if (VIEW_POS === 'MCA') {
-        // Filter MCAs by the ward(s) the user is allowed to see
-        const wardIds = (wardsData || []).map(w => w.id);
-        if (wardIds.length) candQuery = candQuery.in('ward_id', wardIds);
-        else candQuery = candQuery.eq('ward_id', 'NONE'); 
-    }
-}
-    const cands = await fetchAll(() => candQuery);
-
-    const activeStreamCodes = (streamsData || []).map(s => s.code);
-    let allResultsData = [];
-    if (activeStreamCodes.length > 0) {
-        allResultsData = await fetchIn('results', 'stream_code, position, candidate_code, votes', 'stream_code', activeStreamCodes, 'stream_code');
-    }
-    const resultsData = (allResultsData || []).filter(r => r.position === VIEW_POS);
-
-    // ... REST OF THE LOGIC IS EXACTLY THE SAME ...
-    const candMap = {}; (cands || []).forEach(c => { c.photo_url = normalizeImageUrl(c.photo_url); candMap[c.code] = c; });
-    const streamMap = {}; (streamsData || []).forEach(s => streamMap[s.code] = s);
-    const centreMap = {}; (centresData || []).forEach(c => centreMap[c.id] = c);
-    const wardMap = {}; (wardsData || []).forEach(w => wardMap[w.id] = w);
-    const constMap = {}; (consts || []).forEach(c => constMap[c.id] = c);
-
-    let countiesData = [];
-    if (SCOPE_MODE === 'national') {
-      countiesData = await fetchAll(() => db.from('counties').select('*').order('name'));
+        boardQuery = boardQuery.eq('county_id', DRILL_COUNTY_ID);
     }
     
-    const votesByCounty = {}, votesByConst = {}, votesByWard = {}, votesByCentre = {}, votesByStream = {}, totalByCand = {};
-    const tabTotals = {}; POSITIONS.forEach(p => tabTotals[p] = 0);
-    const tabTotalsByLevel = { county: {}, const: {}, ward: {}, centre: {}, stream: {} };
-    POSITIONS.forEach(p => {
-      tabTotalsByLevel.county[p] = {}; tabTotalsByLevel.const[p] = {}; tabTotalsByLevel.ward[p] = {}; tabTotalsByLevel.centre[p] = {}; tabTotalsByLevel.stream[p] = {};
+    const { data: rawLeaderboard, error: boardErr } = await boardQuery;
+    if (boardErr) throw boardErr;
+
+    // 2. Fetch Candidate Profiles (RLS automatically restricts this to their scope!)
+    const { data: cands, error: candErr } = await db.from('candidates').select('*').eq('position', VIEW_POS);
+    if (candErr) throw candErr;
+
+    // Build a quick map
+    const candMap = {};
+    (cands || []).forEach(c => { 
+        c.photo_url = normalizeImageUrl(c.photo_url); 
+        candMap[c.code] = c; 
     });
 
-    (resultsData || []).forEach(r => {
-      const stream = streamMap[r.stream_code]; if (!stream) return; 
-      const centre = centreMap[stream.centre_id]; if (!centre) return;
-      const ward = wardMap[centre.ward_id]; if (!ward) return;
-      const constituency = constMap[ward.constituency_id]; if (!constituency) return;
-      const countyId = constituency.county_id;
+    // 3. Format the Leaderboard
+    let leaderboard = (rawLeaderboard || []).map(row => {
+        const info = candMap[row.candidate_code] || {};
+        return {
+            code: row.candidate_code,
+            name: info.name || 'Unknown',
+            party: info.party || '',
+            photo_url: info.photo_url || '',
+            color: info.color || '#A5CF83',
+            votes: Number(row.total_votes) || 0
+        };
+    }).sort((a, b) => b.votes - a.votes);
 
-      if (!totalByCand[r.candidate_code]) totalByCand[r.candidate_code] = 0;
-      totalByCand[r.candidate_code] += r.votes;
-
-      if (!votesByStream[r.stream_code]) votesByStream[r.stream_code] = {};
-      votesByStream[r.stream_code][r.candidate_code] = (votesByStream[r.stream_code][r.candidate_code]||0) + r.votes;
-      if (!votesByCentre[centre.id]) votesByCentre[centre.id] = {};
-      votesByCentre[centre.id][r.candidate_code] = (votesByCentre[centre.id][r.candidate_code]||0) + r.votes;
-      if (!votesByWard[ward.id]) votesByWard[ward.id] = {};
-      votesByWard[ward.id][r.candidate_code] = (votesByWard[ward.id][r.candidate_code]||0) + r.votes;
-      if (!votesByConst[constituency.id]) votesByConst[constituency.id] = {};
-      votesByConst[constituency.id][r.candidate_code] = (votesByConst[constituency.id][r.candidate_code]||0) + r.votes;
-      if (!votesByCounty[countyId]) votesByCounty[countyId] = {};
-      votesByCounty[countyId][r.candidate_code] = (votesByCounty[countyId][r.candidate_code]||0) + r.votes;
-    });
-
-    (allResultsData || []).forEach(r => {
-      if (tabTotals[r.position] !== undefined) tabTotals[r.position] += r.votes;
-      const stream = streamMap[r.stream_code]; if (!stream) return;
-      const centre = centreMap[stream.centre_id]; if (!centre) return;
-      const ward = wardMap[centre.ward_id]; if (!ward) return;
-      const constituency = constMap[ward.constituency_id]; if (!constituency) return;
-      const pos = r.position;
-
-      if (tabTotalsByLevel.county[pos]) {
-          tabTotalsByLevel.county[pos][constituency.county_id] = (tabTotalsByLevel.county[pos][constituency.county_id] || 0) + r.votes;
-          tabTotalsByLevel.const[pos][constituency.id] = (tabTotalsByLevel.const[pos][constituency.id] || 0) + r.votes;
-          tabTotalsByLevel.ward[pos][ward.id] = (tabTotalsByLevel.ward[pos][ward.id] || 0) + r.votes;
-          tabTotalsByLevel.centre[pos][centre.id] = (tabTotalsByLevel.centre[pos][centre.id] || 0) + r.votes;
-          tabTotalsByLevel.stream[pos][stream.code] = (tabTotalsByLevel.stream[pos][stream.code] || 0) + r.votes;
-      }
-    });
-
-    let leaderboard = (cands || []).map(c => ({
-      code: c.code, name: c.name, party: c.party, photo_url: c.photo_url, color: c.color || '#A5CF83', votes: totalByCand[c.code] || 0
-    })).sort((a,b) => b.votes - a.votes);
-    
     let globalTotal = leaderboard.reduce((s, c) => s + c.votes, 0);
     leaderboard.forEach(c => c.pct = globalTotal > 0 ? ((c.votes/globalTotal)*100).toFixed(1) : '0.0');
 
@@ -1063,18 +967,31 @@ if (VIEW_POS !== 'President' && SCOPE_MODE !== 'national') {
         if (idx !== -1) { ownRow = leaderboard[idx]; ownRank = idx + 1; }
     }
 
+    // 4. Save to OVERVIEW state
     OVERVIEW = {
-      viewingPosition: VIEW_POS, leaderboard: leaderboard, globalTotal, ownRow, ownRank,
-      leader: leaderboard[0], runner: leaderboard[1], 
+      viewingPosition: VIEW_POS, 
+      leaderboard: leaderboard, 
+      globalTotal, 
+      ownRow, 
+      ownRank,
+      leader: leaderboard[0], 
+      runner: leaderboard[1], 
       margin: leaderboard[0] && leaderboard[1] ? (leaderboard[0].votes - leaderboard[1].votes) : 0,
-      counties: countiesData, consts: consts || [], wards: wardsData || [], centres: centresData || [], streams: streamsData || [],
-      votesByCounty, votesByConst, votesByWard, votesByCentre, votesByStream, candMap, tabTotals, tabTotalsByLevel,
-      reported: (resultsData || []).length, totalStreams: (streamsData || []).length
+      candMap: candMap
     };
 
-    renderTabs(); renderHero(); renderDrillGrid(); renderBoard();
+    // Note: The Drill-Grid and Hero calculations will be handled by separate queries 
+    // in the next surgical step. For now, let's render what we have.
+    
+    renderTabs(); 
+    renderBoard(); 
     setPulse('live');
-  } catch (err) { console.error(err); setPulse('stale'); if (!silent) toast('Connection error.', 'error'); }
+
+  } catch (err) { 
+    console.error(err); 
+    setPulse('stale'); 
+    if (!silent) toast('Connection error.', 'error'); 
+  }
 }
 
 async function loadDrill(silent) {
