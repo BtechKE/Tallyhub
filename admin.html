@@ -6622,7 +6622,6 @@ function openCsvImportModal() {
 function closeCsvImportModal() {
   document.getElementById('csvImportModal').classList.remove('active');
 }
-
 async function handleCsvUpload(event) {
   const file = event.target.files[0];
   if (!file) return;
@@ -6632,7 +6631,6 @@ async function handleCsvUpload(event) {
     const text = e.target.result;
     const rows = text.split('\n').map(r => r.trim()).filter(r => r.length > 0);
     
-    // Skip the header row
     if (rows.length <= 1) return toast('CSV file is empty.', 'error');
     rows.shift(); 
 
@@ -6644,7 +6642,6 @@ async function handleCsvUpload(event) {
     let successCount = 0;
     let failCount = 0;
 
-    // Process in batches of 20 to prevent rate-limiting
     const BATCH_SIZE = 20; 
     const totalBatches = Math.ceil(rows.length / BATCH_SIZE);
 
@@ -6653,36 +6650,30 @@ async function handleCsvUpload(event) {
         const batchRows = rows.slice(start, start + BATCH_SIZE);
 
         const promises = batchRows.map(async (row) => {
-            // Smart parser: handles commas inside quotes
             const cols = row.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || row.split(',');
             const cleanCols = cols.map(c => c.replace(/^"|"$/g, '').trim());
 
             if (cleanCols.length >= 12) {
-                // Extract the 8 pieces of data we need
                 const pCounty = cleanCols[1];            // COUNTY NAME
                 const pConst = cleanCols[3];             // CONSTITUENCY NAME
                 const pWard = cleanCols[5];              // CAW_NAME
-                const pCentreCode = cleanCols[6];        // REGISTRATION CENTRE CODE
                 const pCentre = cleanCols[7];            // REGISTRATION CENTRE NAME
-                const pStationCode = cleanCols[9];       // POLLING STATION CODE
                 const pStationName = cleanCols[10];      // POLLING STATION NAME
                 const pVoters = parseInt(cleanCols[11], 10) || 0; // VOTERS PER POLLING STATION
 
-                // Extract stream number from the station name (e.g., "Stream 2" -> 2)
+                // Extract stream number from the station name
                 let streamNum = 1;
                 const match = pStationName.match(/(\d+)/);
                 if (match) streamNum = parseInt(match[1], 10);
 
-                // Call the V3 RPC
+                // Call the simplified V3 RPC (No official codes!)
                 const { error } = await db.rpc('import_stream_v3', {
                     p_county_name: pCounty,
                     p_const_name: pConst,
                     p_ward_name: pWard,
                     p_centre_name: pCentre,
                     p_stream_number: streamNum,
-                    p_registered_voters: pVoters,
-                    p_official_centre_code: pCentreCode,
-                    p_official_station_code: pStationCode
+                    p_registered_voters: pVoters
                 });
 
                 if (error) {
@@ -6694,11 +6685,9 @@ async function handleCsvUpload(event) {
             return false;
         });
 
-        // Wait for the batch to finish
         const results = await Promise.all(promises);
         results.forEach(r => { if (r) successCount++; else failCount++; });
 
-        // Update Progress
         const pct = Math.round(((b + 1) / totalBatches) * 100);
         progressBar.style.width = pct + '%';
         progressPct.textContent = pct + '%';
@@ -6715,6 +6704,7 @@ async function handleCsvUpload(event) {
   
   reader.readAsText(file);
 }
+
 </script>
 </body>
 </html>
