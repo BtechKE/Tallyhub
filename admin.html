@@ -3301,15 +3301,23 @@ async function loadAgents() {
 }
 
 async function loadAspirants() {
-  // ONLY load aspirants for the active county
-  const { data } = await db.from('aspirants').select('*').eq('county_id', CURRENT_COUNTY).order('name');
+  // Fetch aspirants for the current county, OR National candidates (President)
+  const { data, error } = await db.from('aspirants')
+    .select('*')
+    .or(`county_id.eq.${CURRENT_COUNTY},position.eq.President`)
+    .order('name');
+    
+  if (error) {
+    console.error("Error loading aspirants:", error);
+    return;
+  }
+
   ASPIRANTS = data || []; 
   
   renderAspirants(); 
   document.getElementById('statAspirants').textContent = ASPIRANTS.length; 
   document.getElementById('badgeAspirants').textContent = ASPIRANTS.length;
 }
-
 // ================================================================
 //  RENDERERS (Wards, Centres, Streams, Candidates, Agents, Aspirants)
 // ================================================================
