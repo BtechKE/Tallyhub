@@ -4798,6 +4798,7 @@ async function loadSubmissionMatrix() {
     });
 
     let totalCompleteStreams = 0;
+    let totalCellsDone = 0; // NEW: Track total unique positions submitted
     
     // Build the tracker tree using the STREAMS we already have
     const trackerWards = WARDS.map(w => {
@@ -4825,6 +4826,8 @@ async function loadSubmissionMatrix() {
         });
 
         totalCompleteStreams += wStreamsComplete;
+        totalCellsDone += wCellsDone; // NEW: Sum up the unique position submissions
+        
         return { 
             wardId: w.id, 
             wardName: w.name, 
@@ -4841,7 +4844,8 @@ async function loadSubmissionMatrix() {
       positions: POSITIONS, 
       consts: CONSTITUENCIES,
       wards: trackerWards,
-      summary: { totalStreams: STREAMS.length, completeStreams: totalCompleteStreams, pendingStreams: STREAMS.length - totalCompleteStreams, cellsDone: (results || []).length, cellsTotal: STREAMS.length * POSITIONS.length }
+      // FIXED: Changed cellsDone to totalCellsDone
+      summary: { totalStreams: STREAMS.length, completeStreams: totalCompleteStreams, pendingStreams: STREAMS.length - totalCompleteStreams, cellsDone: totalCellsDone, cellsTotal: STREAMS.length * POSITIONS.length }
     };
 
     populateTrackerWards();
@@ -4853,7 +4857,6 @@ async function loadSubmissionMatrix() {
     document.getElementById('trackerList').innerHTML = '<div class="empty">Failed to load tracker data.</div>';
   }
 }
-    
 function populateTrackerWards() {
   if (!TRACKER_DATA) return;
   var constSel = document.getElementById('trackerConstituency');
