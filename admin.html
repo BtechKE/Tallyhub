@@ -4931,13 +4931,15 @@ function renderTracker() {
   var statusFilter = document.getElementById('trackerStatus').value;
 
   // 1. Summary Strip
+  // 1. Summary Strip
   var s = TRACKER_DATA.summary;
-  var pct = s.totalCells > 0 ? Math.round(s.submittedCells / s.totalCells * 100) : 0;
-
+  // FIX: Changed totalCells to cellsTotal, and submittedCells to cellsDone
+  var pct = s.cellsTotal > 0 ? Math.round(s.cellsDone / s.cellsTotal * 100) : 0;
+  
   document.getElementById('trackerSummary').innerHTML =
     '<div class="tracker-stat"><div class="num">' + s.totalStreams + '</div><div class="lbl">Streams</div></div>' +
     '<div class="tracker-stat"><div class="num">' + s.completeStreams + '</div><div class="lbl">Complete</div></div>' +
-    '<div class="tracker-stat"><div class="num">' + s.submittedCells + '</div><div class="lbl">Submissions</div></div>' +
+    '<div class="tracker-stat"><div class="num">' + s.cellsDone + '</div><div class="lbl">Submissions</div></div>' +
     '<div class="tracker-stat pct"><div class="num">' + pct + '%</div><div class="lbl">Overall</div></div>';
 
   // 2. Filter groups and render
