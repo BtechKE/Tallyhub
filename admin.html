@@ -4456,71 +4456,70 @@ var ADMIN_DRILL_CONST_ID = '';
 var ADMIN_DRILL_WARD = '';
 var ADMIN_DRILL_CENTRE = '';
 
-
 async function loadAdminResults() {
   try {
-    // 1. Fetch Candidates for the current position
-    const { data: cands } = await db.from('candidates').select('*').eq('position', CURRENT_RESULT_POS);
+    // 1. Fetch all Candidates
+    const { data: cands } = await db.from('candidates').select('*');
     var candMap = {};
-    (cands || []).forEach(c => { c.photo_url = normalizeImageUrl(c.photo_url); candMap[c.code] = c; });
+    var resultsByPos = {}; POSITIONS.forEach(p => resultsByPos[p] = []);
+    var totalByCand = {};
 
-    // 2. Fetch Aggregated Votes based on the current drill level
-    var votesByConst = {}, votesByWard = {}, votesByCentre = {}, votesByStream = {};
-    
-    // We fetch all constituency votes for the active county to build the first level
-    const { data: constVotes } = await db.from('constituency_votes')
-        .select('*')
-        .eq('position', CURRENT_RESULT_POS)
-        .in('constituency_id', CONSTITUENCIES.map(c => c.id));
-        
-    (constVotes || []).forEach(v => {
-        if (!votesByConst[v.constituency_id]) votesByConst[v.constituency_id] = {};
-        votesByConst[v.constituency_id][v.candidate_code] = Number(v.total_votes);
+    (cands || []).forEach(c => {
+        c.photo_url = normalizeImageUrl(c.photo_url);
+        candMap[c.code] = c;
     });
 
-    // If we are drilled into a constituency, fetch its ward votes
-    if (ADMIN_DRILL_LEVEL !== 'constituency' && ADMIN_DRILL_CONST_ID) {
-        const { data: wardV } = await db.from('ward_votes')
-            .select('*')
-            .eq('position', CURRENT_RESULT_POS)
-            .in('ward_id', WARDS.filter(w => w.constituency_id === ADMIN_DRILL_CONST_ID).map(w => w.id));
-        (wardV || []).forEach(v => {
-            if (!votesByWard[v.ward_id]) votesByWard[v.ward_id] = {};
-            votesByWard[v.ward_id][v.candidate_code] = Number(v.total_votes);
-        });
-    }
+    // 2. Fetch Aggregated Votes (Nested by Position)
+    var votesByConst = {}, votesByWard = {}, votesByCentre = {}, votesByStream = {};
+    POSITIONS.forEach(p => {
+        votesByConst[p] = {}; votesByWard[p] = {}; votesByCentre[p] = {}; votesByStream[p] = {};
+    });
 
-    // If drilled into a ward, fetch centre votes
-    if (ADMIN_DRILL_LEVEL === 'centre' || ADMIN_DRILL_LEVEL === 'stream') {
-        const { data: cenV } = await db.from('centre_votes')
-            .select('*')
-            .eq('position', CURRENT_RESULT_POS)
-            .in('centre_id', CENTRES.filter(c => c.ward_id === ADMIN_DRILL_WARD).map(c => c.id));
-        (cenV || []).forEach(v => {
-            if (!votesByCentre[v.centre_id]) votesByCentre[v.centre_id] = {};
-            votesByCentre[v.centre_id][v.candidate_code] = Number(v.total_votes);
-        });
-    }
+    const { data: constVotes } = await db.from('constituency_votes').select('*').in('constituency_id', CONSTITUENCIES.map(c => c.id));
+    (constVotes || []).forEach(v => {
+        if (!votesByConst[v.position]) votesByConst[v.position] = {};
+        if (!votesByConst[v.position][v.constituency_id]) votesByConst[v.position][v.constituency_id] = {};
+        votesByConst[v.position][v.constituency_id][v.candidate_code] = Number(v.total_votes);
+        totalByCand[v.candidate_code] = (totalByCand[v.candidate_code] || 0) + Number(v.total_votes);
+    });
 
-    // If drilled into a centre, fetch stream votes
-    if (ADMIN_DRILL_LEVEL === 'stream' && ADMIN_DRILL_CENTRE) {
-        const { data: strV } = await db.from('stream_votes')
-            .select('*')
-            .eq('position', CURRENT_RESULT_POS)
-            .in('stream_code', STREAMS.filter(s => s.centre_id === ADMIN_DRILL_CENTRE).map(s => s.code));
-        (strV || []).forEach(v => {
-            if (!votesByStream[v.stream_code]) votesByStream[v.stream_code] = {};
-            votesByStream[v.stream_code][v.candidate_code] = Number(v.total_votes);
-        });
-    }
+    const { data: wardVotes } = await db.from('ward_votes').select('*').in('ward_id', WARDS.map(w => w.id));
+    (wardVotes || []).forEach(v => {
+        if (!votesByWard[v.position]) votesByWard[v.position] = {};
+        if (!votesByWard[v.position][v.ward_id]) votesByWard[v.position][v.ward_id] = {};
+        votesByWard[v.position][v.ward_id][v.candidate_code] = Number(v.total_votes);
+    });
 
-    RESULTS_DATA = { 
-      candMap, votesByConst, votesByWard, votesByCentre, votesByStream, 
-      reported: 0, totalStreams: STREAMS.length // Simplified for V3
+    const { data: centreVotes } = await db.from('centre_votes').select('*').in('centre_id', CENTRES.map(c => c.id));
+    (centreVotes || []).forEach(v => {
+        if (!votesByCentre[v.position]) votesByCentre[v.position] = {};
+        if (!votesByCentre[v.position][v.centre_id]) votesByCentre[v.position][v.centre_id] = {};
+        votesByCentre[v.position][v.centre_id][v.candidate_code] = Number(v.total_votes);
+    });
+
+    const { data: streamVotes } = await db.from('stream_votes').select('*').in('stream_code', STREAMS.map(s => s.code));
+    (streamVotes || []).forEach(v => {
+        if (!votesByStream[v.position]) votesByStream[v.position] = {};
+        if (!votesByStream[v.position][v.stream_code]) votesByStream[v.position][v.stream_code] = {};
+        votesByStream[v.position][v.stream_code][v.candidate_code] = Number(v.total_votes);
+    });
+
+    // Populate resultsByPos
+    CANDIDATES.forEach(c => {
+        if (resultsByPos[c.position]) {
+            resultsByPos[c.position].push({ ...c, votes: totalByCand[c.code] || 0 });
+        }
+    });
+
+    RESULTS_DATA = {
+      results: resultsByPos,
+      candMap,
+      votesByConst, votesByWard, votesByCentre, votesByStream,
+      reported: 0, totalStreams: STREAMS.length
     };
 
     renderResultTabs();
-    renderResults(); 
+    renderResults();
 
   } catch (err) {
     console.error(err);
@@ -4859,40 +4858,38 @@ function populateTrackerWards() {
   if (!TRACKER_DATA) return;
   var constSel = document.getElementById('trackerConstituency');
   var constSet = {};
-  
-  CONSTITUENCIES.forEach(c => {
-    constSet[c.id] = c.name;
-  });
-  
+
+  CONSTITUENCIES.forEach(c => { constSet[c.id] = c.name; });
+
   var current = constSel.value;
   constSel.innerHTML = '<option value="">All Constituencies</option>' +
-    Object.keys(constSet).sort((a,b) => constSet[a].localeCompare(constSet[b])).map(id => 
+    Object.keys(constSet).sort((a,b) => constSet[a].localeCompare(constSet[b])).map(id =>
       '<option value="' + escAttr(id) + '">' + esc(constSet[id]) + '</option>'
     ).join('');
-  
+
   if (current) constSel.value = current;
-  trackerWardOptions(); 
+  trackerWardOptions();
 }
-  
+
   function trackerWardOptions() {
   if (!TRACKER_DATA) return;
   var constFilter = document.getElementById('trackerConstituency').value;
   var sel = document.getElementById('trackerWard');
   var wardSet = {};
-  
-  TRACKER_DATA.groups.forEach(g => {
-    if (constFilter && g.constituencyId !== constFilter) return;
-    wardSet[g.wardId] = g.wardName;
+
+  WARDS.forEach(w => {
+    if (constFilter && w.constituency_id !== constFilter) return;
+    wardSet[w.id] = w.name;
   });
-  
+
   var current = sel.value;
   sel.innerHTML = '<option value="">All Wards</option>' +
-    Object.keys(wardSet).sort((a,b) => wardSet[a].localeCompare(wardSet[b])).map(id => 
+    Object.keys(wardSet).sort((a,b) => wardSet[a].localeCompare(wardSet[b])).map(id =>
       '<option value="' + escAttr(id) + '">' + esc(wardSet[id]) + '</option>'
     ).join('');
-    
+
   if (current && wardSet[current]) sel.value = current;
-  trackerCentreOptions(); // Call the next level down
+  trackerCentreOptions();
 }
 
 function trackerCentreOptions() {
@@ -4901,31 +4898,34 @@ function trackerCentreOptions() {
   var wardFilter = document.getElementById('trackerWard').value;
   var sel = document.getElementById('trackerCentre');
   var centreSet = {};
-  
-  TRACKER_DATA.groups.forEach(g => {
-    if (constFilter && g.constituencyId !== constFilter) return;
-    if (wardFilter && g.wardId !== wardFilter) return;
-    centreSet[g.centreId] = g.centreName;
+
+  CENTRES.forEach(c => {
+    var w = WARDS.find(w => w.id === c.ward_id);
+    if (!w) return;
+    if (constFilter && w.constituency_id !== constFilter) return;
+    if (wardFilter && w.id !== wardFilter) return;
+    centreSet[c.id] = c.name;
   });
-  
+
   var current = sel.value;
   sel.innerHTML = '<option value="">All Centres</option>' +
-    Object.keys(centreSet).sort().map(id => 
+    Object.keys(centreSet).sort().map(id =>
       '<option value="' + escAttr(id) + '">' + esc(centreSet[id]) + '</option>'
     ).join('');
-    
+
   if (current && centreSet[current]) sel.value = current;
 }
 
 function updateTrackerBadge() {
   if (!TRACKER_DATA) return;
   var s = TRACKER_DATA.summary;
-  document.getElementById('badgeTracker').textContent = s.fullyReportedStreams + '/' + s.totalStreams;
+  document.getElementById('badgeTracker').textContent = s.completeStreams + '/' + s.totalStreams;
 }
 
 function renderTracker() {
   if (!TRACKER_DATA) return;
-  
+
+  var constFilter = document.getElementById('trackerConstituency').value;
   var wardFilter = document.getElementById('trackerWard').value;
   var centreFilter = document.getElementById('trackerCentre').value;
   var statusFilter = document.getElementById('trackerStatus').value;
@@ -4933,68 +4933,66 @@ function renderTracker() {
   // 1. Summary Strip
   var s = TRACKER_DATA.summary;
   var pct = s.totalCells > 0 ? Math.round(s.submittedCells / s.totalCells * 100) : 0;
-  
+
   document.getElementById('trackerSummary').innerHTML =
     '<div class="tracker-stat"><div class="num">' + s.totalStreams + '</div><div class="lbl">Streams</div></div>' +
-    '<div class="tracker-stat"><div class="num">' + s.fullyReportedStreams + '</div><div class="lbl">Complete</div></div>' +
+    '<div class="tracker-stat"><div class="num">' + s.completeStreams + '</div><div class="lbl">Complete</div></div>' +
     '<div class="tracker-stat"><div class="num">' + s.submittedCells + '</div><div class="lbl">Submissions</div></div>' +
     '<div class="tracker-stat pct"><div class="num">' + pct + '%</div><div class="lbl">Overall</div></div>';
 
-  // 2. Filter groups
-  // 2. Filter groups
-  var constFilter = document.getElementById('trackerConstituency').value;
-  var visibleGroups = TRACKER_DATA.groups.filter(g => {
-    if (constFilter && g.constituencyId !== constFilter) return false;
-    if (wardFilter && g.wardId !== wardFilter) return false;
-    if (centreFilter && g.centreId !== centreFilter) return false;
-    return true;
-  });
-
-  // 3. Render Stream Rows
+  // 2. Filter groups and render
   var html = '';
-  visibleGroups.forEach(g => {
-    var streamsToShow = g.streams.filter(st => {
-      if (statusFilter === 'complete') return st.isComplete;
-      if (statusFilter === 'partial') return st.submittedCount > 0 && !st.isComplete;
-      if (statusFilter === 'pending') return st.submittedCount === 0;
-      return true;
-    });
-    
-    if (!streamsToShow.length) return;
+  
+  TRACKER_DATA.wards.forEach(w => {
+    if (constFilter && w.constituency_id !== constFilter) return;
+    if (wardFilter && w.wardId !== wardFilter) return;
 
-    html += '<div class="tracker-group">';
-    html += '<div class="tracker-group-head"><div>';
-    html += '<div class="tracker-ward">' + esc(g.wardName) + '</div>';
-    html += '<div class="tracker-centre">' + esc(g.centreName) + '</div>';
-    html += '</div><div class="tracker-group-count">' +
-            g.streams.filter(x => x.isComplete).length + '/' + g.streams.length + ' complete</div></div>';
+    w.centres.forEach(c => {
+        if (centreFilter && c.centreId !== centreFilter) return;
 
-    streamsToShow.forEach(st => {
-      html += '<div class="stream-row' + (st.isComplete ? ' complete' : '') + '">';
-      html += '<div class="stream-id"><div class="stream-name">' + esc(g.centreName) + ' · ' + esc(st.label) + '</div>';
-      html += '<div class="stream-code">' + esc(st.code) + '</div></div>';
-      
-      html += '<div class="track-pips">';
-      TRACKER_DATA.positions.forEach(pos => {
-        var hit = st.statuses[pos];
-        var short = POSITION_SHORT_MAP[pos] || pos.charAt(0);
-        var tip = hit ? pos + ' · tap to view results' : pos + ' · not submitted yet';
-        
-        var hasForm = !!TRACKER_FORMS[st.code + '_' + pos];
-        var formBadge = hasForm ? '<span style="position:absolute;bottom:-3px;right:-3px;background:var(--blue);color:white;border-radius:50%;width:12px;height:12px;display:flex;align-items:center;justify-content:center;border:1.5px solid #fff;box-shadow:0 2px 4px rgba(0,0,0,0.2);"><i class="fas fa-camera" style="font-size:6px;"></i></span>' : '';
-        
-        if (hit) {
-          html += '<button type="button" class="track-pip done" style="position:relative;" title="' + escAttr(tip) + '" onclick="openTrackerPip(\'' + escAttr(st.code) + '\',\'' + escAttr(pos) + '\')">' + short + formBadge + '</button>';
-        } else {
-          html += '<span class="track-pip pending" style="position:relative;" title="' + escAttr(tip) + '">' + short + '</span>';
-        }
-      });
-      html += '</div>'; // CLOSE track-pips
-      
-      html += '<div class="stream-progress">' + st.submittedCount + '/' + TRACKER_DATA.positions.length + '</div>';
-      html += '</div>'; // CLOSE stream-row
+        var streamsToShow = c.streams.filter(st => {
+          if (statusFilter === 'complete') return st.isComplete;
+          if (statusFilter === 'partial') return st.done > 0 && !st.isComplete;
+          if (statusFilter === 'pending') return st.done === 0;
+          return true;
+        });
+
+        if (!streamsToShow.length) return;
+
+        html += '<div class="tracker-group">';
+        html += '<div class="tracker-group-head"><div>';
+        html += '<div class="tracker-ward">' + esc(w.wardName) + '</div>';
+        html += '<div class="tracker-centre">' + esc(c.centreName) + '</div>';
+        html += '</div><div class="tracker-group-count">' +
+                c.streams.filter(x => x.isComplete).length + '/' + c.streams.length + ' complete</div></div>';
+
+        streamsToShow.forEach(st => {
+          html += '<div class="stream-row' + (st.isComplete ? ' complete' : '') + '">';
+          html += '<div class="stream-id"><div class="stream-name">' + esc(c.centreName) + ' · ' + esc(st.label) + '</div>';
+          html += '<div class="stream-code">' + esc(st.code) + '</div></div>';
+
+          html += '<div class="track-pips">';
+          TRACKER_DATA.positions.forEach(pos => {
+            var hit = st.pips[pos];
+            var short = POSITION_SHORT_MAP[pos] || pos.charAt(0);
+            var tip = hit ? pos + ' · tap to view results' : pos + ' · not submitted yet';
+
+            var hasForm = !!TRACKER_FORMS[st.code + '_' + pos];
+            var formBadge = hasForm ? '<span style="position:absolute;bottom:-3px;right:-3px;background:var(--blue);color:white;border-radius:50%;width:12px;height:12px;display:flex;align-items:center;justify-content:center;border:1.5px solid #fff;box-shadow:0 2px 4px rgba(0,0,0,0.2);"><i class="fas fa-camera" style="font-size:6px;"></i></span>' : '';
+
+            if (hit) {
+              html += '<button type="button" class="track-pip done" style="position:relative;" title="' + escAttr(tip) + '" onclick="openTrackerPip(\'' + escAttr(st.code) + '\',\'' + escAttr(pos) + '\')">' + short + formBadge + '</button>';
+            } else {
+              html += '<span class="track-pip pending" style="position:relative;" title="' + escAttr(tip) + '">' + short + '</span>';
+            }
+          });
+          html += '</div>'; // CLOSE track-pips
+
+          html += '<div class="stream-progress">' + st.done + '/' + TRACKER_DATA.positions.length + '</div>';
+          html += '</div>'; // CLOSE stream-row
+        });
+        html += '</div>'; // CLOSE tracker-group
     });
-    html += '</div>'; // CLOSE tracker-group
   });
 
   if (!html) {
@@ -5007,10 +5005,12 @@ async function openTrackerPip(streamCode, position) {
   var sheet = document.getElementById('sheetContent');
   
   var ctx = null;
-  if (TRACKER_DATA) {
-    TRACKER_DATA.groups.forEach(function (g) {
-      g.streams.forEach(function (st) {
-        if (st.code === streamCode) ctx = { group: g, stream: st };
+  if (TRACKER_DATA && TRACKER_DATA.wards) {
+    TRACKER_DATA.wards.forEach(function (w) {
+      w.centres.forEach(function (c) {
+        c.streams.forEach(function (st) {
+          if (st.code === streamCode) ctx = { group: { wardName: w.wardName, centreName: c.centreName }, stream: st };
+        });
       });
     });
   }
