@@ -4526,7 +4526,7 @@ async function loadAdminResults() {
     console.error(err);
     toast('Error loading results', 'error');
   }
-    }
+}
 
 async function refreshResults(btn) {
   if (btn) thBtnLoad(btn, 'Refreshing…');
@@ -4775,73 +4775,6 @@ async function loadSubmissionMatrix() {
   document.getElementById('trackerList').innerHTML = '<div class="loading-inline"><i class="fas fa-spinner"></i>Loading tracker…</div>';
   
   try {
-    var activeStreamCodes = STREAMS.map(s => s.code);
-    
-    if (activeStreamCodes.length === 0) {
-      TRACKER_DATA = { positions: POSITIONS, groups: [], summary: { totalStreams: 0, totalCells: 0, submittedCells: 0, fullyReportedStreams: 0 } };
-      populateTrackerWards(); renderTracker(); updateTrackerBadge();
-      return;
-    }
-
-    // --- FIX: Replaced the .in() queries with fetchIn ---
-    const [results, formsData] = await Promise.all([
-      fetchIn('results', 'stream_code, position', 'stream_code', activeStreamCodes, 'stream_code'),
-      fetchIn('form_photos', 'stream_code, position, photo_url', 'stream_code', activeStreamCodes, 'stream_code')
-    ]);
-
-    TRACKER_FORMS = {};
-    (formsData || []).forEach(f => {
-        TRACKER_FORMS[f.stream_code + '_' + f.position] = f.photo_url;
-    });
-
-    var submitted = {};
-    (results || []).forEach(r => {
-      if (!submitted[r.stream_code]) submitted[r.stream_code] = {};
-      submitted[r.stream_code][r.position] = true;
-    });
-    var totalStreams = STREAMS.length;
-    var totalCells = totalStreams * POSITIONS.length;
-    var submittedCells = (results || []).length;
-    var fullyReported = 0;
-    var groups = [];
-
-    WARDS.forEach(w => {
-      var wCentres = CENTRES.filter(c => c.ward_id === w.id);
-      wCentres.forEach(c => {
-        var cStreams = STREAMS.filter(s => s.centre_id === c.id).sort((a,b) => a.stream_number - b.stream_number);
-        if (!cStreams.length) return;
-
-        var streamRows = cStreams.map(s => {
-          var statuses = {};
-          var submittedCount = 0;
-          
-          POSITIONS.forEach(pos => {
-            if (submitted[s.code] && submitted[s.code][pos]) {
-              statuses[pos] = { status: 'submitted' };
-              submittedCount++;
-            } else {
-              statuses[pos] = null;
-            }
-          });
-
-          var isComplete = submittedCount === POSITIONS.length;
-          if (isComplete) fullyReported++;
-
-          return {
-            code: s.code, streamNumber: s.stream_number,
-            label: 'STR ' + String(s.stream_number).padStart(2, '0'),
-            statuses: statuses, submittedCount: submittedCount, isComplete: isComplete
-          };
-        });
-
-        groups.push({constituencyId: w.constituency_id, wardId: w.id, wardName: w.name, centreId: c.id, centreName: c.name, streams: streamRows });
-      });
-    });
-
-async function loadSubmissionMatrix() {
-  document.getElementById('trackerList').innerHTML = '<div class="loading-inline"><i class="fas fa-spinner"></i>Loading tracker…</div>';
-  
-  try {
     if (STREAMS.length === 0) {
       document.getElementById('trackerList').innerHTML = '<div class="empty">No streams found for this county.</div>';
       return;
@@ -4921,6 +4854,7 @@ async function loadSubmissionMatrix() {
     document.getElementById('trackerList').innerHTML = '<div class="empty">Failed to load tracker data.</div>';
   }
 }
+    
 function populateTrackerWards() {
   if (!TRACKER_DATA) return;
   var constSel = document.getElementById('trackerConstituency');
