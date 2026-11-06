@@ -902,50 +902,124 @@ const POSITION_ICONS = {
   'MP': 'fa-user-tie', 'Women Rep': 'fa-female', 'MCA': 'fa-map-pin'
 };
 
+// FIX #2: FORMS must always exist, even before the first load
+window.FORMS = window.FORMS || {};
+
+// FIX #3: queue a vote AND persist the "submitted" status so it survives refresh
+async function queueVote(streamCode, position, payload, totalCast, rejected) {
+  await offlineStore.setItem('vote_' + streamCode + '_' + position, {
+    streamCode, position, payload, totalCast, rejected, type: 'vote'
+  });
+  clearDraft(streamCode, position);
+  if (!STATUSES[streamCode]) STATUSES[streamCode] = {};
+  STATUSES[streamCode][position] = { status: 'submitted', pending: true };
+  await offlineStore.setItem('cached_statuses', STATUSES);
+}
+
+// FIX #3: re-apply anything still waiting in the queue on top of server/cached state
+async function applyPendingQueue() {
+  const keys = await offlineStore.keys();
+  for (const k of keys) {
+    const it = await offlineStore.getItem(k);
+    if (!it || !it.type) continue;
+    if (it.type === 'vote') {
+      if (!STATUSES[it.streamCode]) STATUSES[it.streamCode] = {};
+      STATUSES[it.streamCode][it.position] = { status: 'submitted', pending: true };
+    }
+    if (it.type === 'form') {
+      FORMS[it.streamCode] = FORMS[it.streamCode] || {};
+      FORMS[it.streamCode][it.position] = true;
+    }
+  }
+}
+
+// FIX #7: is there unsynced work on this device?
+async function hasPending() {
+  const keys = await offlineStore.keys();
+  for (const k of keys) {
+    const it = await offlineStore.getItem(k);
+    if (it && (it.type === 'vote' || it.type === 'form')) return true;
+  }
+  return false;
+}
+
+// Shared success overlay used by both the offline and weak-network paths
+function showQueuedSuccess(streamCode, position, btn, title, sub) {
+  btn.innerHTML = '<i class="fas fa-check-circle"></i> Saved on Device';
+  btn.style.background = 'var(--warning)';
+  btn.style.color = '#1A1A19';
+
+  document.getElementById('successTitle').textContent = title;
+  document.getElementById('successSub').textContent = sub;
+  document.getElementById('successOverlay').classList.add('active');
+
+  setTimeout(() => {
+    document.getElementById('successOverlay').classList.remove('active');
+    btn.style.background = '';
+    btn.style.color = '';
+    setTimeout(() => openUploadModal(streamCode, position), 300);
+  }, 2000);
+}
+
 // ================================================================
 //  AUTH & INIT
 // ================================================================
 async function init() {
-  // 1. GET USER (Offline-First)
+  // Ask the browser not to evict our offline data
+  if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
+
+  // 1. GET USER (offline-safe)
   let user = null;
-  
-  // First, try to get the session from the phone's local storage
-  const { data: { session } } = await db.auth.getSession();
-  
-  if (session) {
-      user = session.user;
-  } else if (navigator.onLine) {
-      // Fallback to network if no local session exists
+  try {
+    const { data: { session } } = await db.auth.getSession();
+    user = session ? session.user : null;
+  } catch (e) { console.warn('Session check failed', e); }
+
+  if (!user && navigator.onLine) {
+    try {
       const { data } = await db.auth.getUser();
-      user = data?.user;
+      user = data ? data.user : null;
+    } catch (e) { console.warn('getUser failed', e); }
   }
 
-  if (!user) { window.location.href = 'index.html'; return; }
+  const cachedProfile = await offlineStore.getItem('cached_user_profile');
 
-  // 2. FETCH AGENT PROFILE (Offline-First)
+  // No readable session: if offline and we have a cached profile, carry on. Otherwise go to login.
+  if (!user) {
+    if (!navigator.onLine && cachedProfile) {
+      // continue with cached profile
+    } else if (!navigator.onLine) {
+      alert('You are offline and no cached profile exists. Connect to the internet to log in first.');
+      return;
+    } else {
+      window.location.href = 'index.html';
+      return;
+    }
+  }
+
+  // 2. FETCH AGENT PROFILE
   let profile = null;
 
-  if (navigator.onLine) {
-      // ONLINE: Fetch from database
+  if (navigator.onLine && user) {
+    try {
       const { data, error } = await db.from('agents').select('*').eq('auth_user_id', user.id).single();
       if (data) {
-          profile = data;
-          // 🔥 SAVE TO CACHE FOR OFFLINE USE
-          await offlineStore.setItem('cached_user_profile', profile);
-      } else {
-          alert("Agent profile not found in database!\n\nError: " + JSON.stringify(error)); 
-          window.location.href = 'index.html'; 
-          return; 
+        profile = data;
+        await offlineStore.setItem('cached_user_profile', profile);
+      } else if (!cachedProfile) {
+        alert('Agent profile not found in database!\n\nError: ' + JSON.stringify(error));
+        window.location.href = 'index.html';
+        return;
       }
-  } else {
-      // OFFLINE: Fetch from local phone cache
-      profile = await offlineStore.getItem('cached_user_profile');
-      if (!profile) {
-          alert("You are offline and no cached profile exists. Please connect to the internet to log in for the first time.");
-          return; 
-      }
+    } catch (e) { console.warn('Profile fetch failed, using cache', e); }
   }
-  
+
+  if (!profile) profile = cachedProfile;
+  if (!profile) {
+    alert('You are offline and no cached profile exists. Connect to the internet to log in first.');
+    return;
+  }
+
   USER = profile;
 
   // 3. Setup UI
@@ -959,10 +1033,11 @@ async function init() {
   document.getElementById('pickerGreeting').textContent = h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
   document.getElementById('pickerName').textContent = fullName;
 
-  // 4. Load the streams assigned to this agent
-  loadStreams();
+  // 4. Load data
+  await loadStreams();
   loadCountingStatus();
   startAutoRefresh();
+  syncOfflineData();
 }
 // ================================================================
 //  DATA LOADING (SUPABASE)
@@ -972,40 +1047,40 @@ async function loadStreams(silent) {
     document.getElementById('appLoader').classList.add('active');
     document.getElementById('appLoaderText').textContent = "Loading your assigned streams...";
   }
-  
+
+  // Load from the phone's cache (used when offline OR when the network call fails)
+  async function loadFromCache() {
+    const cachedStreams = await offlineStore.getItem('cached_streams');
+    if (!cachedStreams) return false;
+    STREAMS = cachedStreams;
+    STATUSES = (await offlineStore.getItem('cached_statuses')) || {};
+    window.FORMS = (await offlineStore.getItem('cached_forms')) || {};
+    await applyPendingQueue();
+    renderStreams();
+    return true;
+  }
+
   try {
-    // OFFLINE CHECK
     if (!navigator.onLine) {
-        const cachedStreams = await offlineStore.getItem('cached_streams');
-        const cachedStatuses = await offlineStore.getItem('cached_statuses');
-        
-        if (cachedStreams) {
-            STREAMS = cachedStreams;
-            STATUSES = cachedStatuses || {};
-            renderStreams();
-            if (!silent) document.getElementById('appLoader').classList.remove('active');
-            return;
-        } else {
-            throw new Error("No cached streams found. Please connect to the internet first.");
-        }
+      if (await loadFromCache()) return;
+      throw new Error("No cached streams found. Please connect to the internet first.");
     }
 
-    // ONLINE: Fetch from database
     const { data: streamsData, error: streamErr } = await db.from('streams')
-        .select('code, stream_number, centre_id, ward_id, centres(name)')
-        .in('code', USER.assigned_streams || []);
+      .select('code, stream_number, centre_id, ward_id, centres(name)')
+      .in('code', USER.assigned_streams || []);
     if (streamErr) throw streamErr;
-    
+
     const { data: existingResults, error: resErr } = await db.from('results')
-        .select('stream_code, position')
-        .in('stream_code', USER.assigned_streams || []);
+      .select('stream_code, position')
+      .in('stream_code', USER.assigned_streams || []);
     if (resErr) throw resErr;
 
     let existingForms = [];
     try {
       const { data } = await db.from('form_photos')
-          .select('stream_code, position')
-          .in('stream_code', USER.assigned_streams || []);
+        .select('stream_code, position')
+        .in('stream_code', USER.assigned_streams || []);
       existingForms = data || [];
     } catch (e) { console.warn("Could not load forms:", e); }
 
@@ -1015,32 +1090,37 @@ async function loadStreams(silent) {
       centreName: s.centres ? s.centres.name : 'Unknown Centre',
       streamNumber: s.stream_number,
       wardId: s.ward_id
-    })).sort((a,b) => a.streamNumber - b.streamNumber);
+    })).sort((a, b) => a.streamNumber - b.streamNumber);
 
     STATUSES = {};
     STREAMS.forEach(st => {
       STATUSES[st.code] = {};
       POSITIONS.forEach(pos => {
-        const isSubmitted = existingResults?.find(r => r.stream_code === st.code && r.position === pos);
+        const isSubmitted = existingResults && existingResults.find(r => r.stream_code === st.code && r.position === pos);
         STATUSES[st.code][pos] = isSubmitted ? { status: 'submitted' } : { status: 'pending' };
       });
     });
 
     window.FORMS = {};
-    (existingForms || []).forEach(f => {
+    existingForms.forEach(f => {
       if (!FORMS[f.stream_code]) FORMS[f.stream_code] = {};
       FORMS[f.stream_code][f.position] = true;
     });
 
-    // SAVE TO OFFLINE CACHE
+    // Overlay anything still waiting to sync, then cache the merged result
+    await applyPendingQueue();
     await offlineStore.setItem('cached_streams', STREAMS);
     await offlineStore.setItem('cached_statuses', STATUSES);
+    await offlineStore.setItem('cached_forms', FORMS);
 
     renderStreams();
 
   } catch (e) {
     console.error("Load Streams Error:", e);
-    if (!silent) toast(e.message || 'Connection error.', 'error');
+    // Weak network (navigator.onLine is true but the request failed): fall back to cache
+    let usedCache = false;
+    try { usedCache = await loadFromCache(); } catch (_) {}
+    if (!usedCache && !silent) toast(e.message || 'Connection error.', 'error');
   } finally {
     if (!silent) document.getElementById('appLoader').classList.remove('active');
   }
@@ -1388,63 +1468,31 @@ function collectVotes() {
 async function submitNow() {
   closeConfirm();
   var btn = document.getElementById('submitBtn');
-  btn.disabled = true; 
-  
+  btn.disabled = true;
+
   var streamCode = currentStream.code;
   var position = currentPosition;
   var payload = collectVotes();
   var totalCast = parseInt(document.getElementById('entryTotalCast').value) || 0;
   var rejected = parseInt(document.getElementById('entryRejected').value) || 0;
-  
-  // Calculate math for the warning
-  var candidateSum = payload.reduce((sum, v) => sum + v.votes, 0);
-  var validVotes = totalCast - rejected;
-  var isAnomaly = (candidateSum !== validVotes);
 
-  // ==========================================
-  // 🚨 OFFLINE INTERCEPTOR 🚨
-  // ==========================================
+  // ---------- OFFLINE ----------
   if (!navigator.onLine) {
-      btn.innerHTML = '<i class="fas fa-save"></i> Saving Offline...';
-      
-      // Save to IndexedDB
-      await offlineStore.setItem('vote_' + streamCode + '_' + position, {
-          streamCode, position, payload, totalCast, rejected, type: 'vote'
-      });
-      
-      clearDraft(streamCode, position);
-      STATUSES[streamCode][position] = { status: 'submitted' }; // Fake UI lock so they can't double-submit
-      
-      btn.innerHTML = '<i class="fas fa-check-circle"></i> Saved Offline';
-      btn.style.background = 'var(--warning)';
-      btn.style.color = '#1A1A19';
-      
-      document.getElementById('successTitle').textContent = 'Saved Offline!';
-      document.getElementById('successSub').textContent = 'Will auto-sync when network returns.';
-      document.getElementById('successOverlay').classList.add('active');
-
-      setTimeout(() => {
-        document.getElementById('successOverlay').classList.remove('active');
-        btn.style.background = '';
-        btn.style.color = '';
-        setTimeout(() => {
-          openUploadModal(streamCode, position);
-        }, 300);
-      }, 2000);
-      return; // Stop execution here! Do not try to hit the database.
+    btn.innerHTML = '<i class="fas fa-save"></i> Saving Offline...';
+    await queueVote(streamCode, position, payload, totalCast, rejected);
+    showQueuedSuccess(streamCode, position, btn, 'Saved Offline!', 'Will auto-sync when network returns.');
+    return;
   }
-  // ==========================================
-  // 🌐 ONLINE SUBMISSION (Your Original Logic)
-  // ==========================================
 
-  let maxRetries = 5;
+  // ---------- ONLINE (with retries) ----------
+  const maxRetries = 5;
   let success = false;
   let attempt = 0;
 
   while (attempt < maxRetries && !success) {
     attempt++;
-    btn.innerHTML = attempt === 1 
-      ? '<i class="fas fa-spinner fa-spin"></i> Securing votes…' 
+    btn.innerHTML = attempt === 1
+      ? '<i class="fas fa-spinner fa-spin"></i> Securing votes…'
       : `<i class="fas fa-sync-alt fa-spin"></i> Retrying (${attempt}/${maxRetries})…`;
 
     try {
@@ -1459,35 +1507,47 @@ async function submitNow() {
       if (error) throw error;
 
       if (!data.success) {
-        if (data.message.includes('already submitted')) {
+        if (/already submitted/i.test(data.message || '')) {
+          STATUSES[streamCode][position] = { status: 'submitted' };
           toast('These votes are already locked.', 'info');
           goToPositions(streamCode);
           return;
         }
-        throw new Error(data.message);
+        const se = new Error(data.message);
+        se.isServer = true;          // a real rejection, not a network problem
+        throw se;
       }
 
       success = true;
     } catch (err) {
       console.warn(`Attempt ${attempt} failed:`, err.message);
-      
-      // If it's the last attempt, stop and show error
-      if (attempt >= maxRetries) {
+
+      // Server said no: retrying won't help, show the reason
+      if (err.isServer) {
         btn.disabled = false;
         btn.innerHTML = '<i class="fas fa-lock"></i> Submit & Lock';
-        toast('Network too weak. Move to a better spot and try again.', 'error');
+        toast(err.message, 'error');
         return;
       }
-      
+
+      // Network problem on the last attempt: keep the data on the device
+      if (attempt >= maxRetries) {
+        await queueVote(streamCode, position, payload, totalCast, rejected);
+        toast('Weak network. Saved on this device, will sync automatically.', 'info');
+        showQueuedSuccess(streamCode, position, btn, 'Saved on Device!', 'Will auto-sync when network returns.');
+        return;
+      }
+
       toast('Network unstable. Retrying securely...', 'info');
       await new Promise(r => setTimeout(r, 3000));
     }
   }
 
-  // --- SUCCESS BLOCK ---
+  // ---------- SUCCESS ----------
   if (success) {
     clearDraft(streamCode, position);
     STATUSES[streamCode][position] = { status: 'submitted' };
+    await offlineStore.setItem('cached_statuses', STATUSES);
 
     btn.innerHTML = '<i class="fas fa-check-circle"></i> Votes Locked';
     btn.style.background = 'var(--primary)';
@@ -1501,10 +1561,7 @@ async function submitNow() {
       document.getElementById('successOverlay').classList.remove('active');
       btn.style.background = '';
       btn.style.color = '';
-      
-      setTimeout(() => {
-        openUploadModal(streamCode, position);
-      }, 300);
+      setTimeout(() => openUploadModal(streamCode, position), 300);
     }, 2000);
   }
 }
@@ -2065,16 +2122,58 @@ function resetIdleTimer() {
 }
 
 async function forceLogout() {
-  // Optional: Show a quick toast before kicking them out
+  // Never sign out if offline or if there is unsynced work: it would destroy the session
+  if (!navigator.onLine || await hasPending()) {
+    resetIdleTimer();
+    return;
+  }
+
   if (typeof toast === 'function') {
     toast('Session expired due to inactivity. Logging out...', 'error');
   }
-  
-  // Give them 2 seconds to see the toast, then sign out
+
   setTimeout(async () => {
     await db.auth.signOut();
     window.location.href = 'index.html';
   }, 2000);
+}
+
+async function doLogout() {
+  if (!navigator.onLine) {
+    await thConfirm({
+      title: 'You are offline',
+      message: 'Signing out now would stop you from logging back in until you have internet. Please connect first.',
+      confirmText: 'OK',
+      tone: 'warn',
+      alertOnly: true
+    });
+    return;
+  }
+
+  if (await hasPending()) {
+    await thConfirm({
+      title: 'Unsynced results',
+      message: 'You have results or forms that have not synced yet. Please wait for them to sync before signing out.',
+      confirmText: 'OK',
+      tone: 'warn',
+      alertOnly: true
+    });
+    syncOfflineData();
+    return;
+  }
+
+  const ok = await thConfirm({
+    title: 'Sign out?',
+    message: 'Any unsaved entries will be kept as drafts on this device.',
+    confirmText: 'Sign Out',
+    cancelText: 'Stay',
+    tone: 'danger',
+    icon: 'fa-sign-out-alt'
+  });
+  if (ok) {
+    await db.auth.signOut();
+    window.location.href = 'index.html';
+  }
 }
 
 // These events detect if the user is actively using the phone/computer
@@ -2087,69 +2186,103 @@ window.addEventListener('click', resetIdleTimer, true);
 // Start the timer immediately when the page loads
 resetIdleTimer();
   
- async function syncOfflineData() {
-    if (!navigator.onLine) return;
-    
-    try {
-        const keys = await offlineStore.keys();
-        let pendingVotes = [];
-        let pendingForms = [];
+ let syncing = false;   // FIX #5: prevents two syncs running at once
 
-        // 1. Separate votes and forms
-        for (let key of keys) {
-            const item = await offlineStore.getItem(key);
-            if (item.type === 'vote') pendingVotes.push({ key, item });
-            if (item.type === 'form') pendingForms.push({ key, item });
-        }
+async function syncOfflineData() {
+  if (syncing || !navigator.onLine || !USER) return;
+  syncing = true;
 
-        // 2. Sync Votes first
-        for (let v of pendingVotes) {
-            const { streamCode, position, payload, totalCast, rejected } = v.item;
-            const { error } = await db.rpc('submit_election_results_v3', {
-                p_stream_code: streamCode,
-                p_position: position,
-                p_votes: payload,
-                p_total_cast: totalCast,
-                p_rejected: rejected
-            });
-            
-            // If successful (or already submitted), remove from offline store
-            if (!error || error.message.includes('already submitted')) {
-                await offlineStore.removeItem(v.key);
-            }
-        }
+  try {
+    // Sync needs a valid logged-in session
+    const { data: { session } } = await db.auth.getSession();
+    if (!session) return;
 
-        // 3. Sync Forms second
-        for (let f of pendingForms) {
-            const { streamCode, position, file } = f.item;
-            const fileName = streamCode + '_' + position.replace(/\s+/g, '') + '.jpg';
-            
-            const { error: uploadError } = await db.storage.from('form-photos').upload(fileName, file, { upsert: true, contentType: 'image/jpeg' });
-            
-            if (!uploadError) {
-                // Save to DB
-                const { data: streamData } = await db.from('streams').select('county_id, constituency_id, ward_id').eq('code', streamCode).single();
-                await db.from('form_photos').upsert({
-                    stream_code: streamCode, position: position, photo_url: fileName, uploaded_by: USER.name,
-                    county_id: streamData?.county_id, constituency_id: streamData?.constituency_id, ward_id: streamData?.ward_id
-                }, { onConflict: 'stream_code,position' });
-                
-                await offlineStore.removeItem(f.key);
-            }
-        }
-
-        if (pendingVotes.length > 0 || pendingForms.length > 0) {
-            toast(`Synced ${pendingVotes.length} votes and ${pendingForms.length} forms successfully!`, 'success');
-            loadStreams(); // Refresh the stream list to show updated statuses
-        }
-
-    } catch (err) {
-        console.error("Sync failed:", err);
+    // FIX #6: skip cached_* entries and null items safely
+    const keys = await offlineStore.keys();
+    const votes = [], forms = [];
+    for (const key of keys) {
+      const item = await offlineStore.getItem(key);
+      if (!item || !item.type) continue;
+      if (item.type === 'vote') votes.push({ key, item });
+      else if (item.type === 'form') forms.push({ key, item });
     }
+
+    let votesDone = 0, formsDone = 0;
+
+    // Votes first
+    for (const v of votes) {
+      const { streamCode, position, payload, totalCast, rejected } = v.item;
+
+      const { data, error } = await db.rpc('submit_election_results_v3', {
+        p_stream_code: streamCode,
+        p_position: position,
+        p_votes: payload,
+        p_total_cast: totalCast,
+        p_rejected: rejected
+      });
+
+      if (error) continue;   // network/transport issue: keep it queued, retry later
+
+      // FIX #1: the RPC reports failure inside data, not error
+      if (data && (data.success || /already submitted/i.test(data.message || ''))) {
+        await offlineStore.removeItem(v.key);
+        votesDone++;
+      } else {
+        // Server rejected it. Move it out of the active queue so it doesn't retry forever,
+        // but keep the data so it is never silently lost.
+        console.error('Server rejected queued vote', v.key, data && data.message);
+        await offlineStore.setItem('failed_' + v.key, {
+          ...v.item, type: 'failed_vote', reason: data && data.message
+        });
+        await offlineStore.removeItem(v.key);
+        if (STATUSES[streamCode]) STATUSES[streamCode][position] = { status: 'pending' };
+        await offlineStore.setItem('cached_statuses', STATUSES);
+        toast('Queued ' + position + ' result was rejected: ' + (data && data.message), 'error');
+      }
+    }
+
+    // Forms second
+    for (const f of forms) {
+      const { streamCode, position, file } = f.item;
+      const fileName = streamCode + '_' + position.replace(/\s+/g, '') + '.jpg';
+
+      const { error: upErr } = await db.storage.from('form-photos')
+        .upload(fileName, file, { upsert: true, contentType: 'image/jpeg' });
+      if (upErr) continue;
+
+      const { data: sd } = await db.from('streams')
+        .select('county_id, constituency_id, ward_id').eq('code', streamCode).single();
+
+      const { error: dbErr } = await db.from('form_photos').upsert({
+        stream_code: streamCode,
+        position: position,
+        photo_url: fileName,
+        uploaded_by: USER.name,
+        county_id: sd ? sd.county_id : null,
+        constituency_id: sd ? sd.constituency_id : null,
+        ward_id: sd ? sd.ward_id : null
+      }, { onConflict: 'stream_code,position' });
+
+      if (!dbErr) {
+        await offlineStore.removeItem(f.key);
+        formsDone++;
+      }
+    }
+
+    if (votesDone || formsDone) {
+      toast(`Synced ${votesDone} results and ${formsDone} forms.`, 'success');
+      loadStreams(true);
+    }
+  } catch (err) {
+    console.error('Sync failed:', err);
+  } finally {
+    syncing = false;
+  }
 }
 
-// Attempt sync on page load (just in case they closed the browser while offline)
+// Don't rely only on the 'online' event (it is unreliable on weak networks)
 window.addEventListener('load', syncOfflineData);
+setInterval(syncOfflineData, 30000);
   // Start
 init();
   
