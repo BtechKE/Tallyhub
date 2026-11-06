@@ -1163,70 +1163,67 @@ async function goToEntry(streamCode, position) {
   document.getElementById('candidateEntryList').innerHTML = '<div class="loading"><i class="fas fa-spinner"></i>Loading candidates…</div>';
   showScreen('screenEntry');
 
-  // 1. OFFLINE-FIRST: Registered Voters
-  try {
-    if (navigator.onLine) {
-        const { data: streamData } = await db.from('streams').select('registered_voters').eq('code', streamCode).single();
-        if (streamData) {
-            document.getElementById('entryRegVoters').textContent = 'Reg: ' + (streamData.registered_voters || 0);
-            // Save to local cache just in case they go offline later
-            await offlineStore.setItem('cached_reg_' + streamCode, streamData.registered_voters || 0);
-        }
-    } else {
-        // If offline, try to get it from the cache
-        const cachedReg = await offlineStore.getItem('cached_reg_' + streamCode);
-        document.getElementById('entryRegVoters').textContent = 'Reg: ' + (cachedReg || 0);
-    }
-  } catch(e) { 
-    console.warn("Could not load registered voters", e); 
-  }
-
   // Clear previous turnout inputs
   document.getElementById('entryTotalCast').value = '';
   document.getElementById('entryRejected').value = '';
   document.getElementById('entryValidVotes').textContent = '0';
 
-  // 2. OFFLINE-FIRST: Candidates
+  // ================================================================
+  // 1. FETCH REGISTERED VOTERS (Try Network -> Fallback to Cache)
+  // ================================================================
+  let regVoters = 0;
   try {
-    const cacheKey = 'cached_cands_' + streamCode + '_' + position;
-
-    if (!navigator.onLine) {
-        // OFFLINE MODE: Read from phone memory
-        const cachedCands = await offlineStore.getItem(cacheKey);
-        
-        if (cachedCands) {
-            currentCandidates = cachedCands;
-            renderEntryForm();
-            return;
-        } else {
-            throw new Error("No candidates cached for this position. Connect to internet to load them first.");
-        }
-    }
-
-    // ONLINE MODE: Fetch from database
-    const { data: cands, error } = await db.rpc('get_candidates_for_stream', {
-        p_stream_code: streamCode,
-        p_position: position
-    });
-
-    if (error) throw error;
-
-    currentCandidates = (cands || []).map(c => ({ 
-        ...c, 
-        photo_url: normalizeImageUrl(c.photo_url) 
-    }));
-    
-    // Save to phone memory for offline use later
-    await offlineStore.setItem(cacheKey, currentCandidates);
-    
-    renderEntryForm();
-    
+      // Attempt to get from network
+      const { data: streamData } = await db.from('streams').select('registered_voters').eq('code', streamCode).single();
+      if (streamData) {
+          regVoters = streamData.registered_voters || 0;
+          // Save to cache for next time
+          await offlineStore.setItem('cached_reg_' + streamCode, regVoters);
+      }
   } catch (e) {
-    console.error(e);
-    document.getElementById('candidateEntryList').innerHTML = '<div class="empty-state"><div class="title">No candidates found</div><div class="sub">' + esc(e.message) + '</div></div>';
+      // Network failed (offline). Get from cache.
+      console.warn("Network failed for voters. Loading from cache.", e.message);
+      const cachedReg = await offlineStore.getItem('cached_reg_' + streamCode);
+      regVoters = cachedReg || 0;
+  }
+  document.getElementById('entryRegVoters').textContent = 'Reg: ' + regVoters;
+
+  // ================================================================
+  // 2. FETCH CANDIDATES (Try Network -> Fallback to Cache)
+  // ================================================================
+  const cacheKey = 'cached_cands_' + streamCode + '_' + position;
+
+  try {
+      // Attempt to get from the V3 RPC
+      const { data: cands, error } = await db.rpc('get_candidates_for_stream', {
+          p_stream_code: streamCode,
+          p_position: position
+      });
+
+      if (error) throw error;
+
+      currentCandidates = (cands || []).map(c => ({ 
+          ...c, 
+          photo_url: normalizeImageUrl(c.photo_url) 
+      }));
+      
+      // Save successful network response to the phone's memory
+      await offlineStore.setItem(cacheKey, currentCandidates);
+      renderEntryForm();
+      
+  } catch (e) {
+      // Network failed (offline). Get from cache.
+      console.warn("Network failed for candidates. Loading from cache.", e.message);
+      const cachedCands = await offlineStore.getItem(cacheKey);
+      
+      if (cachedCands) {
+          currentCandidates = cachedCands;
+          renderEntryForm();
+      } else {
+          document.getElementById('candidateEntryList').innerHTML = '<div class="empty-state"><div class="title">No candidates found</div><div class="sub">You are offline and this position was not previously cached. Please connect to the internet to load it for the first time.</div></div>';
+      }
   }
 }
-
 function renderEntryForm() {
   if (!currentCandidates.length) {
     document.getElementById('candidateEntryList').innerHTML = '<div class="empty-state"><div class="title">No candidates</div></div>';
