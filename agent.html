@@ -10,6 +10,7 @@
   <!-- Font Awesome & Supabase -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js"></script>
   
 
   <style>
@@ -852,6 +853,24 @@ button.btn[onclick^="openUploadModal"] {
 const supabaseUrl = 'https://mqafninsctppbkpwwmxx.supabase.co';
 const supabaseKey = 'sb_publishable_ooW3EE91PVdXoXM7tdxwKw_r51RrZ2z';
 const db = window.supabase.createClient(supabaseUrl, supabaseKey);
+  // 1. Register Service Worker
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js').then(() => {
+    console.log('Offline Service Worker Registered');
+  });
+}
+
+// 2. Initialize Local Offline Storage
+const offlineStore = localforage.createInstance({ name: "TallyHubOffline" });
+
+// 3. Monitor Internet Connection
+window.addEventListener('online', () => { 
+    toast('Internet restored. Syncing pending data...', 'success');
+    syncOfflineData(); 
+});
+window.addEventListener('offline', () => { 
+    toast('You are offline. Data will save locally.', 'error'); 
+});
 // Helper to get/generate a unique device ID
 function getDeviceId() {
   let devId = localStorage.getItem('tallyhub_device_id');
@@ -1321,6 +1340,8 @@ function collectVotes() {
     votes: parseInt(inp.value, 10) || 0
   }));
 }
+
+  
 async function submitNow() {
   closeConfirm();
   var btn = document.getElementById('submitBtn');
@@ -1336,6 +1357,42 @@ async function submitNow() {
   var candidateSum = payload.reduce((sum, v) => sum + v.votes, 0);
   var validVotes = totalCast - rejected;
   var isAnomaly = (candidateSum !== validVotes);
+
+  // ==========================================
+  // 🚨 OFFLINE INTERCEPTOR 🚨
+  // ==========================================
+  if (!navigator.onLine) {
+      btn.innerHTML = '<i class="fas fa-save"></i> Saving Offline...';
+      
+      // Save to IndexedDB
+      await offlineStore.setItem('vote_' + streamCode + '_' + position, {
+          streamCode, position, payload, totalCast, rejected, type: 'vote'
+      });
+      
+      clearDraft(streamCode, position);
+      STATUSES[streamCode][position] = { status: 'submitted' }; // Fake UI lock so they can't double-submit
+      
+      btn.innerHTML = '<i class="fas fa-check-circle"></i> Saved Offline';
+      btn.style.background = 'var(--warning)';
+      btn.style.color = '#1A1A19';
+      
+      document.getElementById('successTitle').textContent = 'Saved Offline!';
+      document.getElementById('successSub').textContent = 'Will auto-sync when network returns.';
+      document.getElementById('successOverlay').classList.add('active');
+
+      setTimeout(() => {
+        document.getElementById('successOverlay').classList.remove('active');
+        btn.style.background = '';
+        btn.style.color = '';
+        setTimeout(() => {
+          openUploadModal(streamCode, position);
+        }, 300);
+      }, 2000);
+      return; // Stop execution here! Do not try to hit the database.
+  }
+  // ==========================================
+  // 🌐 ONLINE SUBMISSION (Your Original Logic)
+  // ==========================================
 
   let maxRetries = 5;
   let success = false;
@@ -1368,14 +1425,11 @@ async function submitNow() {
       }
 
       success = true;
-} catch (err) {
-  console.warn(`Attempt ${attempt} failed:`, err.message);
-  
-  alert("DATABASE ERROR: " + err.message); // <--- ADD THIS LINE
-  
-  // If it's the last attempt, stop and show error
-  if (attempt >= maxRetries) {
-    
+    } catch (err) {
+      console.warn(`Attempt ${attempt} failed:`, err.message);
+      
+      // If it's the last attempt, stop and show error
+      if (attempt >= maxRetries) {
         btn.disabled = false;
         btn.innerHTML = '<i class="fas fa-lock"></i> Submit & Lock';
         toast('Network too weak. Move to a better spot and try again.', 'error');
@@ -1410,8 +1464,7 @@ async function submitNow() {
       }, 300);
     }, 2000);
   }
- }
-
+}
 function advanceAfterSubmit(streamCode, position) {
   var statuses = STATUSES[streamCode] || {};
   var next = POSITIONS.find(p => p !== position && statuses[p]?.status !== 'submitted');
@@ -1743,6 +1796,49 @@ async function executeFormUpload() {
 
   var btn = document.getElementById('confirmUploadBtn');
   btn.disabled = true;
+  
+  // ==========================================
+  // 🚨 OFFLINE INTERCEPTOR 🚨
+  // ==========================================
+  if (!navigator.onLine) {
+      btn.innerHTML = '<i class="fas fa-save"></i> Saving Offline...';
+      
+      // Save the physical file and metadata to IndexedDB
+      await offlineStore.setItem('form_' + currentFormStream + '_' + currentFormPos, {
+          streamCode: currentFormStream, 
+          position: currentFormPos, 
+          file: currentFormFile, 
+          type: 'form'
+      });
+      
+      // Tiny thumbnail cache for immediate UI feedback
+      try {
+        const thumb = await shrinkImage(currentFormFile, 400, 0.7);
+        const dataUrl = await new Promise((res, rej) => {
+          const r = new FileReader();
+          r.onload = () => res(r.result);
+          r.onerror = rej;
+          r.readAsDataURL(thumb.file);
+        });
+        localStorage.setItem('form_preview_' + currentFormStream + '_' + currentFormPos, dataUrl);
+      } catch (e) { console.warn('Thumbnail skipped', e); }
+
+      toast('Form saved offline!', 'success');
+      document.getElementById('formPreviewModal').classList.remove('active');
+      
+      if (previewObjectUrl) { URL.revokeObjectURL(previewObjectUrl); previewObjectUrl = null; }
+      document.getElementById('previewImage').src = '';
+      currentFormFile = null;
+
+      if (!FORMS[currentFormStream]) FORMS[currentFormStream] = {};
+      FORMS[currentFormStream][currentFormPos] = true;
+      goToPositions(currentFormStream);
+      return; // Stop execution here!
+  }
+  // ==========================================
+  // 🌐 ONLINE UPLOAD (Your Original Logic)
+  // ==========================================
+
   btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uploading...';
 
   try {
@@ -1768,7 +1864,6 @@ async function executeFormUpload() {
       position: currentFormPos,
       photo_url: fileName,
       uploaded_by: USER.name,
-      // V3 ADDITIONS
       county_id: streamData?.county_id,
       constituency_id: streamData?.constituency_id,
       ward_id: streamData?.ward_id
