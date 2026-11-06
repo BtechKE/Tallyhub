@@ -4311,8 +4311,12 @@ async function saveAgent(id) {
       p_max_devices: maxDev
     });
     
-    if (error || !data.success) return toast(error?.message || 'Failed to create agent.', 'error');
-    toast('Agent created.', 'success');
+   if (error || !data.success) return toast(error?.message || 'Failed to create agent.', 'error');
+    
+    // AUTO-OPEN WHATSAPP
+    sendWhatsAppCredentials(phone, 'Agent', email, pw);
+    
+    toast('Agent created. Opening WhatsApp...', 'success');
     closeModal();
     loadAllData();
   }
@@ -4421,9 +4425,16 @@ async function saveAspirant(id) {
       p_login: login,
       p_max_devices: maxDev 
     });
-    
+        // Inside saveAspirant(), after the RPC succeeds:
     if (error || !data.success) return toast(error?.message || 'Failed to create aspirant.', 'error');
-    toast('Aspirant created.', 'success'); 
+    
+    // AUTO-OPEN WHATSAPP using the LOGIN CODE
+    var aspirantPhone = document.getElementById('m_aspPhone') ? document.getElementById('m_aspPhone').value : '';
+    if (aspirantPhone) {
+        sendWhatsAppCredentials(aspirantPhone, 'Aspirant', login, pw);
+    }
+    
+    toast('Aspirant created. Opening WhatsApp...', 'success'); 
     closeModal(); 
     loadAllData();
   }
@@ -6712,7 +6723,55 @@ async function handleCsvUpload(event) {
   
   reader.readAsText(file);
 }
+// Helper: Get Morning/Afternoon/Evening greeting
+function getGreeting() {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good morning';
+    if (hour < 18) return 'Good afternoon';
+    return 'Good evening';
+}
 
+// Helper: Format phone number to international standard (e.g., 0712345678 -> 254712345678)
+function formatPhone(phone) {
+    let clean = phone.replace(/\D/g, ''); // Remove non-numbers
+    if (clean.startsWith('0')) clean = '254' + clean.substring(1);
+    if (clean.startsWith('+')) clean = clean.substring(1);
+    if (clean.startsWith('7') || clean.startsWith('1')) clean = '254' + clean;
+    return clean;
+}
+
+function sendWhatsAppCredentials(phone, role, username, password) {
+    const formattedPhone = formatPhone(phone);
+    const greeting = getGreeting();
+    
+    // FIX: Strip @tallyhub.com for both Agents and Aspirants. 
+    // If it's a real email (e.g. @gmail.com), it will remain untouched.
+    const displayUsername = username.replace('@tallyhub.com', '');
+    
+    // Change the message and link based on the role
+    let actionText = '';
+    let link = '';
+    if (role === 'Agent') {
+        actionText = 'to view your assigned streams';
+        link = 'https://tallyhub.co.ke/agent.html';
+    } else {
+        actionText = 'to view your live results dashboard';
+        link = 'https://tallyhub.co.ke/aspirant.html';
+    }
+    
+    const message = `${greeting}, welcome to TallyHub. Your ${role} account is ready.\n\n` +
+                    `Username: ${displayUsername}\n` +
+                    `Password: ${password}\n\n` +
+                    `Follow the link below ${actionText}:\n` +
+                    `${link}\n\n` +
+                    `For any challenges, please call +254 798361001. Thank you.`;
+
+    const encodedMessage = encodeURIComponent(message);
+    const waLink = `https://wa.me/${formattedPhone}?text=${encodedMessage}`;
+    
+    window.open(waLink, '_blank');
+}
+  
 </script>
 </body>
 </html>
