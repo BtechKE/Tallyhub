@@ -1949,23 +1949,31 @@ function doLogout() {
 }
 
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  
 function normalizeImageUrl(raw) {
   if (!raw) return '';
   raw = String(raw).trim();
   if (!raw) return '';
 
-  // Already a CDN URL
+  // 1. V3 FIX: If it's a Supabase file (doesn't start with http), build the full URL
+  if (!raw.startsWith('http://') && !raw.startsWith('https://')) {
+      // Remove the bucket name if it accidentally got saved in the string
+      const cleanFileName = raw.replace('candidate-photos/', '');
+      return `https://mqafninsctppbkpwwmxx.supabase.co/storage/v1/object/public/candidate-photos/${cleanFileName}`;
+  }
+
+  // 2. Already a CDN URL
   if (raw.includes('cdn.jsdelivr.net/gh/') || raw.includes('lh3.googleusercontent.com/d/')) return raw;
 
-  // GitHub blob URL → jsDelivr CDN
+  // 3. GitHub blob URL → jsDelivr CDN
   var m = raw.match(/github\.com\/([^\/]+)\/([^\/]+)\/blob\/([^\/]+)\/(.+)$/);
   if (m) return 'https://cdn.jsdelivr.net/gh/' + m[1] + '/' + m[2] + '@' + m[3] + '/' + m[4];
 
-  // Raw GitHub URL → jsDelivr CDN
+  // 4. Raw GitHub URL → jsDelivr CDN
   m = raw.match(/raw\.githubusercontent\.com\/([^\/]+)\/([^\/]+)\/([^\/]+)\/(.+)$/);
   if (m) return 'https://cdn.jsdelivr.net/gh/' + m[1] + '/' + m[2] + '@' + m[3] + '/' + m[4];
 
-  // Google Drive Links
+  // 5. Google Drive Links
   m = raw.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
   if (m) return 'https://lh3.googleusercontent.com/d/' + m[1];
   m = raw.match(/[?&]id=([a-zA-Z0-9_-]+)/);
@@ -1973,10 +1981,10 @@ function normalizeImageUrl(raw) {
   m = raw.match(/\/d\/([a-zA-Z0-9_-]+)/);
   if (m) return 'https://lh3.googleusercontent.com/d/' + m[1];
 
-  // Any other direct http/https URL
+  // 6. Any other direct http/https URL (already handled in step 1, but kept for safety)
   if (raw.startsWith('http://') || raw.startsWith('https://')) return raw;
 
-  // Bare Drive ID
+  // 7. Fallback for bare Google Drive IDs
   if (/^[a-zA-Z0-9_-]{20,}$/.test(raw)) return 'https://lh3.googleusercontent.com/d/' + raw;
 
   return '';
