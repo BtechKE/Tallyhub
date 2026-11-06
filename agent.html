@@ -2035,6 +2035,70 @@ window.addEventListener('click', resetIdleTimer, true);
 
 // Start the timer immediately when the page loads
 resetIdleTimer();
+  
+ async function syncOfflineData() {
+    if (!navigator.onLine) return;
+    
+    try {
+        const keys = await offlineStore.keys();
+        let pendingVotes = [];
+        let pendingForms = [];
+
+        // 1. Separate votes and forms
+        for (let key of keys) {
+            const item = await offlineStore.getItem(key);
+            if (item.type === 'vote') pendingVotes.push({ key, item });
+            if (item.type === 'form') pendingForms.push({ key, item });
+        }
+
+        // 2. Sync Votes first
+        for (let v of pendingVotes) {
+            const { streamCode, position, payload, totalCast, rejected } = v.item;
+            const { error } = await db.rpc('submit_election_results_v3', {
+                p_stream_code: streamCode,
+                p_position: position,
+                p_votes: payload,
+                p_total_cast: totalCast,
+                p_rejected: rejected
+            });
+            
+            // If successful (or already submitted), remove from offline store
+            if (!error || error.message.includes('already submitted')) {
+                await offlineStore.removeItem(v.key);
+            }
+        }
+
+        // 3. Sync Forms second
+        for (let f of pendingForms) {
+            const { streamCode, position, file } = f.item;
+            const fileName = streamCode + '_' + position.replace(/\s+/g, '') + '.jpg';
+            
+            const { error: uploadError } = await db.storage.from('form-photos').upload(fileName, file, { upsert: true, contentType: 'image/jpeg' });
+            
+            if (!uploadError) {
+                // Save to DB
+                const { data: streamData } = await db.from('streams').select('county_id, constituency_id, ward_id').eq('code', streamCode).single();
+                await db.from('form_photos').upsert({
+                    stream_code: streamCode, position: position, photo_url: fileName, uploaded_by: USER.name,
+                    county_id: streamData?.county_id, constituency_id: streamData?.constituency_id, ward_id: streamData?.ward_id
+                }, { onConflict: 'stream_code,position' });
+                
+                await offlineStore.removeItem(f.key);
+            }
+        }
+
+        if (pendingVotes.length > 0 || pendingForms.length > 0) {
+            toast(`Synced ${pendingVotes.length} votes and ${pendingForms.length} forms successfully!`, 'success');
+            loadStreams(); // Refresh the stream list to show updated statuses
+        }
+
+    } catch (err) {
+        console.error("Sync failed:", err);
+    }
+}
+
+// Attempt sync on page load (just in case they closed the browser while offline)
+window.addEventListener('load', syncOfflineData);
   // Start
 init();
   
