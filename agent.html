@@ -906,23 +906,49 @@ const POSITION_ICONS = {
 //  AUTH & INIT
 // ================================================================
 async function init() {
-  const { data: { user } } = await db.auth.getUser();
+  // 1. GET USER (Offline-First)
+  let user = null;
+  
+  // First, try to get the session from the phone's local storage
+  const { data: { session } } = await db.auth.getSession();
+  
+  if (session) {
+      user = session.user;
+  } else if (navigator.onLine) {
+      // Fallback to network if no local session exists
+      const { data } = await db.auth.getUser();
+      user = data?.user;
+  }
+
   if (!user) { window.location.href = 'index.html'; return; }
 
-  // V3: Device lock removed completely. No more devErr variable.
+  // 2. FETCH AGENT PROFILE (Offline-First)
+  let profile = null;
 
-  // Fetch agent profile
-  const { data: profile, error: profileErr } = await db.from('agents').select('*').eq('auth_user_id', user.id).single();
-  
-  if (!profile) { 
-    alert("Agent profile not found in V3!\n\nError: " + JSON.stringify(profileErr)); 
-    window.location.href = 'index.html'; 
-    return; 
+  if (navigator.onLine) {
+      // ONLINE: Fetch from database
+      const { data, error } = await db.from('agents').select('*').eq('auth_user_id', user.id).single();
+      if (data) {
+          profile = data;
+          // 🔥 SAVE TO CACHE FOR OFFLINE USE
+          await offlineStore.setItem('cached_user_profile', profile);
+      } else {
+          alert("Agent profile not found in database!\n\nError: " + JSON.stringify(error)); 
+          window.location.href = 'index.html'; 
+          return; 
+      }
+  } else {
+      // OFFLINE: Fetch from local phone cache
+      profile = await offlineStore.getItem('cached_user_profile');
+      if (!profile) {
+          alert("You are offline and no cached profile exists. Please connect to the internet to log in for the first time.");
+          return; 
+      }
   }
   
   USER = profile;
 
-  // Setup UI
+  // 3. Setup UI
   var fullName = USER.name || 'Agent';
   var initial = fullName.trim().charAt(0).toUpperCase();
   document.getElementById('agentInitial').textContent = initial;
@@ -933,7 +959,7 @@ async function init() {
   document.getElementById('pickerGreeting').textContent = h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
   document.getElementById('pickerName').textContent = fullName;
 
-  // Load the streams assigned to this agent
+  // 4. Load the streams assigned to this agent
   loadStreams();
   loadCountingStatus();
   startAutoRefresh();
@@ -948,6 +974,23 @@ async function loadStreams(silent) {
   }
   
   try {
+    // OFFLINE CHECK
+    if (!navigator.onLine) {
+        const cachedStreams = await offlineStore.getItem('cached_streams');
+        const cachedStatuses = await offlineStore.getItem('cached_statuses');
+        
+        if (cachedStreams) {
+            STREAMS = cachedStreams;
+            STATUSES = cachedStatuses || {};
+            renderStreams();
+            if (!silent) document.getElementById('appLoader').classList.remove('active');
+            return;
+        } else {
+            throw new Error("No cached streams found. Please connect to the internet first.");
+        }
+    }
+
+    // ONLINE: Fetch from database
     const { data: streamsData, error: streamErr } = await db.from('streams')
         .select('code, stream_number, centre_id, ward_id, centres(name)')
         .in('code', USER.assigned_streams || []);
@@ -958,7 +1001,6 @@ async function loadStreams(silent) {
         .in('stream_code', USER.assigned_streams || []);
     if (resErr) throw resErr;
 
-    // Wrap form fetch in try/catch just in case RLS blocks it
     let existingForms = [];
     try {
       const { data } = await db.from('form_photos')
@@ -990,24 +1032,15 @@ async function loadStreams(silent) {
       FORMS[f.stream_code][f.position] = true;
     });
 
-    renderStreams();
+    // SAVE TO OFFLINE CACHE
+    await offlineStore.setItem('cached_streams', STREAMS);
+    await offlineStore.setItem('cached_statuses', STATUSES);
 
-    // --- CRASH RECOVERY LOGIC ---
-    var pending = sessionStorage.getItem('pending_upload');
-    if (pending && !window.__recovered) {
-      window.__recovered = true;
-      try {
-        var pu = JSON.parse(pending);
-        toast('Page reloaded while taking the photo. Please try again.', 'info');
-        goToPositions(pu.s);
-        setTimeout(() => openUploadModal(pu.s, pu.p), 400);
-      } catch (e) { console.warn("Recovery failed", e); }
-    }
-    // ----------------------------
+    renderStreams();
 
   } catch (e) {
     console.error("Load Streams Error:", e);
-    if (!silent) toast('Connection error.', 'error');
+    if (!silent) toast(e.message || 'Connection error.', 'error');
   } finally {
     if (!silent) document.getElementById('appLoader').classList.remove('active');
   }
@@ -1130,10 +1163,20 @@ async function goToEntry(streamCode, position) {
   document.getElementById('candidateEntryList').innerHTML = '<div class="loading"><i class="fas fa-spinner"></i>Loading candidates…</div>';
   showScreen('screenEntry');
 
-  // Fetch the registered voters for this stream
+  // 1. OFFLINE-FIRST: Registered Voters
   try {
-    const { data: streamData } = await db.from('streams').select('registered_voters').eq('code', streamCode).single();
-    document.getElementById('entryRegVoters').textContent = 'Reg: ' + (streamData?.registered_voters || 0);
+    if (navigator.onLine) {
+        const { data: streamData } = await db.from('streams').select('registered_voters').eq('code', streamCode).single();
+        if (streamData) {
+            document.getElementById('entryRegVoters').textContent = 'Reg: ' + (streamData.registered_voters || 0);
+            // Save to local cache just in case they go offline later
+            await offlineStore.setItem('cached_reg_' + streamCode, streamData.registered_voters || 0);
+        }
+    } else {
+        // If offline, try to get it from the cache
+        const cachedReg = await offlineStore.getItem('cached_reg_' + streamCode);
+        document.getElementById('entryRegVoters').textContent = 'Reg: ' + (cachedReg || 0);
+    }
   } catch(e) { 
     console.warn("Could not load registered voters", e); 
   }
@@ -1143,8 +1186,24 @@ async function goToEntry(streamCode, position) {
   document.getElementById('entryRejected').value = '';
   document.getElementById('entryValidVotes').textContent = '0';
 
+  // 2. OFFLINE-FIRST: Candidates
   try {
-    // V3 MAGIC: The database does all the geographic filtering for us!
+    const cacheKey = 'cached_cands_' + streamCode + '_' + position;
+
+    if (!navigator.onLine) {
+        // OFFLINE MODE: Read from phone memory
+        const cachedCands = await offlineStore.getItem(cacheKey);
+        
+        if (cachedCands) {
+            currentCandidates = cachedCands;
+            renderEntryForm();
+            return;
+        } else {
+            throw new Error("No candidates cached for this position. Connect to internet to load them first.");
+        }
+    }
+
+    // ONLINE MODE: Fetch from database
     const { data: cands, error } = await db.rpc('get_candidates_for_stream', {
         p_stream_code: streamCode,
         p_position: position
@@ -1156,6 +1215,9 @@ async function goToEntry(streamCode, position) {
         ...c, 
         photo_url: normalizeImageUrl(c.photo_url) 
     }));
+    
+    // Save to phone memory for offline use later
+    await offlineStore.setItem(cacheKey, currentCandidates);
     
     renderEntryForm();
     
