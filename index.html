@@ -491,7 +491,11 @@ const supabaseKey = 'sb_publishable_ooW3EE91PVdXoXM7tdxwKw_r51RrZ2z';
   btn.disabled = true;
   btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> <span>Signing in…</span>';
 
-  const email = id + '@tallyhub.com';
+  // If the user already typed an @ (like a real email), don't add @tallyhub.com
+  let email = id.trim();
+  if (!email.includes('@')) {
+      email = email + '@tallyhub.com';
+  }
   const { data, error } = await db.auth.signInWithPassword({ email: email, password: pw });
 
   if (error) {
