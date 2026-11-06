@@ -1129,52 +1129,36 @@ async function goToEntry(streamCode, position) {
   document.getElementById('entrySub').textContent = currentStream.centreName + ' · STR ' + num;
   document.getElementById('candidateEntryList').innerHTML = '<div class="loading"><i class="fas fa-spinner"></i>Loading candidates…</div>';
   showScreen('screenEntry');
-  // Fetch the registered voters for this stream
-try {
-  const { data: streamData } = await db.from('streams').select('registered_voters').eq('code', streamCode).single();
-  document.getElementById('entryRegVoters').textContent = 'Reg: ' + (streamData?.registered_voters || 0);
-} catch(e) { console.warn("Could not load registered voters", e); }
 
-// Clear previous turnout inputs
-document.getElementById('entryTotalCast').value = '';
-document.getElementById('entryRejected').value = '';
-document.getElementById('entryValidVotes').textContent = '0';
+  // Fetch the registered voters for this stream
+  try {
+    const { data: streamData } = await db.from('streams').select('registered_voters').eq('code', streamCode).single();
+    document.getElementById('entryRegVoters').textContent = 'Reg: ' + (streamData?.registered_voters || 0);
+  } catch(e) { 
+    console.warn("Could not load registered voters", e); 
+  }
+
+  // Clear previous turnout inputs
+  document.getElementById('entryTotalCast').value = '';
+  document.getElementById('entryRejected').value = '';
+  document.getElementById('entryValidVotes').textContent = '0';
 
   try {
-    // 1. Get candidates for this position
-    let query = db.from('candidates').select('*').eq('position', position);
-    
-    // 2. Apply Geographic Filters based on the Stream's location (Zero-Trust)
-    if (position !== 'President') {
-      if (!currentStream.wardId) {
-        throw new Error("Stream does not have a Ward ID assigned.");
-      }
+    // V3 MAGIC: The database does all the geographic filtering for us!
+    const { data: cands, error } = await db.rpc('get_candidates_for_stream', {
+        p_stream_code: streamCode,
+        p_position: position
+    });
 
-      // Fetch the Constituency ID for this Ward
-      const { data: wardInfo } = await db.from('wards').select('constituency_id').eq('id', currentStream.wardId).single();
-      
-      if (wardInfo) {
-        if (position === 'MP') {
-          // MPs are scoped to the Constituency
-          query = query.eq('constituency_id', wardInfo.constituency_id);
-        } else if (position === 'MCA') {
-          // MCAs are scoped to the Ward
-          query = query.eq('ward_id', currentStream.wardId);
-        } else {
-          // Governor, Senator, Women Rep are scoped to the County
-          const { data: constInfo } = await db.from('constituencies').select('county_id').eq('id', wardInfo.constituency_id).single();
-          if (constInfo) {
-            query = query.eq('county_id', constInfo.county_id);
-          }
-        }
-      }
-    }
-    
-    const { data: cands, error } = await query;
     if (error) throw error;
 
-    currentCandidates = (cands || []).map(c => ({ ...c, photo_url: normalizeImageUrl(c.photo_url) }));
+    currentCandidates = (cands || []).map(c => ({ 
+        ...c, 
+        photo_url: normalizeImageUrl(c.photo_url) 
+    }));
+    
     renderEntryForm();
+    
   } catch (e) {
     console.error(e);
     document.getElementById('candidateEntryList').innerHTML = '<div class="empty-state"><div class="title">No candidates found</div><div class="sub">' + esc(e.message) + '</div></div>';
