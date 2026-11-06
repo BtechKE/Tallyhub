@@ -868,6 +868,7 @@ window.addEventListener('online', () => {
   toast('Internet restored. Syncing pending data...', 'success');
   loadCountingStatus();
   syncOfflineData();
+  prefetchOfflineData();
 });
 window.addEventListener('offline', () => { 
     toast('You are offline. Data will save locally.', 'error'); 
@@ -1058,6 +1059,7 @@ async function loadStreams(silent) {
     window.FORMS = (await offlineStore.getItem('cached_forms')) || {};
     await applyPendingQueue();
     renderStreams();
+   
     return true;
   }
 
@@ -1115,6 +1117,7 @@ async function loadStreams(silent) {
     await offlineStore.setItem('cached_forms', FORMS);
 
     renderStreams();
+    prefetchOfflineData();
 
   } catch (e) {
     console.error("Load Streams Error:", e);
@@ -1127,6 +1130,74 @@ async function loadStreams(silent) {
   }
 }
 
+let prefetching = false;
+
+async function prefetchOfflineData(force) {
+  if (prefetching || !navigator.onLine || !USER || !STREAMS.length) return;
+
+  // Skip if we already did a full download in the last 6 hours (unless forced)
+  const last = await offlineStore.getItem('prefetch_done_at');
+  if (!force && last && (Date.now() - last) < 6 * 60 * 60 * 1000) return;
+
+  prefetching = true;
+  let failures = 0;
+  const photoUrls = new Set();
+
+  try {
+    // 1. Registered voters for all streams in one query
+    const codes = STREAMS.map(s => s.code);
+    const { data: regs, error: regErr } = await db.from('streams')
+      .select('code, registered_voters').in('code', codes);
+    if (regErr) failures++;
+    else for (const r of (regs || [])) {
+      await offlineStore.setItem('cached_reg_' + r.code, r.registered_voters || 0);
+    }
+
+    // 2. Candidates for every stream x position (4 at a time)
+    const tasks = [];
+    STREAMS.forEach(st => POSITIONS.forEach(pos => tasks.push({ code: st.code, pos })));
+
+    let i = 0;
+    async function worker() {
+      while (i < tasks.length) {
+        const t = tasks[i++];
+        try {
+          const { data: cands, error } = await db.rpc('get_candidates_for_stream', {
+            p_stream_code: t.code, p_position: t.pos
+          });
+          if (error) throw error;
+          const list = (cands || []).map(c => ({ ...c, photo_url: normalizeImageUrl(c.photo_url) }));
+          await offlineStore.setItem('cached_cands_' + t.code + '_' + t.pos, list);
+          list.forEach(c => { if (c.photo_url) photoUrls.add(c.photo_url); });
+        } catch (e) {
+          failures++;
+          console.warn('Prefetch failed for', t.code, t.pos, e.message || e);
+        }
+      }
+    }
+    await Promise.all([worker(), worker(), worker(), worker()]);
+
+    // 3. Photos: loading them as images sends them through the service worker, which caches them
+    await Promise.all([...photoUrls].map(url => new Promise(res => {
+      const img = new Image();
+      img.onload = img.onerror = () => res();
+      img.src = url;
+    })));
+
+    if (failures === 0) {
+      await offlineStore.setItem('prefetch_done_at', Date.now());
+      toast('Ready for offline use.', 'success');
+    } else {
+      toast('Some data could not be downloaded. Will retry.', 'info');
+    }
+  } catch (e) {
+    console.warn('Prefetch error', e);
+  } finally {
+    prefetching = false;
+  }
+}
+
+  
 async function loadCountingStatus() {
   try {
     if (!navigator.onLine) throw new Error('offline');
@@ -1733,9 +1804,9 @@ function startAutoRefresh() {
 function manualRefresh() {
   document.getElementById('topRefreshIcon').classList.add('spin');
   loadStreams(true);
+  prefetchOfflineData(true);
   setTimeout(() => document.getElementById('topRefreshIcon').classList.remove('spin'), 900);
 }
-
 function toast(msg, type) {
   var el = document.createElement('div');
   el.className = 'toast ' + (type || 'info');
