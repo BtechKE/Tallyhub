@@ -1197,8 +1197,8 @@ async function prefetchOfflineData(force) {
   }
 }
 
-  
-async function loadCountingStatus() {
+  async function loadCountingStatus() {
+  const prev = SUBMISSION_OPEN;
   try {
     if (!navigator.onLine) throw new Error('offline');
 
@@ -1209,20 +1209,21 @@ async function loadCountingStatus() {
     SUBMISSION_OPEN = (data.value === 'TRUE');
     await offlineStore.setItem('cached_submission_open', SUBMISSION_OPEN);
   } catch (e) {
-    // Offline or request failed: use the last known value.
-    // If we've never cached one, stay open. The server still enforces on sync.
     const cached = await offlineStore.getItem('cached_submission_open');
     SUBMISSION_OPEN = (cached === null || cached === undefined) ? true : cached;
   }
 
-  const banner = document.getElementById('closedBanner');
-  banner.classList.toggle('active', !SUBMISSION_OPEN);
+  document.getElementById('closedBanner').classList.toggle('active', !SUBMISSION_OPEN);
 
-  // Refresh the position list if it's on screen
-  if (document.getElementById('screenPositions').classList.contains('active') && currentStream) {
+  // Only re-render the position list if the value changed
+  if (SUBMISSION_OPEN !== prev &&
+      document.getElementById('screenPositions').classList.contains('active') && currentStream) {
+    isPoppingState = true;                 // stops showScreen from pushing history
     goToPositions(currentStream.code);
+    isPoppingState = false;
   }
 }
+
 // ================================================================
 //  RENDERERS & NAVIGATION
 // ================================================================
@@ -1665,13 +1666,15 @@ function advanceAfterSubmit(streamCode, position) {
 // ================================================================
 async function goToReadonly(streamCode, position) {
   var stream = STREAMS.find(s => s.code === streamCode);
-  
+  currentStream = stream;
+  currentPosition = position;
+
   var hasForm = FORMS[streamCode] && FORMS[streamCode][position];
   var localPreview = localStorage.getItem('form_preview_' + streamCode + '_' + position);
-  
+
   var formHtml = '';
   if (hasForm || localPreview) {
-    var imgSrc = localPreview || ''; 
+    var imgSrc = localPreview || '';
     formHtml = `<div class="form-thumbnail-wrap" onclick="viewAgentForm('${streamCode}', '${position}')">
       <img id="formThumb_${streamCode}_${position}" src="${imgSrc}" alt="Form" onerror="this.style.display='none'">
       <div class="form-thumbnail-overlay"><i class="fas fa-search-plus"></i> View Form</div>
@@ -1679,15 +1682,15 @@ async function goToReadonly(streamCode, position) {
     <button class="btn" style="width: 100%; margin-top: 8px; font-size: 13px; padding: 10px; background: var(--primary) !important; color: var(--text) !important; font-weight: 800; border: none; box-shadow: 0 4px 12px rgba(165, 207, 131, 0.3);" onclick="openUploadModal('${streamCode}', '${position}')">
     <i class="fas fa-sync-alt"></i> Replace Photo
   </button>`;
-  
-  if (!localPreview && hasForm) {
-    db.storage.from('form-photos').createSignedUrl(streamCode + '_' + position.replace(/\s+/g, '') + '.jpg', 600).then(({data}) => {
-       if (data) {
+
+    if (!localPreview && hasForm && navigator.onLine) {
+      db.storage.from('form-photos').createSignedUrl(streamCode + '_' + position.replace(/\s+/g, '') + '.jpg', 600).then(({ data }) => {
+        if (data) {
           var el = document.getElementById('formThumb_' + streamCode + '_' + position);
           if (el) el.src = data.signedUrl;
-       }
-    });
-  }
+        }
+      });
+    }
   } else {
     formHtml = `<button class="form-attach-btn" onclick="openUploadModal('${streamCode}', '${position}')">
       <i class="fas fa-camera" style="font-size: 24px;"></i>
@@ -1695,49 +1698,65 @@ async function goToReadonly(streamCode, position) {
     </button>`;
   }
 
-  currentStream = stream;
-  currentPosition = position;
   document.getElementById('roTitle').textContent = position;
-  document.getElementById('roSub').textContent = currentStream ? currentStream.centreName : '';
+  document.getElementById('roSub').textContent = stream ? stream.centreName : '';
   document.getElementById('readonlyBody').innerHTML = '<div class="loading"><i class="fas fa-spinner"></i>Loading…</div>';
   showScreen('screenReadonly');
 
   try {
-    // 1. Fetch the raw results
-    const { data: results, error: resError } = await db.from('results')
-      .select('votes, submitted_by, created_at, candidate_code, total_votes_cast, rejected_votes')
-      .eq('stream_code', streamCode).eq('position', position);
+    var rows = [], meta = {};
 
-    if (resError) throw resError;
+    // 1. A vote still waiting in the offline queue? Show it from the device.
+    const queued = await offlineStore.getItem('vote_' + streamCode + '_' + position);
+    if (queued && queued.type === 'vote') {
+      rows = queued.payload.map(p => ({ candidate_code: p.candidate_code, votes: p.votes }));
+      meta = { by: USER.name, at: null, totalCast: queued.totalCast, rejected: queued.rejected, pending: true };
+    } else {
+      // 2. Otherwise read from the server
+      if (!navigator.onLine) throw new Error('This result is not available offline yet. Reconnect to view it.');
 
-    if (!results || !results.length) { 
-      goToEntry(streamCode, position); 
-      return; 
+      const { data: results, error: resError } = await db.from('results')
+        .select('votes, submitted_by, created_at, candidate_code, total_votes_cast, rejected_votes')
+        .eq('stream_code', streamCode).eq('position', position);
+      if (resError) throw resError;
+
+      if (!results || !results.length) {
+        // Status was stale: server has nothing and nothing is queued. Reset and open entry (no loop).
+        if (STATUSES[streamCode]) STATUSES[streamCode][position] = { status: 'pending' };
+        await offlineStore.setItem('cached_statuses', STATUSES);
+        goToEntry(streamCode, position);
+        return;
+      }
+
+      rows = results;
+      meta = {
+        by: results[0].submitted_by, at: results[0].created_at,
+        totalCast: results[0].total_votes_cast || 0, rejected: results[0].rejected_votes || 0, pending: false
+      };
     }
 
-    // 2. Fetch the candidates manually to guarantee names load
-    const { data: allCands, error: candError } = await db.from('candidates')
-      .select('code, name, party, photo_url').eq('position', position);
-      
-    if (candError) throw candError;
-
-    // 3. Build a map for quick lookup
+    // 3. Candidate names: cache first (works offline), network as fallback
     var candMap = {};
-    (allCands || []).forEach(c => { candMap[c.code] = c; });
+    const cachedCands = await offlineStore.getItem('cached_cands_' + streamCode + '_' + position);
+    if (cachedCands) cachedCands.forEach(c => { candMap[c.code] = c; });
+    if (!cachedCands && navigator.onLine) {
+      const { data: allCands } = await db.from('candidates')
+        .select('code, name, party, photo_url').eq('position', position);
+      (allCands || []).forEach(c => { candMap[c.code] = c; });
+    }
 
-    // 4. Extract Turnout Data from the first result row
-    var totalCast = results[0].total_votes_cast || 0;
-    var rejected = results[0].rejected_votes || 0;
-    var validVotes = totalCast - rejected;
+    var totalCast = meta.totalCast || 0;
+    var rejected = meta.rejected || 0;
+    var validVotes = Math.max(0, totalCast - rejected);
 
-    // 5. Build the Read-Only HTML
     var html = '<div class="readonly-info">' +
-      '<div class="readonly-info-row"><i class="fas fa-user-check"></i> Submitted by <strong>' + esc(results[0].submitted_by) + '</strong></div>' +
-      '<div class="readonly-info-row"><i class="fas fa-clock"></i> ' + new Date(results[0].created_at).toLocaleString() + '</div>' +
+      '<div class="readonly-info-row"><i class="fas fa-user-check"></i> Submitted by <strong>' + esc(meta.by) + '</strong></div>' +
+      (meta.pending
+        ? '<div class="readonly-info-row"><i class="fas fa-clock"></i> Saved on this device. Waiting to sync</div>'
+        : '<div class="readonly-info-row"><i class="fas fa-clock"></i> ' + new Date(meta.at).toLocaleString() + '</div>') +
       '<div class="readonly-info-row"><i class="fas fa-lock"></i> Locked</div>' +
     '</div>';
 
-    // Add Turnout Stats block
     if (totalCast > 0) {
       html += '<div class="turnout-card" style="margin-bottom: 16px; background: #F8FAFC; border: 1px solid #E2E8F0;">' +
         '<div class="turnout-header" style="color: #6B7C93;"><span><i class="fas fa-users"></i> TURNOUT DATA</span></div>' +
@@ -1748,37 +1767,32 @@ async function goToReadonly(streamCode, position) {
         '</div>' +
       '</div>';
     }
-    
-    // 6. Render Candidates
-    results.sort((a,b) => b.votes - a.votes).forEach((r, idx) => {
+
+    rows.slice().sort((a, b) => b.votes - a.votes).forEach((r, idx) => {
       var rank = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : (idx + 1);
-      
       var candInfo = candMap[r.candidate_code] || {};
-      
       var candName = candInfo.name || 'Unknown';
       var candParty = candInfo.party || '';
-      var rawPhoto = candInfo.photo_url || '';
       var initial = candName.charAt(0).toUpperCase();
-      var photoUrl = normalizeImageUrl(rawPhoto);
-      
+      var photoUrl = normalizeImageUrl(candInfo.photo_url || '');
+
       var photoHtml = photoUrl
         ? '<img src="' + escAttr(photoUrl) + '" alt="" loading="lazy" onerror="this.style.display=\'none\';this.parentElement.textContent=\'' + escAttr(initial) + '\'">'
         : initial;
 
       html += '<div class="readonly-row ' + (idx === 0 ? 'leader' : '') + '">' +
-        '<div class="avatar-wrap small' + (photoUrl ? '' : ' no-photo') + '">' +
-          photoHtml +
-          '<span class="avatar-rank">' + rank + '</span>' +
-        '</div>' +
+        '<div class="avatar-wrap small' + (photoUrl ? '' : ' no-photo') + '">' + photoHtml +
+          '<span class="avatar-rank">' + rank + '</span></div>' +
         '<div class="readonly-name"><div class="n">' + esc(candName) + '</div><div class="p">' + esc(candParty) + '</div></div>' +
-        '<div class="readonly-votes">' + r.votes.toLocaleString() + '</div></div>';
+        '<div class="readonly-votes">' + (r.votes || 0).toLocaleString() + '</div></div>';
     });
-    
+
     document.getElementById('readonlyBody').innerHTML = html + formHtml;
 
   } catch (err) {
-    console.error("Readonly Error:", err);
-    document.getElementById('readonlyBody').innerHTML = '<div class="empty-state"><div class="title">Error loading results</div><div class="sub">' + esc(err.message) + '</div></div>';
+    console.error('Readonly Error:', err);
+    document.getElementById('readonlyBody').innerHTML =
+      '<div class="empty-state"><div class="title">Cannot load results</div><div class="sub">' + esc(err.message) + '</div></div>' + formHtml;
   }
 }
 // ================================================================
