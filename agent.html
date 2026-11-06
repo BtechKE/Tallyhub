@@ -864,9 +864,10 @@ if ('serviceWorker' in navigator) {
 const offlineStore = localforage.createInstance({ name: "TallyHubOffline" });
 
 // 3. Monitor Internet Connection
-window.addEventListener('online', () => { 
-    toast('Internet restored. Syncing pending data...', 'success');
-    syncOfflineData(); 
+window.addEventListener('online', () => {
+  toast('Internet restored. Syncing pending data...', 'success');
+  loadCountingStatus();
+  syncOfflineData();
 });
 window.addEventListener('offline', () => { 
     toast('You are offline. Data will save locally.', 'error'); 
@@ -1125,16 +1126,32 @@ async function loadStreams(silent) {
     if (!silent) document.getElementById('appLoader').classList.remove('active');
   }
 }
+
 async function loadCountingStatus() {
   try {
-    const { data } = await db.from('config').select('value').eq('key', 'SubmissionOpen').single();
-    SUBMISSION_OPEN = (data && data.value === 'TRUE');
-    const banner = document.getElementById('closedBanner');
-    if (SUBMISSION_OPEN) banner.classList.remove('active');
-    else banner.classList.add('active');
-  } catch(e) { console.error(e); }
-}
+    if (!navigator.onLine) throw new Error('offline');
 
+    const { data, error } = await db.from('config')
+      .select('value').eq('key', 'SubmissionOpen').single();
+    if (error || !data) throw error || new Error('no config data');
+
+    SUBMISSION_OPEN = (data.value === 'TRUE');
+    await offlineStore.setItem('cached_submission_open', SUBMISSION_OPEN);
+  } catch (e) {
+    // Offline or request failed: use the last known value.
+    // If we've never cached one, stay open. The server still enforces on sync.
+    const cached = await offlineStore.getItem('cached_submission_open');
+    SUBMISSION_OPEN = (cached === null || cached === undefined) ? true : cached;
+  }
+
+  const banner = document.getElementById('closedBanner');
+  banner.classList.toggle('active', !SUBMISSION_OPEN);
+
+  // Refresh the position list if it's on screen
+  if (document.getElementById('screenPositions').classList.contains('active') && currentStream) {
+    goToPositions(currentStream.code);
+  }
+}
 // ================================================================
 //  RENDERERS & NAVIGATION
 // ================================================================
@@ -1251,22 +1268,19 @@ async function goToEntry(streamCode, position) {
   // ================================================================
   // 1. FETCH REGISTERED VOTERS (Try Network -> Fallback to Cache)
   // ================================================================
-  let regVoters = 0;
-  try {
-      // Attempt to get from network
-      const { data: streamData } = await db.from('streams').select('registered_voters').eq('code', streamCode).single();
-      if (streamData) {
-          regVoters = streamData.registered_voters || 0;
-          // Save to cache for next time
-          await offlineStore.setItem('cached_reg_' + streamCode, regVoters);
-      }
-  } catch (e) {
-      // Network failed (offline). Get from cache.
-      console.warn("Network failed for voters. Loading from cache.", e.message);
-      const cachedReg = await offlineStore.getItem('cached_reg_' + streamCode);
-      regVoters = cachedReg || 0;
-  }
-  document.getElementById('entryRegVoters').textContent = 'Reg: ' + regVoters;
+let regVoters = 0;
+try {
+  if (!navigator.onLine) throw new Error('offline');
+  const { data: streamData, error: regErr } = await db.from('streams')
+    .select('registered_voters').eq('code', streamCode).single();
+  if (regErr || !streamData) throw regErr || new Error('no data');
+  regVoters = streamData.registered_voters || 0;
+  await offlineStore.setItem('cached_reg_' + streamCode, regVoters);
+} catch (e) {
+  const cachedReg = await offlineStore.getItem('cached_reg_' + streamCode);
+  regVoters = cachedReg || 0;
+}
+document.getElementById('entryRegVoters').textContent = 'Reg: ' + regVoters;
 
   // ================================================================
   // 2. FETCH CANDIDATES (Try Network -> Fallback to Cache)
@@ -1712,10 +1726,10 @@ function showScreen(id) {
 function startAutoRefresh() {
   if (refreshTimer) clearInterval(refreshTimer);
   refreshTimer = setInterval(() => {
+    loadCountingStatus();
     if (document.getElementById('screenStreams').classList.contains('active')) loadStreams(true);
   }, 15000);
 }
-
 function manualRefresh() {
   document.getElementById('topRefreshIcon').classList.add('spin');
   loadStreams(true);
