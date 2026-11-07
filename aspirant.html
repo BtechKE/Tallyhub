@@ -2130,27 +2130,9 @@ async function openTrackerPip(streamCode, position) {
       if (signedData) formPhotoUrl = signedData.signedUrl;
     }
 
-        // Look up the agent's real name based on the submitted_by data
-    let rawSubmitter = results[0].submitted_by;
-    let agentName = rawSubmitter || 'Unknown';
-    
-    if (rawSubmitter) {
-        let query = db.from('aspirants').select('name');
-        if (String(rawSubmitter).includes('@')) {
-            query = query.eq('email', rawSubmitter);
-        } else {
-            query = query.eq('auth_user_id', rawSubmitter);
-        }
-        
-        const { data: agentData } = await query.maybeSingle();
-        if (agentData && agentData.name) {
-            agentName = agentData.name;
-        }
-    }
-
-       // Look up the name, fallback to the email if not found
+    // 3. Look up the name from the tracker cache, fallback to email if not found
     var rawSubmitter = results[0].submitted_by;
-    var realName = TRACKER_AGENTS[rawSubmitter] || rawSubmitter || 'Unknown';
+    var realName = (typeof TRACKER_AGENTS !== 'undefined' && TRACKER_AGENTS[rawSubmitter]) ? TRACKER_AGENTS[rawSubmitter] : (rawSubmitter || 'Unknown');
 
     const res = {
         submitted: true, 
@@ -2159,6 +2141,7 @@ async function openTrackerPip(streamCode, position) {
         submittedAt: new Date(results[0].created_at).toLocaleString(), 
         results: mappedResults
     };
+    
     renderTrackerPipResult(res, position, label, centreName, wardName, formPhotoUrl);
   } catch (err) {
     sheet.innerHTML = '<div class="sheet-head"><div><div class="sheet-title">' + esc(position) + '</div></div><button class="sheet-close" onclick="closeSheet()"><i class="fas fa-xmark"></i></button></div><div class="empty"><div class="empty-title">Connection error</div></div>';
