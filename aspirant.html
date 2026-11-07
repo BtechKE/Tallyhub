@@ -967,10 +967,11 @@ async function loadOverview(silent) {
 
     let constVotes = [], wardVotes = [], centreVotes = [], streamVotes = [], countyVotes = [];
 
-    if (constIds.length) constVotes = await fetchIn('constituency_votes', '*', 'constituency_id', constIds, 'constituency_id');
-    if (wardIds.length) wardVotes = await fetchIn('ward_votes', '*', 'ward_id', wardIds, 'ward_id');
-    if (centreIds.length) centreVotes = await fetchIn('centre_votes', '*', 'centre_id', centreIds, 'centre_id');
-    if (streamCodes.length) streamVotes = await fetchIn('stream_votes', '*', 'stream_code', streamCodes, 'stream_code');
+    // V3 FIX: We must pass an extraFilter to tell the database to ONLY return votes for the current VIEW_POS
+    if (constIds.length) constVotes = await fetchIn('constituency_votes', '*', 'constituency_id', constIds, 'constituency_id', q => q.eq('position', VIEW_POS));
+    if (wardIds.length) wardVotes = await fetchIn('ward_votes', '*', 'ward_id', wardIds, 'ward_id', q => q.eq('position', VIEW_POS));
+    if (centreIds.length) centreVotes = await fetchIn('centre_votes', '*', 'centre_id', centreIds, 'centre_id', q => q.eq('position', VIEW_POS));
+    if (streamCodes.length) streamVotes = await fetchIn('stream_votes', '*', 'stream_code', streamCodes, 'stream_code', q => q.eq('position', VIEW_POS));
     
     // Fetch overall board for the current scope
     let boardQuery = db.from('county_leaderboard').select('*').eq('position', VIEW_POS);
