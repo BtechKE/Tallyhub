@@ -978,12 +978,26 @@ async function loadOverview(silent) {
 
     // --- 4. BUILD THE MAPS ---
     const votesByConst = {}, votesByWard = {}, votesByCentre = {}, votesByStream = {}, votesByCounty = {};
-    
-    constVotes.forEach(r => { if(!votesByConst[r.constituency_id]) votesByConst[r.constituency_id]={}; votesByConst[r.constituency_id][r.candidate_code] = Number(r.total_votes); });
-    wardVotes.forEach(r => { if(!votesByWard[r.ward_id]) votesByWard[r.ward_id]={}; votesByWard[r.ward_id][r.candidate_code] = Number(r.total_votes); });
-    centreVotes.forEach(r => { if(!votesByCentre[r.centre_id]) votesByCentre[r.centre_id]={}; votesByCentre[r.centre_id][r.candidate_code] = Number(r.total_votes); });
-    streamVotes.forEach(r => { if(!votesByStream[r.stream_code]) votesByStream[r.stream_code]={}; votesByStream[r.stream_code][r.candidate_code] = Number(r.total_votes); });
-    
+        constVotes.forEach(r => { 
+        if (!candMap[r.candidate_code]) return; // Filter out other positions
+        if(!votesByConst[r.constituency_id]) votesByConst[r.constituency_id]={}; 
+        votesByConst[r.constituency_id][r.candidate_code] = Number(r.total_votes); 
+    });
+    wardVotes.forEach(r => { 
+        if (!candMap[r.candidate_code]) return; // Filter out other positions
+        if(!votesByWard[r.ward_id]) votesByWard[r.ward_id]={}; 
+        votesByWard[r.ward_id][r.candidate_code] = Number(r.total_votes); 
+    });
+    centreVotes.forEach(r => { 
+        if (!candMap[r.candidate_code]) return; // Filter out other positions
+        if(!votesByCentre[r.centre_id]) votesByCentre[r.centre_id]={}; 
+        votesByCentre[r.centre_id][r.candidate_code] = Number(r.total_votes); 
+    });
+    streamVotes.forEach(r => { 
+        if (!candMap[r.candidate_code]) return; // Filter out other positions
+        if(!votesByStream[r.stream_code]) votesByStream[r.stream_code]={}; 
+        votesByStream[r.stream_code][r.candidate_code] = Number(r.total_votes); 
+    });
     if (SCOPE_MODE === 'national' && !DRILL_COUNTY_ID) {
         const countyData = await fetchAll(() => db.from('county_leaderboard').select('*').eq('position', VIEW_POS));
         countyData.forEach(r => { if(!votesByCounty[r.county_id]) votesByCounty[r.county_id]={}; votesByCounty[r.county_id][r.candidate_code] = Number(r.total_votes); });
