@@ -2297,31 +2297,28 @@ function renderTrackerBreadcrumb() {
 function openCandidateDetail(code) {
   if (!OVERVIEW) return;
   var sheetBg = document.getElementById('sheetBg'); var sheet = document.getElementById('sheetContent'); if (!sheetBg || !sheet) return;
-  var isMCA = OVERVIEW.viewingPosition === 'MCA'; var pool = null; var totalVotes = 0; var subtitleContext = OVERVIEW.viewingPosition;
-
-  if (isMCA && DRILL_WARD && DRILL_CENTRE && DRILL_DATA && DRILL_DATA.level === 'stream') {
-    var centreCandidates = {};
-    (DRILL_DATA.streams || []).forEach(function (s) { 
-      (s.candidates || []).forEach(function (c) { 
-        if (!centreCandidates[c.code]) { 
-          // THIS IS THE FIX: 'photo' is now 'photo_url'
-          centreCandidates[c.code] = { code: c.code, name: c.name, party: c.party, photo_url: c.photo_url || '', votes: 0 }; 
-        } 
-        centreCandidates[c.code].votes += c.votes; 
-      }); 
-    });
-    pool = Object.keys(centreCandidates).map(function (k) { return centreCandidates[k]; }); pool.sort(function (a, b) { return b.votes - a.votes; }); totalVotes = pool.reduce(function (s, c) { return s + c.votes; }, 0); subtitleContext = DRILL_CENTRE_NAME + ' · MCA';
-  } else if (isMCA && DRILL_WARD) {
-    // Filter the national leaderboard down to just this ward's MCAs
-    pool = (OVERVIEW.leaderboard || []).filter(function (c) {
-      var info = OVERVIEW.candMap[c.code];
-      return info && info.ward_id === DRILL_WARD;
-    });
-    totalVotes = pool.reduce(function (s, c) { return s + c.votes; }, 0);
-    var wObj = (OVERVIEW.wards || []).find(function (w) { return w.id === DRILL_WARD; });
-    subtitleContext = (wObj ? wObj.name : 'Ward') + ' · MCA';
-}
-
+    // Get the exact candidates and votes for the current drill level
+  var rawPool = getRaceCandidates();
+  var votesMap = getVotesForCurrentDrill();
+  
+  var pool = rawPool.map(function(c) {
+      return { 
+          code: c.code, 
+          name: c.name, 
+          party: c.party, 
+          photo_url: normalizeImageUrl(c.photo_url), 
+          votes: votesMap[c.code] || 0 
+      };
+  }).sort(function(a,b) { return b.votes - a.votes; });
+  
+  var totalVotes = pool.reduce(function(s, c) { return s + c.votes; }, 0);
+  
+  // Set the subtitle based on the current drill level
+  var subtitleContext = OVERVIEW.viewingPosition;
+  if (DRILL_LEVEL === 'stream' && DRILL_CENTRE_NAME) subtitleContext = DRILL_CENTRE_NAME + ' · ' + VIEW_POS;
+  else if (DRILL_LEVEL === 'centre' && DRILL_WARD_NAME) subtitleContext = DRILL_WARD_NAME + ' · ' + VIEW_POS;
+  else if (DRILL_LEVEL === 'ward' && DRILL_CONST_NAME) subtitleContext = DRILL_CONST_NAME + ' · ' + VIEW_POS;
+  else if (DRILL_LEVEL === 'constituency' && DRILL_COUNTY_NAME) subtitleContext = DRILL_COUNTY_NAME + ' · ' + VIEW_POS;
   if (!pool) { pool = OVERVIEW.leaderboard || []; totalVotes = OVERVIEW.globalTotal || 0; subtitleContext = OVERVIEW.viewingPosition; }
   var me = pool.filter(function (c) { return c.code === code; })[0]; if (!me) return;
   var rank = pool.indexOf(me) + 1; var leader = pool[0]; var isYou = isOwnCandidate(me.name) && !USER.isSpectator; var myPct = totalVotes > 0 ? (me.votes / totalVotes * 100).toFixed(1) : '0.0';
