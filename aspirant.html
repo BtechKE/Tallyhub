@@ -2123,10 +2123,28 @@ async function openTrackerPip(streamCode, position) {
       if (signedData) formPhotoUrl = signedData.signedUrl;
     }
 
+        // Look up the agent's real name based on the submitted_by data
+    let rawSubmitter = results[0].submitted_by;
+    let agentName = rawSubmitter || 'Unknown';
+    
+    if (rawSubmitter) {
+        let query = db.from('aspirants').select('name');
+        if (String(rawSubmitter).includes('@')) {
+            query = query.eq('email', rawSubmitter);
+        } else {
+            query = query.eq('auth_user_id', rawSubmitter);
+        }
+        
+        const { data: agentData } = await query.maybeSingle();
+        if (agentData && agentData.name) {
+            agentName = agentData.name;
+        }
+    }
+
     const res = {
         submitted: true, 
-        submittedBy: results[0].submitted_by, 
-        submittedByName: results[0].submitted_by, 
+        submittedBy: rawSubmitter, 
+        submittedByName: agentName, // <--- Now it uses the real name
         submittedAt: new Date(results[0].created_at).toLocaleString(), 
         results: mappedResults
     };
