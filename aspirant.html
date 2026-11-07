@@ -759,7 +759,8 @@ var DRILL_CENTRE = '';
 var DRILL_CENTRE_NAME = ''; 
 var DRILL_DATA = null;
 // --- TRACKER STATE ---
-var TRACKER_FORMS = {}; // Tracks which stream/position combos have photos
+var TRACKER_FORMS = {};
+var TRACKER_AGENTS = {};
 var TRACKER_DATA = null; 
 var TRACKER_LEVEL = ''; // 'constituency', 'ward', 'centre', 'stream'
 var TRACKER_CONST_ID = ''; 
@@ -1073,6 +1074,12 @@ async function loadTracker(silent) {
     // 1. Fetch ONLY the results and forms for the streams we already have
     let resultsData = await fetchIn('results', 'stream_code, position', 'stream_code', streamCodes, 'stream_code');
     let formsData = await fetchIn('form_photos', 'stream_code, position, photo_url', 'stream_code', streamCodes, 'stream_code');
+        // NEW: Fetch agent names once so we can map the email to a real name
+    const { data: agentsData } = await db.from('aspirants').select('login_code, name');
+    TRACKER_AGENTS = {};
+    (agentsData || []).forEach(a => {
+        if (a.login_code) TRACKER_AGENTS[a.login_code] = a.name;
+    });
 
     TRACKER_FORMS = {};
     (formsData || []).forEach(f => {
@@ -2141,14 +2148,17 @@ async function openTrackerPip(streamCode, position) {
         }
     }
 
+       // Look up the name, fallback to the email if not found
+    var rawSubmitter = results[0].submitted_by;
+    var realName = TRACKER_AGENTS[rawSubmitter] || rawSubmitter || 'Unknown';
+
     const res = {
         submitted: true, 
         submittedBy: rawSubmitter, 
-        submittedByName: agentName, // <--- Now it uses the real name
+        submittedByName: realName, 
         submittedAt: new Date(results[0].created_at).toLocaleString(), 
         results: mappedResults
     };
-    
     renderTrackerPipResult(res, position, label, centreName, wardName, formPhotoUrl);
   } catch (err) {
     sheet.innerHTML = '<div class="sheet-head"><div><div class="sheet-title">' + esc(position) + '</div></div><button class="sheet-close" onclick="closeSheet()"><i class="fas fa-xmark"></i></button></div><div class="empty"><div class="empty-title">Connection error</div></div>';
