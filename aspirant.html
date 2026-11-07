@@ -1149,34 +1149,10 @@ function renderTabs() {
         if (p === 'Governor' || p === 'Senator' || p === 'Women Rep') pillText = 'Select County';
         else if (p === 'MP') pillText = 'Select Constituency';
         else if (p === 'MCA') pillText = 'Select Ward';
-    } else {
+        } else {
         var total = getDynamicTabTotal(p);
         var formattedTotal = total >= 1000 ? (total / 1000).toFixed(1) + 'K' : total;
         pillText = formattedTotal + ' votes';
-        
-        // Keep the "wards" counting logic for MCA, but make it respect the current scope
-        if (p === 'MCA') {
-            var wardsWithVotes = 0;
-            var wardMap = OVERVIEW.tabTotalsByLevel && OVERVIEW.tabTotalsByLevel.ward['MCA'];
-            if (wardMap) {
-                if (DRILL_LEVEL === 'centre' && DRILL_WARD) {
-                    if (wardMap[DRILL_WARD] > 0) wardsWithVotes = 1;
-                } else if (DRILL_LEVEL === 'stream' && DRILL_CENTRE) {
-                    var c = OVERVIEW.centres.find(x => x.id === DRILL_CENTRE);
-                    if (c && wardMap[c.ward_id] > 0) wardsWithVotes = 1;
-                } else if (DRILL_LEVEL === 'ward' && DRILL_CONST_ID) {
-                    for (var k in wardMap) {
-                        var w = OVERVIEW.wards.find(x => x.id === k);
-                        if (w && w.constituency_id === DRILL_CONST_ID && wardMap[k] > 0) wardsWithVotes++;
-                    }
-                } else {
-                    for (var k in wardMap) {
-                        if (wardMap[k] > 0) wardsWithVotes++;
-                    }
-                }
-            }
-            pillText = wardsWithVotes + ' wards';
-        }
     }
 
     return '<button class="' + cls + '" data-pos="' + escAttr(p) + '" onclick="switchPosition(\'' + escAttr(p) + '\')">' + esc(p) + '<span class="pill">' + pillText + '</span></button>';
