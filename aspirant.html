@@ -911,44 +911,10 @@ function manualRefresh() {
 // ================================================================
 //  DATA LOADING (Supabase)
 // ================================================================
+
 async function loadOverview(silent) {
   if (!silent) setPulse('loading');
   try {
-    // 1. Fetch Candidates
-    const { data: allCands, error: candErr } = await db.from('candidates').select('*');
-    if (candErr) throw candErr;
-    
-    // Filter to just the current position for display
-    const cands = (allCands || []).filter(c => c.position === VIEW_POS);
-    const candMap = {};
-    cands.forEach(c => { c.photo_url = normalizeImageUrl(c.photo_url); candMap[c.code] = c; });
-
-    // 2. Fetch Geography Tree (Lazily based on where we are)
-    let constQuery = db.from('constituencies').select('*').order('id');
-    if (SCOPE_MODE === 'constituency') constQuery = constQuery.eq('id', USER.constituency);
-    else if (SCOPE_MODE === 'county') constQuery = constQuery.eq('county_id', USER.county);
-    const consts = await fetchAll(() => constQuery);
-
-    let wardsData = [];
-    if (SCOPE_MODE === 'ward') {
-        wardsData = await fetchAll(() => db.from('wards').select('*').eq('id', USER.ward).order('id'));
-    } else if (SCOPE_MODE === 'constituency' || DRILL_LEVEL === 'ward') {
-        const targetConst = DRILL_CONST_ID || (SCOPE_MODE === 'constituency' ? USER.constituency : '');
-        if (targetConst) wardsData = await fetchAll(() => db.from('wards').select('*').eq('constituency_id', targetConst).order('id'));
-    }
-
-    let centresData = [];
-    if (SCOPE_MODE === 'ward' || DRILL_LEVEL === 'centre') {
-        const targetWard = DRILL_WARD || (SCOPE_MODE === 'ward' ? USER.ward : '');
-        if (targetWard) centresData = await fetchAll(() => db.from('centres').select('*').eq('ward_id', targetWard).order('id'));
-    }
-
-    let streamsData = [];
-    if (DRILL_LEVEL === 'stream' && DRILL_CENTRE) {
-        streamsData = await fetchAll(() => db.from('streams').select('*').eq('centre_id', DRILL_CENTRE).order('code'));
-    }
-
-    // 3. Determine the scope for the Database RPCs
     let scopeType = 'national';
     let scopeId = null;
     if (DRILL_LEVEL === 'constituency') { scopeType = 'county'; scopeId = DRILL_COUNTY_ID || USER.county; }
@@ -956,29 +922,64 @@ async function loadOverview(silent) {
     else if (DRILL_LEVEL === 'centre') { scopeType = 'ward'; scopeId = DRILL_WARD || USER.ward; }
     else if (DRILL_LEVEL === 'stream') { scopeType = 'centre'; scopeId = DRILL_CENTRE; }
 
-    // 4. Fire the 3 Database RPCs in parallel to get aggregated sums
-    const [boardRes, gridRes, tabsRes] = await Promise.all([
-        db.rpc('get_leaderboard_v3', { p_position: VIEW_POS, p_scope: scopeType, p_scope_id: scopeId }),
-        db.rpc('get_drilldown_grid_v3', { p_position: VIEW_POS, p_level: DRILL_LEVEL, p_parent_id: scopeId }),
-        db.rpc('get_tab_totals_v3', { p_scope: scopeType, p_scope_id: scopeId })
+    // 1. Fire ALL geography and candidate fetches at the exact same time
+    const pCands = db.from('candidates').select('*');
+    
+    let pConsts = db.from('constituencies').select('*').order('id');
+    if (SCOPE_MODE === 'constituency') pConsts = pConsts.eq('id', USER.constituency);
+    else if (SCOPE_MODE === 'county') pConsts = pConsts.eq('county_id', USER.county);
+
+    let pWards = Promise.resolve({ data: [] });
+    if (SCOPE_MODE === 'ward') pWards = db.from('wards').select('*').eq('id', USER.ward).order('id');
+    else if (SCOPE_MODE === 'constituency' || (SCOPE_MODE === 'national' && DRILL_LEVEL === 'ward')) {
+        const targetConst = DRILL_CONST_ID || (SCOPE_MODE === 'constituency' ? USER.constituency : '');
+        if (targetConst) pWards = db.from('wards').select('*').eq('constituency_id', targetConst).order('id');
+    }
+
+    let pCentres = Promise.resolve({ data: [] });
+    if (SCOPE_MODE === 'ward' || DRILL_LEVEL === 'centre') {
+        const targetWard = DRILL_WARD || (SCOPE_MODE === 'ward' ? USER.ward : '');
+        if (targetWard) pCentres = db.from('centres').select('*').eq('ward_id', targetWard).order('id');
+    }
+
+    let pStreams = Promise.resolve({ data: [] });
+    if (DRILL_LEVEL === 'stream' && DRILL_CENTRE) pStreams = db.from('streams').select('*').eq('centre_id', DRILL_CENTRE).order('code');
+
+    let pCounties = Promise.resolve({ data: [] });
+    if (SCOPE_MODE === 'national') pCounties = db.from('counties').select('*').order('name');
+
+    const pBoard = db.rpc('get_leaderboard_v3', { p_position: VIEW_POS, p_scope: scopeType, p_scope_id: scopeId });
+    const pGrid = db.rpc('get_drilldown_grid_v3', { p_position: VIEW_POS, p_level: DRILL_LEVEL, p_parent_id: scopeId });
+    const pTabs = db.rpc('get_tab_totals_v3', { p_scope: scopeType, p_scope_id: scopeId });
+
+    // 2. Await them all together
+    const [candRes, constRes, wardsRes, centresRes, streamsRes, countiesRes, boardRes, gridRes, tabsRes] = await Promise.all([
+        pCands, pConsts, pWards, pCentres, pStreams, pCounties, pBoard, pGrid, pTabs
     ]);
 
+    if (candRes.error) throw candRes.error;
     if (boardRes.error) throw boardRes.error;
     if (gridRes.error) throw gridRes.error;
 
-    // 5. Map the tiny aggregated payloads to the UI state
+    // 3. Process the data
+    const cands = (candRes.data || []).filter(c => c.position === VIEW_POS);
+    const candMap = {};
+    cands.forEach(c => { c.photo_url = normalizeImageUrl(c.photo_url); candMap[c.code] = c; });
+
+    const consts = constRes.data || [];
+    const wardsData = wardsRes.data || [];
+    const centresData = centresRes.data || [];
+    const streamsData = streamsRes.data || [];
+    const countiesData = countiesRes.data || [];
+
     const votesByCounty = {}, votesByConst = {}, votesByWard = {}, votesByCentre = {}, votesByStream = {};
-    const targetMap = DRILL_LEVEL === 'county' ? votesByCounty : 
-                      DRILL_LEVEL === 'constituency' ? votesByConst : 
-                      DRILL_LEVEL === 'ward' ? votesByWard : 
-                      DRILL_LEVEL === 'centre' ? votesByCentre : votesByStream;
+    const targetMap = DRILL_LEVEL === 'county' ? votesByCounty : DRILL_LEVEL === 'constituency' ? votesByConst : DRILL_LEVEL === 'ward' ? votesByWard : DRILL_LEVEL === 'centre' ? votesByCentre : votesByStream;
 
     (gridRes.data || []).forEach(r => {
         if (!targetMap[r.geo_id]) targetMap[r.geo_id] = {};
         targetMap[r.geo_id][r.candidate_code] = Number(r.total_votes);
     });
 
-    // 6. Build Leaderboard
     let leaderboard = cands.map(c => {
         const match = (boardRes.data || []).find(r => r.candidate_code === c.code);
         return { ...c, votes: match ? Number(match.total_votes) : 0 };
@@ -987,28 +988,21 @@ async function loadOverview(silent) {
     let globalTotal = leaderboard.reduce((s, c) => s + c.votes, 0);
     leaderboard.forEach(c => c.pct = globalTotal > 0 ? ((c.votes/globalTotal)*100).toFixed(1) : '0.0');
 
-    // 7. Build Tab Totals (Fixes the 0 votes issue)
     const tabTotalsByLevel = { current: {} };
     (tabsRes.data || []).forEach(r => { tabTotalsByLevel.current[r.pos] = Number(r.total_votes); });
 
-    // 8. Final Setup
     let ownRow = null; let ownRank = null;
     if (!USER.isSpectator && USER.name) {
         const idx = leaderboard.findIndex(c => c.name.trim().toLowerCase() === USER.name.trim().toLowerCase());
         if (idx !== -1) { ownRow = leaderboard[idx]; ownRank = idx + 1; }
     }
 
-    let countiesData = [];
-    if (SCOPE_MODE === 'national') countiesData = await fetchAll(() => db.from('counties').select('*').order('name'));
-
     OVERVIEW = {
       viewingPosition: VIEW_POS, 
-      leaderboard, globalTotal, ownRow, ownRank,
-      leader: leaderboard[0], runner: leaderboard[1], 
+      leaderboard, globalTotal, ownRow, ownRank, leader: leaderboard[0], runner: leaderboard[1], 
       margin: leaderboard[0] && leaderboard[1] ? (leaderboard[0].votes - leaderboard[1].votes) : 0,
-      counties: countiesData, consts: consts || [], wards: wardsData || [], centres: centresData || [], streams: streamsData || [],
-      votesByCounty, votesByConst, votesByWard, votesByCentre, votesByStream, candMap: candMap,
-      tabTotalsByLevel: tabTotalsByLevel
+      counties: countiesData, consts, wards: wardsData, centres: centresData, streams: streamsData,
+      votesByCounty, votesByConst, votesByWard, votesByCentre, votesByStream, candMap, tabTotalsByLevel
     };
 
     renderTabs(); renderHero(); renderDrillGrid(); renderBoard();
@@ -1017,7 +1011,6 @@ async function loadOverview(silent) {
     console.error(err); setPulse('stale'); if (!silent) toast('Connection error.', 'error'); 
   }
 }
-
 
 async function loadTracker(silent) {
   if (!silent) document.getElementById('trackerGrid').innerHTML = '<div class="load" style="grid-column:1/-1;"><i class="fas fa-spinner"></i>Loading…</div>';
@@ -1459,22 +1452,16 @@ function renderDrillGrid() {
 function drillDown(level, id, name) {
   if (level === 'constituency') {
     DRILL_COUNTY_ID = id; DRILL_COUNTY_NAME = name; DRILL_LEVEL = 'constituency';
-    DRILL_CONST_ID = ''; DRILL_CONST_NAME = '';
-    DRILL_WARD = ''; DRILL_WARD_NAME = '';
-    DRILL_CENTRE = ''; DRILL_CENTRE_NAME = '';
-    
-    // ---> THIS SYNCS THE DROPDOWN WHEN A CARD IS CLICKED <---
+    DRILL_CONST_ID = ''; DRILL_CONST_NAME = ''; DRILL_WARD = ''; DRILL_WARD_NAME = ''; DRILL_CENTRE = ''; DRILL_CENTRE_NAME = '';
     if (SCOPE_MODE === 'national') {
       CURRENT_COUNTY = id;
       const sel = document.getElementById('aspCountySelector');
       if (sel) sel.value = id;
     }
   }
-  
   if (level === 'ward') {
     DRILL_CONST_ID = id; DRILL_CONST_NAME = name; DRILL_LEVEL = 'ward';
-    DRILL_WARD = ''; DRILL_WARD_NAME = '';
-    DRILL_CENTRE = ''; DRILL_CENTRE_NAME = '';
+    DRILL_WARD = ''; DRILL_WARD_NAME = ''; DRILL_CENTRE = ''; DRILL_CENTRE_NAME = '';
   }
   if (level === 'centre') {
     DRILL_WARD = id; DRILL_WARD_NAME = name; DRILL_LEVEL = 'centre';
@@ -1484,7 +1471,11 @@ function drillDown(level, id, name) {
     DRILL_CENTRE = id; DRILL_CENTRE_NAME = name; DRILL_LEVEL = 'stream';
   }
   
-  renderDrillGrid(); renderBoard(); renderBreadcrumb(); renderTabs();
+  // Show a quick loading spinner in the grid
+  document.getElementById('drillGrid').innerHTML = '<div class="load" style="grid-column:1/-1;"><i class="fas fa-spinner"></i>Loading…</div>';
+  
+  // Fetch the new level from the DB
+  loadOverview(); 
   window.scrollTo({ top: document.getElementById('drillGrid').offsetTop - 100, behavior: 'smooth' });
 }
 
@@ -1751,32 +1742,16 @@ function resetDrill() {
   renderDrillGrid(); renderBoard(); renderBreadcrumb();
 }
 function drillToWard(wardId, wardName) { 
-  DRILL_WARD = wardId; 
-  DRILL_WARD_NAME = wardName; 
-  DRILL_CENTRE = ''; 
-  DRILL_CENTRE_NAME = ''; 
-  DRILL_DATA = null; 
-  
-  // V3 MAGIC: Instant rendering, no database query needed
-  renderHero(); 
-  renderBoard(); 
-  renderDrillGrid(); 
-  renderBreadcrumb(); 
-  
+  DRILL_WARD = wardId; DRILL_WARD_NAME = wardName; DRILL_CENTRE = ''; DRILL_CENTRE_NAME = ''; DRILL_DATA = null; 
+  document.getElementById('drillGrid').innerHTML = '<div class="load" style="grid-column:1/-1;"><i class="fas fa-spinner"></i>Loading…</div>';
+  loadOverview(); 
   window.scrollTo({ top: document.querySelector('.section-head').offsetTop - 120, behavior: 'smooth' }); 
 }
 
 function drillToCentre(centreId, centreName) { 
-  DRILL_CENTRE = centreId; 
-  DRILL_CENTRE_NAME = centreName; 
-  DRILL_DATA = null; 
-  
-  // V3 MAGIC: Instant rendering, no database query needed
-  renderHero(); 
-  renderBoard(); 
-  renderDrillGrid(); 
-  renderBreadcrumb(); 
-  
+  DRILL_CENTRE = centreId; DRILL_CENTRE_NAME = centreName; DRILL_DATA = null; 
+  document.getElementById('drillGrid').innerHTML = '<div class="load" style="grid-column:1/-1;"><i class="fas fa-spinner"></i>Loading…</div>';
+  loadOverview(); 
   window.scrollTo({ top: document.querySelector('.section-head').offsetTop - 120, behavior: 'smooth' }); 
 }
 
