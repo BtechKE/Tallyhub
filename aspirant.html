@@ -308,6 +308,50 @@
     /* ================================================================
        ASPIRANT — COLOUR SIGNALS LAYER
     ============================================================ */
+    /* --- UNIFORM PREMIUM TABS --- */
+.postab {
+  background: #F3F4F6; /* Soft premium grey */
+  color: #6B7280;      /* Muted slate text */
+  border: 1px solid #E5E7EB;
+  font-weight: 700;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+  transition: all 0.25s ease;
+}
+
+.postab:hover {
+  background: #E5E7EB;
+  color: #1A1A19;
+  transform: translateY(-1px);
+}
+
+.postab.active {
+  background: #1A1A19; /* Deep charcoal */
+  color: #FFFFFF;
+  border-color: #1A1A19;
+  box-shadow: 0 4px 12px rgba(26, 26, 25, 0.25);
+  transform: none;
+}
+
+/* The pill inside the tabs */
+.postab .pill {
+  background: rgba(0, 0, 0, 0.06);
+  color: #4B5563;
+  font-weight: 800;
+}
+
+.postab.active .pill {
+  background: #A5CF83; /* TallyHub Brand Green */
+  color: #1A1A19;
+  box-shadow: 0 2px 6px rgba(165, 207, 131, 0.4);
+}
+
+/* The little blue dot for "Your Race" */
+.postab.mine::before {
+  background: #1591DC; 
+}
+.postab.mine.active::before {
+  background: #A5CF83;
+}
     .hero-stat-num:nth-child(1) { color: var(--green); } .hero-stat-num:nth-child(2) { color: var(--blue); } .hero-stat-num:nth-child(3) { color: #E8534A; }
     .hero.other .hero-stat-num:nth-child(1) { color: var(--green-dark); } .hero.other .hero-stat-num:nth-child(2) { color: var(--blue); } .hero.other .hero-stat-num:nth-child(3) { color: #C4453A; }
     .hero-stat-num.green { color: var(--green) !important; } .hero-stat-num.blue { color: var(--blue) !important; }
@@ -315,18 +359,6 @@
 
     .postab { background: var(--canvas); color: var(--slate); border: 1px solid transparent; transition: background-color 0.18s, color 0.18s, border-color 0.18s, transform 0.12s; }
     .postab .pill { transition: background-color 0.18s, color 0.18s; }
-    .postab[data-pos="President"] { background: rgba(165, 207, 131, 0.14); color: #4A7C3A; }
-    .postab[data-pos="Governor"] { background: rgba(21, 145, 220, 0.10); color: #0F7BC0; }
-    .postab[data-pos="Senator"] { background: rgba(21, 145, 220, 0.14); color: #1591DC; }
-    .postab[data-pos="MP"] { background: rgba(67, 86, 99, 0.10); color: #435663; }
-    .postab[data-pos="Women Rep"] { background: rgba(196, 69, 58, 0.10); color: #B23A32; }
-    .postab[data-pos="MCA"] { background: rgba(126, 174, 92, 0.14); color: #7EAE5C; }
-    .postab[data-pos="President"] .pill { background: rgba(165, 207, 131, 0.35); color: #4A7C3A; }
-    .postab[data-pos="Governor"] .pill { background: rgba(21, 145, 220, 0.18); color: #0F7BC0; }
-    .postab[data-pos="Senator"] .pill { background: rgba(21, 145, 220, 0.22); color: #0F7BC0; }
-    .postab[data-pos="MP"] .pill { background: rgba(67, 86, 99, 0.18); color: #435663; }
-    .postab[data-pos="Women Rep"] .pill { background: rgba(196, 69, 58, 0.18); color: #B23A32; }
-    .postab[data-pos="MCA"] .pill { background: rgba(126, 174, 92, 0.24); color: #4A7C3A; }
     .postab:hover { background: rgba(165, 207, 131, 0.30) !important; color: #4A7C3A !important; border-color: rgba(126, 174, 92, 0.35); transform: translateY(-1px); }
     .postab:hover .pill { background: rgba(165, 207, 131, 0.55) !important; color: #2F5520 !important; }
     .postab.active { background: var(--ink); color: #F0F0F0; border-color: var(--ink); transform: none; }
@@ -398,18 +430,7 @@
     .hero-stats > div:nth-child(3) .hero-stat-num { color: #C4453A !important; }
     .board-row[style*="background:rgba"], .card[style*="background:rgba"] { background-clip: padding-box; }
     .board-row.you { background: linear-gradient(to right, rgba(21, 145, 220, 0.12) 0%, transparent 60%) !important; } .board-row.leader { background: linear-gradient(to right, rgba(165, 207, 131, 0.18) 0%, transparent 60%) !important; }
-    .postab[data-pos="President"]:not(.active) { background: #E8DDB4; color: #1A1A19; border-color: #D9CDA0; }
-    .postab[data-pos="Governor"]:not(.active) { background: #ABE0F0; color: #1A1A19; border-color: #90CBDB; }
-    .postab[data-pos="Senator"]:not(.active) { background: #70FFD2; color: #1A1A19; border-color: #55E0B8; }
-    .postab[data-pos="MP"]:not(.active) { background: #FFA6FB; color: #1A1A19; border-color: #E890E3; }
-    .postab[data-pos="Women Rep"]:not(.active) { background: #ECE7D1; color: #1A1A19; border-color: #D9D3BC; }
-    .postab[data-pos="MCA"]:not(.active) { background: #FCF5EE; color: #1A1A19; border-color: #E8DCC9; }
-    .postab[data-pos="President"]:not(.active) .pill { background: rgba(26, 26, 25, 0.10); color: #1A1A19; }
-    .postab[data-pos="Governor"]:not(.active) .pill { background: rgba(26, 26, 25, 0.10); color: #1A1A19; }
-    .postab[data-pos="Senator"]:not(.active) .pill { background: rgba(26, 26, 25, 0.10); color: #1A1A19; }
-    .postab[data-pos="MP"]:not(.active) .pill { background: rgba(26, 26, 25, 0.10); color: #1A1A19; }
-    .postab[data-pos="Women Rep"]:not(.active) .pill { background: rgba(26, 26, 25, 0.10); color: #1A1A19; }
-    .postab[data-pos="MCA"]:not(.active) .pill { background: rgba(26, 26, 25, 0.10); color: #1A1A19; }
+   
     .hero-stats > div:nth-child(1) .hero-stat-num, .hero.other .hero-stats > div:nth-child(1) .hero-stat-num, .hero-stat-num.green, .hero.other .hero-stat-num.green { color: #7EAE5C !important; }
     .hero-stats > div:nth-child(2) .hero-stat-num, .hero.other .hero-stats > div:nth-child(2) .hero-stat-num, .hero-stat-num.blue, .hero.other .hero-stat-num.blue { color: #1591DC !important; }
     .hero-stats > div:nth-child(3) .hero-stat-num, .hero.other .hero-stats > div:nth-child(3) .hero-stat-num, .hero-stats > div:nth-child(3) .hero-stat-num.green, .hero.other .hero-stats > div:nth-child(3) .hero-stat-num.green, .hero-stats > div:nth-child(3) .hero-stat-num.blue, .hero.other .hero-stats > div:nth-child(3) .hero-stat-num.blue { color: #C4453A !important; }
