@@ -543,6 +543,24 @@
     width: 100%;
   }
 }
+
+/* === PREMIUM LIVE UPDATE FLASH === */
+@keyframes flashRowGreen {
+  0% { background-color: rgba(165, 207, 131, 0.3); }
+  100% { background-color: transparent; }
+}
+.board-row.flash-update {
+  animation: flashRowGreen 2.5s ease-out;
+}
+
+@keyframes flashTextGreen {
+  0% { color: #7EAE5C; transform: scale(1.05); text-shadow: 0 0 12px rgba(165, 207, 131, 0.6); }
+  100% { color: inherit; transform: scale(1); text-shadow: none; }
+}
+.hero-stat-num.flash-update {
+  animation: flashTextGreen 2.5s ease-out;
+}
+    
 </style>
 </head>
 <body>
@@ -1303,7 +1321,10 @@ function renderHero() {
   if (!OVERVIEW) return;
   var el = document.getElementById('heroCard'); 
   var liveText = timeAgo(lastRefreshAt);
-
+  // Capture old hero vote before wiping the HTML
+  let oldHeroVote = -1;
+  const oldHeroNode = el.querySelector('[data-count]');
+  if (oldHeroNode) oldHeroVote = parseInt(oldHeroNode.getAttribute('data-count'), 10) || 0;
   // ================================================================
   // 1. NATIONAL OVERVIEW (No single leader)
   // ================================================================
@@ -1453,7 +1474,7 @@ function renderHero() {
   var focusPct = total > 0 ? ((leader.votes/total)*100).toFixed(1) : '0.0';
   
   el.className = 'hero' + (isOwn ? '' : ' other');
-  el.innerHTML = '<div class="hero-inner"><div class="hero-top"><span class="hero-live"><span class="dot"></span>Live · ' + esc(liveText) + '</span><div class="hero-badges"><span class="badge-status leading"><i class="fas fa-crown"></i> Leading</span></div></div><div class="hero-name-row"><div class="hero-avatar"><img src="' + escAttr(leader.photo_url) + '"></div><div><div class="hero-eyebrow">' + esc(OVERVIEW.viewingPosition) + ' · ' + esc(scopeLabel) + '</div><div class="hero-name">' + esc(leader.name) + '</div><div class="hero-meta">' + esc(leader.party) + '</div></div></div><div class="hero-stats"><div><div class="hero-stat-num" data-count="' + leader.votes + '">0</div><div class="hero-stat-lbl">Votes</div></div><div><div class="hero-stat-num blue">' + focusPct + '%</div><div class="hero-stat-lbl">Share</div></div><div><div class="hero-stat-num">+' + margin.toLocaleString() + '</div><div class="hero-stat-lbl">Margin</div></div></div></div>';
+  el.innerHTML = '<div class="hero-inner"><div class="hero-top"><span class="hero-live"><span class="dot"></span>Live · ' + esc(liveText) + '</span><div class="hero-badges"><span class="badge-status leading"><i class="fas fa-crown"></i> Leading</span></div></div><div class="hero-name-row"><div class="hero-avatar"><img src="' + escAttr(leader.photo_url) + '"></div><div><div class="hero-eyebrow">' + esc(OVERVIEW.viewingPosition) + ' · ' + esc(scopeLabel) + '</div><div class="hero-name">' + esc(leader.name) + '</div><div class="hero-meta">' + esc(leader.party) + '</div></div></div><div class="hero-stats"><div><div class="hero-stat-num ${(oldHeroVote !== -1 && leader.votes > oldHeroVote) ? 'flash-update' : ''}" data-count="' + leader.votes + '">0</div><div class="hero-stat-lbl">Votes</div></div><div><div class="hero-stat-num blue">' + focusPct + '%</div><div class="hero-stat-lbl">Share</div></div><div><div class="hero-stat-num">+' + margin.toLocaleString() + '</div><div class="hero-stat-lbl">Margin</div></div></div></div>';
   triggerHeroAnimation(el);
 }
 // ================================================================
@@ -1777,70 +1798,77 @@ function renderBoard() {
   const el   = document.getElementById('board');
   const head = document.getElementById('boardSectionHead');
 
-// --- 1. Handle empty state if there's no valid race at this drill level ---
-if (!isRaceScopeActive()) {
+  if (!isRaceScopeActive()) {
+    if (head) head.style.display = '';
+    if (el) el.style.display = '';
+    const subEl = document.getElementById('boardSub');
+    const pos = OVERVIEW.viewingPosition;
+    if (subEl) {
+        if (pos === 'MP') subEl.textContent = 'Select a constituency to view the MP race';
+        else if (pos === 'MCA') subEl.textContent = 'Select a ward to view the MCA race';
+    }
+    el.innerHTML = `<div class="empty" style="padding: 40px 20px; background: #FFFFFF; border: 1px dashed var(--border-strong); border-radius: var(--radius);">
+        <div class="empty-icon" style="color: var(--blue); background: var(--blue-soft);"><i class="fas fa-hand-pointer"></i></div>
+        <div class="empty-title">Select a ${pos === 'MP' ? 'Constituency' : 'Ward'}</div>
+        <div class="empty-sub">Click on the cards in the grid above to see the specific candidates for this ${pos} race.</div>
+    </div>`;
+    return;
+  }
+
+  if (el)   el.style.display   = '';
   if (head) head.style.display = '';
-  if (el) el.style.display = '';
-  
-  // Dynamic Subtitle for Empty State
+
+  const racePool = getRaceCandidates();
+  if (!racePool.length) {
+    el.innerHTML = '<div class="empty">No candidates configured for this race.</div>';
+    return;
+  }
+
+  const votesMap = getVotesForCurrentDrill();
+  const scoped = racePool
+    .map(c => ({ ...c, votes: votesMap[c.code] || 0 }))
+    .sort((a, b) => b.votes - a.votes);
+
+  const total = scoped.reduce((s, c) => s + c.votes, 0);
+
   const subEl = document.getElementById('boardSub');
   const pos = OVERVIEW.viewingPosition;
   if (subEl) {
-      if (pos === 'MP') subEl.textContent = 'Select a constituency to view the MP race';
-      else if (pos === 'MCA') subEl.textContent = 'Select a ward to view the MCA race';
+    if (pos === 'President') subEl.textContent = 'All candidates ranked nationally';
+    else if (pos === 'Governor' || pos === 'Senator' || pos === 'Women Rep') {
+        if (DRILL_LEVEL === 'constituency' && SCOPE_MODE === 'national') subEl.textContent = 'Candidates ranked in ' + (DRILL_COUNTY_NAME || 'this county');
+        else subEl.textContent = 'Candidates ranked in this county';
+    }
+    else if (pos === 'MP') {
+        if (DRILL_LEVEL === 'ward') subEl.textContent = 'Candidates ranked in ' + (DRILL_CONST_NAME || 'this constituency');
+        else if (DRILL_LEVEL === 'centre' || DRILL_LEVEL === 'stream') subEl.textContent = 'Candidates ranked in this constituency';
+    }
+    else if (pos === 'MCA') {
+        if (DRILL_LEVEL === 'centre') subEl.textContent = 'Candidates ranked in ' + (DRILL_WARD_NAME || 'this ward');
+        else if (DRILL_LEVEL === 'stream') subEl.textContent = 'Candidates ranked in this ward';
+    }
   }
 
-  el.innerHTML = `<div class="empty" style="padding: 40px 20px; background: #FFFFFF; border: 1px dashed var(--border-strong); border-radius: var(--radius);">
-      <div class="empty-icon" style="color: var(--blue); background: var(--blue-soft);"><i class="fas fa-hand-pointer"></i></div>
-      <div class="empty-title">Select a ${pos === 'MP' ? 'Constituency' : 'Ward'}</div>
-      <div class="empty-sub">Click on the cards in the grid above to see the specific candidates for this ${pos} race.</div>
-  </div>`;
-  return;
-}
+  // --- CAPTURE OLD VOTES FOR FLASH EFFECT ---
+  const oldVotes = {};
+  el.querySelectorAll('.board-row').forEach(row => {
+      const code = row.getAttribute('data-code');
+      const voteNode = row.querySelector('.board-votes');
+      if (code && voteNode) oldVotes[code] = parseInt(voteNode.getAttribute('data-count'), 10) || 0;
+  });
 
-// Make sure it's visible if the race is active
-if (el)   el.style.display   = '';
-if (head) head.style.display = '';
-
-// --- 2. Build scoped candidate list ---
-const racePool = getRaceCandidates();
-if (!racePool.length) {
-  el.innerHTML = '<div class="empty">No candidates configured for this race.</div>';
-  return;
-}
-
-const votesMap = getVotesForCurrentDrill();
-const scoped = racePool
-  .map(c => ({ ...c, votes: votesMap[c.code] || 0 }))
-  .sort((a, b) => b.votes - a.votes);
-
-const total = scoped.reduce((s, c) => s + c.votes, 0);
-
-// --- 3. Update the sub-heading text to reflect the scope dynamically ---
-const subEl = document.getElementById('boardSub');
-const pos = OVERVIEW.viewingPosition;
-if (subEl) {
-  if (pos === 'President') subEl.textContent = 'All candidates ranked nationally';
-  else if (pos === 'Governor' || pos === 'Senator' || pos === 'Women Rep') {
-      if (DRILL_LEVEL === 'constituency' && SCOPE_MODE === 'national') subEl.textContent = 'Candidates ranked in ' + (DRILL_COUNTY_NAME || 'this county');
-      else subEl.textContent = 'Candidates ranked in this county';
-  }
-  else if (pos === 'MP') {
-      if (DRILL_LEVEL === 'ward') subEl.textContent = 'Candidates ranked in ' + (DRILL_CONST_NAME || 'this constituency');
-      else if (DRILL_LEVEL === 'centre' || DRILL_LEVEL === 'stream') subEl.textContent = 'Candidates ranked in this constituency';
-  }
-  else if (pos === 'MCA') {
-      if (DRILL_LEVEL === 'centre') subEl.textContent = 'Candidates ranked in ' + (DRILL_WARD_NAME || 'this ward');
-      else if (DRILL_LEVEL === 'stream') subEl.textContent = 'Candidates ranked in this ward';
-  }
-}
-
-  // --- 4. Render ---
   el.innerHTML = scoped.map((c, idx) => {
     const pct    = total > 0 ? (c.votes / total * 100) : 0;
     const isYou  = isOwnCandidate(c.name);
+    
+    // CHECK IF VOTES INCREASED
+    const oldV = oldVotes[c.code];
+    const isUpdate = oldV !== undefined && c.votes > oldV;
+    const flashClass = isUpdate ? 'flash-update' : '';
+
     return `
-      <div class="board-row ${idx === 0 ? 'leader' : ''} ${isYou ? 'you' : ''}"
+      <div class="board-row ${idx === 0 ? 'leader' : ''} ${isYou ? 'you' : ''} ${flashClass}"
+           data-code="${c.code}"
            onclick="openCandidateDetail('${c.code}')">
         <div class="avatar-wrap ${c.photo_url ? '' : 'no-photo'}">
           ${c.photo_url ? `<img src="${c.photo_url}">` : c.name.charAt(0)}
@@ -1857,13 +1885,13 @@ if (subEl) {
       </div>`;
   }).join('');
 
-  // --- 5. TRIGGER THE COUNT-UP ANIMATION ---
   el.querySelectorAll('[data-count]').forEach(function(node) {
       const target = parseInt(node.getAttribute('data-count'), 10);
       animateValue(node, 0, target || 0, 1500);
   });
 }
 
+  
 function resetDrill() {
   DRILL_COUNTY_ID = ''; DRILL_COUNTY_NAME = '';
   DRILL_CONST_ID  = ''; DRILL_CONST_NAME  = '';
