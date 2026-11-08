@@ -1305,17 +1305,19 @@ function renderHero() {
   var liveText = timeAgo(lastRefreshAt);
 
   // ================================================================
-  // FIX: If looking at the National Grid (47 counties) but NOT on President
-  // Show a summary card instead of a single leading candidate
+  // 1. NATIONAL OVERVIEW (No single leader)
   // ================================================================
   if (DRILL_LEVEL === 'county' && OVERVIEW.viewingPosition !== 'President') {
     var activeCounties = Object.keys(OVERVIEW.votesByCounty || {}).length;
     el.className = 'hero other';
     el.innerHTML = '<div class="hero-inner"><div class="hero-top"><span class="hero-live"><span class="dot"></span>Live · ' + esc(liveText) + '</span></div><div class="hero-eyebrow">' + esc(OVERVIEW.viewingPosition) + ' · National Overview</div><div class="hero-name">' + activeCounties + ' Counties Reporting</div><div class="hero-meta">Select a specific county from the dropdown above to view the ' + esc(OVERVIEW.viewingPosition) + ' race</div></div>';
+    triggerHeroAnimation(el);
     return;
   }
 
-  // --- 1. HANDLE MCA (Ward Scope) ---
+  // ================================================================
+  // 2. HANDLE MCA (Ward Scope)
+  // ================================================================
   if (OVERVIEW.viewingPosition === 'MCA') {
     var isDrilledToWard = (DRILL_LEVEL === 'centre' || DRILL_LEVEL === 'stream');
     var targetWardId = DRILL_WARD || (SCOPE_MODE === 'ward' ? USER.ward : '');
@@ -1338,16 +1340,20 @@ function renderHero() {
       var pct = total > 0 ? ((leader.votes/total)*100).toFixed(1) : '0.0';
       el.className = 'hero mca-hero other';
       el.innerHTML = '<div class="hero-inner"><div class="hero-top"><span class="hero-live"><span class="dot"></span>Live · ' + esc(liveText) + '</span><div class="hero-badges"><span class="badge-status leading"><i class="fas fa-crown"></i> Leading</span></div></div><div class="hero-name-row"><div class="hero-avatar"><img src="' + escAttr(leader.photo_url) + '"></div><div><div class="hero-eyebrow">MCA · ' + esc(wardName) + '</div><div class="hero-name">' + esc(leader.name) + '</div><div class="hero-meta">' + esc(leader.party) + '</div></div></div><div class="hero-stats"><div><div class="hero-stat-num" data-count="' + leader.votes + '">0</div><div class="hero-stat-lbl">Votes</div></div><div><div class="hero-stat-num blue">' + pct + '%</div><div class="hero-stat-lbl">Share</div></div><div><div class="hero-stat-num">+' + margin.toLocaleString() + '</div><div class="hero-stat-lbl">Margin</div></div></div></div>';
+      triggerHeroAnimation(el);
       return;
     }
 
     var contested = Object.keys(OVERVIEW.votesByWard).filter(w => Object.keys(OVERVIEW.votesByWard[w]).length > 0).length;
     el.className = 'hero mca-hero other';
     el.innerHTML = '<div class="hero-inner"><div class="hero-top"><span class="hero-live"><span class="dot"></span>Live · ' + esc(liveText) + '</span></div><div class="hero-eyebrow">MCA · Multi-Ward Race</div><div class="hero-name">' + contested + ' Ward Races</div><div class="hero-meta">Tap a ward below to view the specific MCA race</div></div>';
+    triggerHeroAnimation(el);
     return;
   }
 
-  // --- 2. HANDLE MP (Constituency Scope) ---
+  // ================================================================
+  // 3. HANDLE MP (Constituency Scope)
+  // ================================================================
   if (OVERVIEW.viewingPosition === 'MP') {
     var isDrilledToConst = (DRILL_LEVEL !== 'constituency');
     var targetConstId = DRILL_CONST_ID || (SCOPE_MODE === 'constituency' ? USER.constituency : '');
@@ -1370,22 +1376,20 @@ function renderHero() {
       var pct = total > 0 ? ((leader.votes/total)*100).toFixed(1) : '0.0';
       el.className = 'hero other';
       el.innerHTML = '<div class="hero-inner"><div class="hero-top"><span class="hero-live"><span class="dot"></span>Live · ' + esc(liveText) + '</span><div class="hero-badges"><span class="badge-status leading"><i class="fas fa-crown"></i> Leading</span></div></div><div class="hero-name-row"><div class="hero-avatar"><img src="' + escAttr(leader.photo_url) + '"></div><div><div class="hero-eyebrow">MP · ' + esc(constName) + '</div><div class="hero-name">' + esc(leader.name) + '</div><div class="hero-meta">' + esc(leader.party) + '</div></div></div><div class="hero-stats"><div><div class="hero-stat-num" data-count="' + leader.votes + '">0</div><div class="hero-stat-lbl">Votes</div></div><div><div class="hero-stat-num blue">' + pct + '%</div><div class="hero-stat-lbl">Share</div></div><div><div class="hero-stat-num">+' + margin.toLocaleString() + '</div><div class="hero-stat-lbl">Margin</div></div></div></div>';
+      triggerHeroAnimation(el);
       return;
     }
 
     var contested = Object.keys(OVERVIEW.votesByConst).filter(c => Object.keys(OVERVIEW.votesByConst[c]).length > 0).length;
     el.className = 'hero other';
     el.innerHTML = '<div class="hero-inner"><div class="hero-top"><span class="hero-live"><span class="dot"></span>Live · ' + esc(liveText) + '</span></div><div class="hero-eyebrow">MP · Multi-Constituency Race</div><div class="hero-name">' + contested + ' Constituency Races</div><div class="hero-meta">Tap a constituency below to view the specific MP race</div></div>';
+    triggerHeroAnimation(el);
     return;
-
-      // Trigger the count-up for the Hero Card
-  var voteEl = el.querySelector('[data-count]');
-  if (voteEl) {
-      animateValue(voteEl, 0, parseInt(voteEl.getAttribute('data-count'), 10), 1200);
-  }
   }
 
-  // --- 3. HANDLE COUNTY-WIDE POSITIONS & NATIONAL (President, Governor, Senator, Women Rep) ---
+  // ================================================================
+  // 4. HANDLE COUNTY-WIDE POSITIONS & NATIONAL (President, Governor, etc.)
+  // ================================================================
   var scopedVotes = {};
   var scopeLabel = '';
   
@@ -1415,7 +1419,6 @@ function renderHero() {
       }
   }
   else if (DRILL_LEVEL === 'ward') { 
-    // Fallback for MP viewing county-wide positions
     var targetConst = DRILL_CONST_ID || (SCOPE_MODE === 'constituency' ? USER.constituency : '');
     var targetConstName = DRILL_CONST_NAME;
     if (!targetConstName && SCOPE_MODE === 'constituency') {
@@ -1451,6 +1454,7 @@ function renderHero() {
   
   el.className = 'hero' + (isOwn ? '' : ' other');
   el.innerHTML = '<div class="hero-inner"><div class="hero-top"><span class="hero-live"><span class="dot"></span>Live · ' + esc(liveText) + '</span><div class="hero-badges"><span class="badge-status leading"><i class="fas fa-crown"></i> Leading</span></div></div><div class="hero-name-row"><div class="hero-avatar"><img src="' + escAttr(leader.photo_url) + '"></div><div><div class="hero-eyebrow">' + esc(OVERVIEW.viewingPosition) + ' · ' + esc(scopeLabel) + '</div><div class="hero-name">' + esc(leader.name) + '</div><div class="hero-meta">' + esc(leader.party) + '</div></div></div><div class="hero-stats"><div><div class="hero-stat-num" data-count="' + leader.votes + '">0</div><div class="hero-stat-lbl">Votes</div></div><div><div class="hero-stat-num blue">' + focusPct + '%</div><div class="hero-stat-lbl">Share</div></div><div><div class="hero-stat-num">+' + margin.toLocaleString() + '</div><div class="hero-stat-lbl">Margin</div></div></div></div>';
+  triggerHeroAnimation(el);
 }
 // ================================================================
 //  RENDERING — BREADCRUMB & DRILL GRID
@@ -2421,6 +2425,14 @@ function animateValue(obj, start, end, duration) {
     }
   };
   window.requestAnimationFrame(step);
+}
+
+  function triggerHeroAnimation(el) {
+    var voteEl = el.querySelector('[data-count]');
+    if (voteEl) {
+        var target = parseInt(voteEl.getAttribute('data-count'), 10);
+        animateValue(voteEl, 0, isNaN(target) ? 0 : target, 1200);
+    }
 }
 function doLogout() {
   thConfirm({
