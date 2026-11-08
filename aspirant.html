@@ -560,7 +560,28 @@
 .hero-stat-num.flash-update {
   animation: flashTextGreen 2.5s ease-out;
 }
-    
+    /* === PREMIUM BOUNCING DOTS LOADER === */
+.tally-loader {
+  height: 24px;
+  aspect-ratio: 2.5;
+  --_g: no-repeat radial-gradient(farthest-side, #A5CF83 90%, #0000);
+  background: var(--_g), var(--_g), var(--_g), var(--_g);
+  background-size: 20% 50%;
+  animation: l43 1s infinite linear;
+  margin: 0 auto 12px auto; /* Centers it and adds bottom space */
+}
+
+/* Optional: If you want the dots to be dark charcoal instead of green, change #A5CF83 above to #1A1A19 */
+
+@keyframes l43 {
+  0%     {background-position: calc(0*100%/3) 50% ,calc(1*100%/3) 50% ,calc(2*100%/3) 50% ,calc(3*100%/3) 50% }
+  16.67% {background-position: calc(0*100%/3) 0   ,calc(1*100%/3) 50% ,calc(2*100%/3) 50% ,calc(3*100%/3) 50% }
+  33.33% {background-position: calc(0*100%/3) 100%,calc(1*100%/3) 0   ,calc(2*100%/3) 50% ,calc(3*100%/3) 50% }
+  50%    {background-position: calc(0*100%/3) 50% ,calc(1*100%/3) 100%,calc(2*100%/3) 0   ,calc(3*100%/3) 50% }
+  66.67% {background-position: calc(0*100%/3) 50% ,calc(1*100%/3) 50% ,calc(2*100%/3) 100%,calc(3*100%/3) 0   }
+  83.33% {background-position: calc(0*100%/3) 50% ,calc(1*100%/3) 50% ,calc(2*100%/3) 50% ,calc(3*100%/3) 100%}
+  100%   {background-position: calc(0*100%/3) 50% ,calc(1*100%/3) 50% ,calc(2*100%/3) 50% ,calc(3*100%/3) 50% }
+}
 </style>
 </head>
 <body>
@@ -621,7 +642,7 @@
   <div id="resultsView">
   <div class="hero" id="heroCard">
     <div class="hero-inner">
-      <div class="load"><i class="fas fa-spinner"></i>Loading live results…</div>
+      <div class="load"><div class="tally-loader"></div>Loading live results…</div>
     </div>
   </div>
 
@@ -637,7 +658,7 @@
   <div class="breadcrumb" id="breadcrumb"></div>
 
   <div class="grid" id="drillGrid">
-    <div class="load" style="grid-column:1/-1;"><i class="fas fa-spinner"></i>Loading breakdown…</div>
+    <div class="load" style="grid-column:1/-1;"><div class="tally-loader"></div>Loading breakdown…</div>
   </div>
 
   <!-- LEADERBOARD -->
@@ -665,7 +686,7 @@
     </div>
     <div class="breadcrumb" id="trackerBreadcrumb"></div>
     <div class="grid" id="trackerGrid">
-      <div class="load" style="grid-column:1/-1;"><i class="fas fa-spinner"></i>Loading…</div>
+      <div class="load" style="grid-column:1/-1;"><div class="tally-loader"></div>Loading…</div>
     </div>
   </div><!-- /trackerView -->
 
@@ -699,7 +720,7 @@
 
   <div class="breadcrumb" id="warRoomBreadcrumb"></div>
   <div class="grid" id="warRoomGrid">
-    <div class="load" style="grid-column:1/-1;"><i class="fas fa-spinner"></i>Scanning for anomalies…</div>
+    <div class="load" style="grid-column:1/-1;"><div class="tally-loader"></div>Scanning for anomalies…</div>
   </div>
 </div><!-- /warRoomView -->
 
@@ -1101,7 +1122,7 @@ async function loadOverview(silent) {
 
 
 async function loadTracker(silent) {
-  if (!silent) document.getElementById('trackerGrid').innerHTML = '<div class="load" style="grid-column:1/-1;"><i class="fas fa-spinner"></i>Loading…</div>';
+  if (!silent) document.getElementById('trackerGrid').innerHTML = '<div class="load" style="grid-column:1/-1;"><div class="tally-loader"></div>Loading…</div>';
   
   try {
     var streamCodes = (OVERVIEW.streams || []).map(s => s.code);
@@ -1313,7 +1334,7 @@ function switchPosition(pos) {
 
   renderTabs();
   document.getElementById('heroCard').innerHTML = '<div class="hero-inner"><div class="load" style="color:#F0F0F0;"><i class="fas fa-spinner" style="color:#A5CF83;"></i>Loading…</div></div>';
-  document.getElementById('drillGrid').innerHTML = '<div class="load" style="grid-column:1/-1;"><i class="fas fa-spinner"></i>Loading…</div>';
+  document.getElementById('drillGrid').innerHTML = '<div class="load" style="grid-column:1/-1;"><div class="tally-loader"></div>Loading…</div>';
   loadOverview();
 }
 
@@ -2168,7 +2189,7 @@ async function openTrackerPip(streamCode, position) {
   var wardName = ctx ? ctx.ward.wardName : '';
 
   sheetBg.classList.add('active');
-  sheet.innerHTML = '<div class="sheet-head"><div><div class="sheet-title">' + esc(position) + ' · ' + esc(label) + '</div><div class="sheet-sub">' + esc(centreName) + ' · ' + esc(wardName) + ' Ward</div></div><button class="sheet-close" onclick="closeSheet()"><i class="fas fa-xmark"></i></button></div><div class="load"><i class="fas fa-spinner"></i>Loading results…</div>';
+  sheet.innerHTML = '<div class="sheet-head"><div><div class="sheet-title">' + esc(position) + ' · ' + esc(label) + '</div><div class="sheet-sub">' + esc(centreName) + ' · ' + esc(wardName) + ' Ward</div></div><button class="sheet-close" onclick="closeSheet()"><i class="fas fa-xmark"></i></button></div><div class="load"><div class="tally-loader"></div>Loading results…</div>';
 
   try {
     // 1. Fetch Results
@@ -2673,7 +2694,7 @@ var WAR_DRILL_CONST = '';
 var WAR_DRILL_WARD = '';
 var WAR_DRILL_CENTRE = '';
 async function loadWarRoom() {
-  document.getElementById('warRoomGrid').innerHTML = '<div class="load" style="grid-column:1/-1;"><i class="fas fa-spinner"></i>Scanning database…</div>';
+  document.getElementById('warRoomGrid').innerHTML = '<div class="load" style="grid-column:1/-1;"><div class="tally-loader"></div>Scanning database…</div>';
   
   try {
     // 1. Fetch the turnout and forms ONLY for this position
