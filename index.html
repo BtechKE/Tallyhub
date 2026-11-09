@@ -392,7 +392,7 @@
       </div>
     </div>
 
-    <!-- Login Panel -->
+        <!-- Login Panel -->
     <div class="login-panel" id="loginPanel">
       <button class="login-back" onclick="backToRoles()"><i class="fas fa-arrow-left"></i> Back to roles</button>
       <div class="login-role-badge" id="roleBadge"><i class="fas fa-user"></i> <span id="roleBadgeText">Role</span></div>
@@ -401,23 +401,31 @@
       
       <div class="login-error" id="loginError"><i class="fas fa-exclamation-circle"></i> <span id="loginErrorText">Invalid credentials.</span></div>
 
-      <div class="field">
-        <label id="idLabel" for="loginId">ID</label>
-        <input type="text" id="loginId" autocomplete="username" autocapitalize="off" spellcheck="false">
-      </div>
-          <div class="field">
-        <label for="loginPassword">Password</label>
-        <div style="position: relative; width: 100%;">
-          <input type="password" id="loginPassword" autocomplete="current-password" style="padding-right: 40px;">
-          <button type="button" id="togglePasswordBtn" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center; outline: none;">
-            <i class="fas fa-eye" id="togglePasswordIcon"></i>
-          </button>
+      <!-- THE FORM WRAPPER STARTS HERE -->
+      <form onsubmit="event.preventDefault(); doLogin();">
+        <div class="field">
+          <label id="idLabel" for="loginId">ID</label>
+          <input type="text" id="loginId" autocomplete="username" autocapitalize="off" spellcheck="false">
         </div>
-      </div>
-      <button class="btn-primary" id="loginBtn" onclick="doLogin()"><i class="fas fa-sign-in-alt"></i> <span>Sign In</span></button>
-    </div>
-  </div>
+        <div class="field">
+          <label for="loginPassword">Password</label>
+          <div style="position: relative; width: 100%;">
+            <input type="password" id="loginPassword" autocomplete="current-password" style="padding-right: 40px;">
+            <!-- Note: This stays type="button" so clicking the eye doesn't submit the form -->
+            <button type="button" id="togglePasswordBtn" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center; outline: none;">
+              <i class="fas fa-eye" id="togglePasswordIcon"></i>
+            </button>
+          </div>
+        </div>
+        
+        <!-- THE BUTTON IS NOW A SUBMIT BUTTON -->
+        <button type="submit" class="btn-primary" id="loginBtn">
+          <i class="fas fa-sign-in-alt"></i> <span>Sign In</span>
+        </button>
+      </form>
+      <!-- THE FORM WRAPPER ENDS HERE -->
 
+    </div>
   <div class="landing-footer">© <span id="year">2027</span> TallyHub — Secure Election Tally System</div>
 </div>
 
@@ -425,7 +433,7 @@
   // 1. Initialize Supabase
 const supabaseUrl = 'https://mqafninsctppbkpwwmxx.supabase.co';
 const supabaseKey = 'sb_publishable_ooW3EE91PVdXoXM7tdxwKw_r51RrZ2z';
-  const db = window.supabase.createClient(supabaseUrl, supabaseKey);
+const db = window.supabase.createClient(supabaseUrl, supabaseKey);
 
   let currentRole = null;
   const ROLE_META = {
@@ -435,7 +443,14 @@ const supabaseKey = 'sb_publishable_ooW3EE91PVdXoXM7tdxwKw_r51RrZ2z';
   };
 
   document.getElementById('year').textContent = Math.max(2027, new Date().getFullYear());
-
+function getDeviceId() {
+  let devId = localStorage.getItem('tallyhub_device_id');
+  if (!devId) {
+    devId = 'DEV-' + Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
+    localStorage.setItem('tallyhub_device_id', devId);
+  }
+  return devId;
+}
   function selectRole(role) {
     currentRole = role;
     const meta = ROLE_META[role];
