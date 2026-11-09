@@ -463,7 +463,6 @@ const supabaseKey = 'sb_publishable_ooW3EE91PVdXoXM7tdxwKw_r51RrZ2z';
     document.getElementById('heroWrap').style.display = '';
   }
 
- 
 async function doLogin() {
   if (!currentRole) return;
   
@@ -501,42 +500,59 @@ async function doLogin() {
   const { data: authData, error } = await db.auth.signInWithPassword({ email: email, password: pw });
 
   if (error) {
-    handleFailedLogin(errText, errBox, btn);
+    handleFailedLogin(errText, errBox, btn, "Invalid ID or password.");
     return;
   }
 
-  // --- 2. VERIFY THE ROLE (THE GATE) ---
-  // Use maybeSingle() to prevent the 406 error if no profile exists
-  const { data: profile, error: profileErr } = await db.from('aspirants')
-      .select('is_spectator, position')
-      .eq('auth_user_id', authData.user.id)
-      .maybeSingle();
-
-  if (profileErr) {
-      console.error("Profile fetch error:", profileErr);
-  }
-
+  // --- 2. VERIFY THE ROLE (QUERYING THE CORRECT TABLE) ---
   let isAuthorized = false;
-  
-  if (currentRole === 'admin') {
-      // If profile is missing entirely, let them in (assuming they are a true Admin auth user)
-      if (!profile || profile.is_spectator === true || profile.position === 'President') {
-          isAuthorized = true;
-      }
+  const checkBool = (val) => val === true || val === 1 || val === 'true' || val === 'TRUE';
+
+  if (currentRole === 'agent') {
+      // Check the AGENTS table
+      const { data: agentProfile, error: agentErr } = await db.from('agents')
+          .select('id')
+          .eq('auth_user_id', authData.user.id)
+          .maybeSingle();
+      
+      if (agentProfile) isAuthorized = true;
+      else console.log("Agent DB error or missing profile:", agentErr);
+
   } else if (currentRole === 'aspirant') {
-      if (profile && profile.is_spectator === false) {
+      // Check the ASPIRANTS table
+      const { data: aspirantProfile, error: aspErr } = await db.from('aspirants')
+          .select('is_spectator')
+          .eq('auth_user_id', authData.user.id)
+          .maybeSingle();
+
+      if (aspirantProfile && checkBool(aspirantProfile.is_spectator) === false) {
           isAuthorized = true; 
+      } else {
+          console.log("Aspirant DB error or missing profile:", aspErr);
       }
-  } else if (currentRole === 'agent') {
-      if (profile) {
-          isAuthorized = true; 
+
+  } else if (currentRole === 'admin') {
+      // Check ASPIRANTS table for admin/spectator, or allow standalone auth admin
+      const { data: adminProfile } = await db.from('aspirants')
+          .select('is_spectator, position')
+          .eq('auth_user_id', authData.user.id)
+          .maybeSingle();
+
+      if (!adminProfile) {
+          isAuthorized = true; // Standalone Auth Admin
+      } else {
+          const isSpec = checkBool(adminProfile.is_spectator);
+          const isPres = String(adminProfile.position || '').toLowerCase() === 'president';
+          if (isSpec || isPres || email.toLowerCase().includes('admin')) {
+              isAuthorized = true;
+          }
       }
   }
 
   // If they try to sneak into the wrong role, block them!
   if (!isAuthorized) {
-      await db.auth.signOut(); // Kick them out immediately
-      handleFailedLogin(errText, errBox, btn, "Access Denied: You do not have permission for this role.");
+      await db.auth.signOut();
+      handleFailedLogin(errText, errBox, btn, "Access Denied: You do not have a profile in the " + currentRole + " system.");
       return;
   }
 
@@ -569,7 +585,7 @@ function handleFailedLogin(errText, errBox, btn, customMessage = null) {
       errText.textContent = customMessage || `Invalid ID or password. ${3 - fails} attempt(s) remaining.`;
       errBox.classList.add('active');
     }
-}
+} 
 
 // --- HELPER FUNCTION FOR COUNTDOWN UI ---
 function startLockoutTimer(errText, errBox) {
