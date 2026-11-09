@@ -463,7 +463,7 @@ const supabaseKey = 'sb_publishable_ooW3EE91PVdXoXM7tdxwKw_r51RrZ2z';
     document.getElementById('heroWrap').style.display = '';
   }
 
-  async function doLogin() {
+ async function doLogin() {
   if (!currentRole) return;
   
   const id = document.getElementById('loginId').value.trim();
@@ -491,35 +491,44 @@ const supabaseKey = 'sb_publishable_ooW3EE91PVdXoXM7tdxwKw_r51RrZ2z';
   btn.disabled = true;
   btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> <span>Signing in…</span>';
 
-  // If the user already typed an @ (like a real email), don't add @tallyhub.com
   let email = id.trim();
   if (!email.includes('@')) {
       email = email + '@tallyhub.com';
   }
-  const { data, error } = await db.auth.signInWithPassword({ email: email, password: pw });
+  
+  // Attempt Login
+  const { data: authData, error } = await db.auth.signInWithPassword({ email: email, password: pw });
 
   if (error) {
-    // --- 2. HANDLE FAILED ATTEMPT ---
-    let fails = parseInt(localStorage.getItem('login_fails') || '0');
-    fails++;
-    localStorage.setItem('login_fails', fails.toString());
-
-    btn.disabled = false;
-    btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> <span>Sign In</span>';
-
-    if (fails >= 3) {
-      // Lock them out for 20 seconds
-      const lockTime = Date.now() + 20000; 
-      localStorage.setItem('login_lockout', lockTime.toString());
-      localStorage.setItem('login_fails', '0'); // Reset fails for after the lockout
-      
-      startLockoutTimer(errText, errBox);
-    } else {
-      // Show normal error with attempts remaining
-      errText.textContent = `Invalid ID or password. ${3 - fails} attempt(s) remaining.`;
-      errBox.classList.add('active');
-    }
+    handleFailedLogin(errText, errBox, btn);
     return;
+  }
+
+  // --- 2. VERIFY THE ROLE (THE GATE) ---
+  // We check if this user is actually allowed in the role they selected
+  const { data: profile, error: profileErr } = await db.from('aspirants')
+      .select('is_spectator, position')
+      .eq('auth_user_id', authData.user.id)
+      .single();
+
+  let isAuthorized = false;
+  
+  if (currentRole === 'admin') {
+      // Admin is usually a spectator or President
+      if (profile && (profile.is_spectator === true || profile.position === 'President')) isAuthorized = true;
+  } else if (currentRole === 'aspirant') {
+      // Aspirants are non-spectators who aren't agents (adjust this logic based on your DB)
+      if (profile && profile.is_spectator === false) isAuthorized = true; 
+  } else if (currentRole === 'agent') {
+      // Agents are typically a specific role in your DB
+      if (profile) isAuthorized = true; // You might want a stricter check here
+  }
+
+  // If they try to sneak into the wrong role, block them!
+  if (!isAuthorized) {
+      await db.auth.signOut(); // Kick them out immediately
+      handleFailedLogin(errText, errBox, btn, "Access Denied: You do not have permission for this role.");
+      return;
   }
 
   // --- 3. SUCCESSFUL LOGIN ---
@@ -528,13 +537,29 @@ const supabaseKey = 'sb_publishable_ooW3EE91PVdXoXM7tdxwKw_r51RrZ2z';
   
   btn.innerHTML = '<i class="fas fa-check"></i> <span>Success! Redirecting...</span>';
   
-  if (currentRole === 'admin') {
-    window.location.href = 'admin.html';
-  } else if (currentRole === 'agent') {
-    window.location.href = 'agent.html';
-  } else if (currentRole === 'aspirant') {
-    window.location.href = 'aspirant.html';
-  }
+  if (currentRole === 'admin') window.location.href = 'admin.html';
+  else if (currentRole === 'agent') window.location.href = 'agent.html';
+  else if (currentRole === 'aspirant') window.location.href = 'aspirant.html';
+}
+
+// Helper to handle failed logins smoothly
+function handleFailedLogin(errText, errBox, btn, customMessage = null) {
+    let fails = parseInt(localStorage.getItem('login_fails') || '0');
+    fails++;
+    localStorage.setItem('login_fails', fails.toString());
+
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> <span>Sign In</span>';
+
+    if (fails >= 3) {
+      const lockTime = Date.now() + 20000; 
+      localStorage.setItem('login_lockout', lockTime.toString());
+      localStorage.setItem('login_fails', '0'); 
+      startLockoutTimer(errText, errBox);
+    } else {
+      errText.textContent = customMessage || `Invalid ID or password. ${3 - fails} attempt(s) remaining.`;
+      errBox.classList.add('active');
+    }
 }
 
 // --- HELPER FUNCTION FOR COUNTDOWN UI ---
