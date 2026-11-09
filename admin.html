@@ -4390,7 +4390,7 @@ async function saveAspirant(id) {
         name: name, 
         position: pos, 
         // FIX: Added pos !== 'President' so it saves NULL
-        county_id: (pos !== 'MCA' && pos !== 'MP' && pos !== 'President') ? county : null,
+        county_id: (pos !== 'President') ? county : null,
         constituency_id: (pos === 'MP') ? constId : null,
         ward_id: (pos === 'MCA') ? ward : null,
         login_code: login,
