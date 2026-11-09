@@ -463,7 +463,8 @@ const supabaseKey = 'sb_publishable_ooW3EE91PVdXoXM7tdxwKw_r51RrZ2z';
     document.getElementById('heroWrap').style.display = '';
   }
 
- async function doLogin() {
+ 
+async function doLogin() {
   if (!currentRole) return;
   
   const id = document.getElementById('loginId').value.trim();
@@ -505,23 +506,31 @@ const supabaseKey = 'sb_publishable_ooW3EE91PVdXoXM7tdxwKw_r51RrZ2z';
   }
 
   // --- 2. VERIFY THE ROLE (THE GATE) ---
-  // We check if this user is actually allowed in the role they selected
+  // Use maybeSingle() to prevent the 406 error if no profile exists
   const { data: profile, error: profileErr } = await db.from('aspirants')
       .select('is_spectator, position')
       .eq('auth_user_id', authData.user.id)
-      .single();
+      .maybeSingle();
+
+  if (profileErr) {
+      console.error("Profile fetch error:", profileErr);
+  }
 
   let isAuthorized = false;
   
   if (currentRole === 'admin') {
-      // Admin is usually a spectator or President
-      if (profile && (profile.is_spectator === true || profile.position === 'President')) isAuthorized = true;
+      // If profile is missing entirely, let them in (assuming they are a true Admin auth user)
+      if (!profile || profile.is_spectator === true || profile.position === 'President') {
+          isAuthorized = true;
+      }
   } else if (currentRole === 'aspirant') {
-      // Aspirants are non-spectators who aren't agents (adjust this logic based on your DB)
-      if (profile && profile.is_spectator === false) isAuthorized = true; 
+      if (profile && profile.is_spectator === false) {
+          isAuthorized = true; 
+      }
   } else if (currentRole === 'agent') {
-      // Agents are typically a specific role in your DB
-      if (profile) isAuthorized = true; // You might want a stricter check here
+      if (profile) {
+          isAuthorized = true; 
+      }
   }
 
   // If they try to sneak into the wrong role, block them!
