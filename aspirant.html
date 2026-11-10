@@ -1360,9 +1360,11 @@ function renderHero() {
     return;
   }
 
-  // 2. Handle scope not deep enough (FIX: Dominant text, correct direction)
+  // 2. Handle scope not deep enough
   if (!isRaceScopeActive()) {
-      var reqLevel = (OVERVIEW.viewingPosition === 'MCA' && DRILL_LEVEL === 'ward') ? 'Ward' : 'Constituency';
+      var reqLevel = 'Constituency';
+      if (OVERVIEW.viewingPosition === 'MCA' && DRILL_LEVEL === 'ward') reqLevel = 'Ward';
+      
       el.className = 'hero other';
       el.innerHTML = `<div class="hero-inner">
           <div class="empty" style="padding:20px 0;">
@@ -1393,7 +1395,7 @@ function renderHero() {
 
   // 4. Determine the Scope Label for the hero card
   var scopeLabel = 'Overall National';
-  if (DRILL_LEVEL === 'stream') scopeLabel = DRILL_CENTRE_NAME;
+  if (DRILL_LEVEL === 'stream') scopeLabel = DRILL_CENTRE_NAME; // Option A: Stays at Centre name
   else if (DRILL_LEVEL === 'centre') scopeLabel = DRILL_WARD_NAME;
   else if (DRILL_LEVEL === 'ward') scopeLabel = DRILL_CONST_NAME || 'Constituency';
   else if (DRILL_LEVEL === 'constituency') {
@@ -1518,7 +1520,7 @@ function renderDrillGrid() {
   if (DRILL_LEVEL === 'county') {
     var myCounties = OVERVIEW && OVERVIEW.counties ? OVERVIEW.counties : [];
     var pos = OVERVIEW.viewingPosition;
-    var show = (pos === 'President' || pos === 'Governor' || pos === 'Senator' || pos === 'Women Rep');
+    var show = (pos !== 'MCA');
     el.innerHTML = myCounties.map(c => 
       buildCard(c, OVERVIEW.votesByCounty, 'County', `drillDown('constituency', '${c.id}', '${c.name}')`, show)
     ).join('');
@@ -1528,7 +1530,6 @@ function renderDrillGrid() {
   if (DRILL_LEVEL === 'constituency') {
     var myConsts = OVERVIEW.consts ? OVERVIEW.consts.filter(c => SCOPE_MODE !== 'national' || c.county_id === DRILL_COUNTY_ID) : [];
     var pos = OVERVIEW.viewingPosition;
-    // FIX: MP shows leader, MCA does NOT show leader
     var show = (pos !== 'MCA'); 
     el.innerHTML = myConsts.map(c => 
       buildCard(c, OVERVIEW.votesByConst, 'Constituency', `drillDown('ward', '${c.id}', '${c.name}')`, show)
@@ -1539,7 +1540,6 @@ function renderDrillGrid() {
   if (DRILL_LEVEL === 'ward') {
     var targetConstId = DRILL_CONST_ID || (SCOPE_MODE === 'constituency' ? USER.constituency : '');
     var myWards = OVERVIEW.wards ? OVERVIEW.wards.filter(w => w.constituency_id === targetConstId) : [];
-    // FIX: MCA DOES show leader at ward level
     el.innerHTML = myWards.map(w => 
       buildCard(w, OVERVIEW.votesByWard, 'Ward', `drillDown('centre', '${w.id}', '${w.name}')`, true)
     ).join('');
@@ -1563,7 +1563,6 @@ function renderDrillGrid() {
     return;
   }
 }
-
 function drillDown(level, id, name) {
   if (level === 'constituency') {
     DRILL_COUNTY_ID = id; DRILL_COUNTY_NAME = name; DRILL_LEVEL = 'constituency';
@@ -1684,31 +1683,36 @@ function getRequiredDrillPrompt() {
     }
     return 'Constituency';
 }
-
 function isRaceScopeActive() {
   if (!OVERVIEW) return false;
   const pos = OVERVIEW.viewingPosition;
   
   if (pos === 'President') return true; // Always active
-
+  
+  // County-wide positions
   if (pos === 'Governor' || pos === 'Senator' || pos === 'Women Rep') {
+      if (SCOPE_MODE === 'county') return true;
       if (SCOPE_MODE === 'national') return !!DRILL_COUNTY_ID;
       return true; 
   }
   
+  // MP requires a Constituency
   if (pos === 'MP') {
-      if (SCOPE_MODE === 'constituency') return true; // MP at their own level
-      if (SCOPE_MODE === 'county' || SCOPE_MODE === 'national') return false; // Needs to drill
-      return !!DRILL_CONST_ID;
+      if (SCOPE_MODE === 'constituency') return true; // MP locked to their const
+      // Governor/National must drill down to a Constituency
+      return (DRILL_LEVEL === 'ward' || DRILL_LEVEL === 'centre' || DRILL_LEVEL === 'stream');
   }
   
+  // MCA requires a Ward
   if (pos === 'MCA') {
-      if (SCOPE_MODE === 'ward') return true; // MCA at their own level
-      return false; // Governor and MP need to drill to a ward
+      if (SCOPE_MODE === 'ward') return true; // MCA locked to their ward
+      // Governor/MP/National must drill down to a Ward
+      return (DRILL_LEVEL === 'centre' || DRILL_LEVEL === 'stream');
   }
   
   return false;
 }
+
 function getRaceCandidates() {
   if (!OVERVIEW) return [];
   const pool = OVERVIEW.leaderboard || [];
@@ -1790,10 +1794,10 @@ function renderBoard() {
     if (el) el.style.display = '';
     const subEl = document.getElementById('boardSub');
     
-    // FIX: Remove subtitle, make it dominant
     if (subEl) subEl.textContent = ''; 
     
-    var reqLevel = (OVERVIEW.viewingPosition === 'MCA' && DRILL_LEVEL === 'ward') ? 'Ward' : 'Constituency';
+    var reqLevel = 'Constituency';
+    if (OVERVIEW.viewingPosition === 'MCA' && DRILL_LEVEL === 'ward') reqLevel = 'Ward';
     
     el.innerHTML = `<div class="empty" style="padding: 40px 20px; background: #FFFFFF; border: 1px dashed var(--border-strong); border-radius: var(--radius);">
         <div class="empty-icon" style="color: var(--blue); background: var(--blue-soft);"><i class="fas fa-hand-pointer"></i></div>
