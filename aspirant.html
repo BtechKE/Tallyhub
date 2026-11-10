@@ -3031,10 +3031,11 @@ function openWarRoomStream(streamCode) {
         
         ${isAnomaly ? `<div class="tracker-alert"><i class="fas fa-triangle-exclamation"></i><div><strong>Math Anomaly Detected!</strong><br>Candidate votes do not match valid votes, or cast > registered.</div></div>` : ''}
         
-              ${missingForm ? `<div style="margin-top: 16px; padding: 12px; background: rgba(184, 134, 11, 0.08); border: 1px solid rgba(184, 134, 11, 0.2); border-radius: 12px; text-align: center; color: #b8860b; font-size: 12.5px; font-weight: 600;">
+        ${missingForm ? `<div style="margin-top: 16px; padding: 12px; background: rgba(184, 134, 11, 0.08); border: 1px solid rgba(184, 134, 11, 0.2); border-radius: 12px; text-align: center; color: #b8860b; font-size: 12.5px; font-weight: 600;">
             <i class="fas fa-exclamation-triangle"></i> Statutory form not uploaded yet.
-        </div>` : `<div style="margin-top: 16px; text-align: center; color: var(--success); font-weight: 700; font-size: 13px;"><i class="fas fa-check-circle"></i> Statutory form verified</div>`
-              }
+        </div>` : `<div style="margin-top: 16px; text-align: center; color: var(--success); font-weight: 700; font-size: 13px;"><i class="fas fa-check-circle"></i> Statutory form verified</div>`}
+        `;
+    }
 
     sheet.innerHTML = `<div class="sheet-head"><div><div class="sheet-title">${esc(streamCode)}</div><div class="sheet-sub">Stream Details</div></div><button class="sheet-close" onclick="closeSheet()"><i class="fas fa-xmark"></i></button></div>${content}`;
     bg.classList.add('active');
