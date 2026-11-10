@@ -1591,7 +1591,7 @@ function drillDown(level, id, name) {
     DRILL_CENTRE = id; DRILL_CENTRE_NAME = name; DRILL_LEVEL = 'stream';
   }
   
-  renderDrillGrid(); renderBoard(); renderBreadcrumb(); renderTabs();
+  renderHero(); renderDrillGrid(); renderBoard(); renderBreadcrumb(); renderTabs();
   window.scrollTo({ top: document.getElementById('drillGrid').offsetTop - 100, behavior: 'smooth' });
 }
 
