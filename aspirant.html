@@ -582,6 +582,64 @@
   83.33% {background-position: calc(0*100%/3) 50% ,calc(1*100%/3) 50% ,calc(2*100%/3) 50% ,calc(3*100%/3) 100%}
   100%   {background-position: calc(0*100%/3) 50% ,calc(1*100%/3) 50% ,calc(2*100%/3) 50% ,calc(3*100%/3) 50% }
 }
+
+    /* --- OPTION 3: EXECUTIVE GLOSS --- */
+.postab {
+  background: #FFFFFF;
+  border: 1px solid rgba(0,0,0,0.08);
+  color: #6B7280;
+  font-weight: 700;
+  border-radius: 14px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+  position: relative;
+  overflow: hidden;
+  transition: all 0.2s ease;
+}
+
+/* Glossy highlight on top */
+.postab::after {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; height: 50%;
+  background: linear-gradient(to bottom, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0) 100%);
+  pointer-events: none;
+}
+
+.postab:hover {
+  background: #F9FAFB;
+  color: #1A1A19;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 12px rgba(0,0,0,0.06);
+}
+
+.postab.active {
+  background: #1A1A19;
+  color: #FFFFFF;
+  border-color: #1A1A19;
+  box-shadow: 0 12px 24px -6px rgba(26, 26, 25, 0.5);
+  transform: translateY(-2px);
+}
+
+.postab.active::before {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; right: 0; height: 4px;
+  background: #A5CF83; /* Brand green underline */
+  border-radius: 0 0 14px 14px;
+}
+
+.postab .pill {
+  background: #F3F4F6;
+  color: #6B7280;
+  border-radius: 20px;
+  font-weight: 800;
+}
+
+.postab.active .pill {
+  background: #A5CF83;
+  color: #1A1A19;
+  box-shadow: 0 0 10px rgba(165, 207, 131, 0.4);
+}
 </style>
 </head>
 <body>
