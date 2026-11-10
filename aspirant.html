@@ -898,10 +898,13 @@ async function init() {
 
     // 2. Fetch the name with a safety net (Try/Catch)
     try {
-        if (SCOPE_MODE === 'county' && USER.county) {
+       if (SCOPE_MODE === 'county' && USER.county) {
             const { data: c } = await db.from('counties').select('name').eq('id', USER.county).single();
-            if (c) scopeName = toTitleCase(c.name) + ' County';
-        } else if (SCOPE_MODE === 'constituency' && USER.constituency) {
+            if (c) {
+                scopeName = toTitleCase(c.name) + ' County';
+                USER.countyName = toTitleCase(c.name); // <--- SAVE IT HERE
+            }
+        }else if (SCOPE_MODE === 'constituency' && USER.constituency) {
             const { data: c } = await db.from('constituencies').select('name').eq('id', USER.constituency).single();
             if (c) scopeName = toTitleCase(c.name) + ' Constituency';
         } else if (SCOPE_MODE === 'ward' && USER.ward) {
@@ -1374,13 +1377,14 @@ function renderHero() {
   var runner = cands[1];
   var margin = (leader && runner) ? leader.votes - runner.votes : (leader ? leader.votes : 0);
 
-  // 3. Determine the Scope Label for the hero card
+    // 3. Determine the Scope Label for the hero card
   var scopeLabel = 'Overall National';
   if (DRILL_LEVEL === 'stream') scopeLabel = DRILL_CENTRE_NAME;
   else if (DRILL_LEVEL === 'centre') scopeLabel = DRILL_WARD_NAME;
   else if (DRILL_LEVEL === 'ward') scopeLabel = DRILL_CONST_NAME || 'Constituency';
-  else if (DRILL_LEVEL === 'constituency') scopeLabel = DRILL_COUNTY_NAME || 'Overall County';
-
+  else if (DRILL_LEVEL === 'constituency') {
+      scopeLabel = DRILL_COUNTY_NAME || (USER.countyName ? USER.countyName + ' County' : 'Overall County');
+  }
   // If logged in as MP/MCA and not drilled, use their locked scope
   if (!DRILL_CONST_ID && SCOPE_MODE === 'constituency' && DRILL_LEVEL === 'ward') {
       var cObj = OVERVIEW.consts.find(c => c.id === USER.constituency);
@@ -1712,29 +1716,31 @@ function getRaceCandidates() {
 function getVotesForCurrentDrill() {
   if (!OVERVIEW) return {};
   
-  // 1. Stream level (Deepest drill-down)
+  // 1. Stream level
   if (DRILL_LEVEL === 'stream' && DRILL_CENTRE) return OVERVIEW.votesByCentre[DRILL_CENTRE] || {};
 
-  // 2. Centre level (MCA viewing their centres, or MP drilled to centre)
+  // 2. Centre level
   if (DRILL_LEVEL === 'centre') {
       if (DRILL_WARD) return OVERVIEW.votesByWard[DRILL_WARD] || {};
-      // Fallback: If MCA logged in, lock to their ward
       if (SCOPE_MODE === 'ward' && USER.ward) return OVERVIEW.votesByWard[USER.ward] || {};
   }
 
-  // 3. Ward level (MP viewing their wards, or Governor drilled to a ward)
+  // 3. Ward level (MP View)
   if (DRILL_LEVEL === 'ward') {
       if (DRILL_CONST_ID) return OVERVIEW.votesByConst[DRILL_CONST_ID] || {};
-      // Fallback: If MP logged in, lock to their constituency
       if (SCOPE_MODE === 'constituency' && USER.constituency) return OVERVIEW.votesByConst[USER.constituency] || {};
   }
 
-  // 4. Constituency level (Governor viewing their constituencies)
+  // 4. Constituency level (Governor View)
   if (DRILL_LEVEL === 'constituency') {
       if (SCOPE_MODE === 'national' && DRILL_COUNTY_ID) return OVERVIEW.votesByCounty[DRILL_COUNTY_ID] || {};
-      // Fallback: If Governor logged in, we'll sum their constituencies later, but for now return empty 
-      // to let the board logic handle it, OR return the county view.
-      if (SCOPE_MODE === 'county' && USER.county) return OVERVIEW.votesByCounty[USER.county] || {};
+      
+      // FIX FOR GOVERNOR: If logged in as county, return the overall leaderboard totals!
+      if (SCOPE_MODE === 'county' && USER.county) {
+          const totals = {};
+          (OVERVIEW.leaderboard || []).forEach(c => totals[c.code] = c.votes);
+          return totals;
+      }
   }
 
   // 5. National fallback
@@ -1783,7 +1789,7 @@ function renderBoard() {
 
   const subEl = document.getElementById('boardSub');
   const pos = OVERVIEW.viewingPosition;
-    if (subEl) {
+      if (subEl) {
     var locName = '';
     if (DRILL_LEVEL === 'stream') locName = DRILL_CENTRE_NAME;
     else if (DRILL_LEVEL === 'centre') locName = DRILL_WARD_NAME;
@@ -1797,11 +1803,14 @@ function renderBoard() {
     if (!locName && SCOPE_MODE === 'ward' && DRILL_LEVEL === 'centre') {
         locName = OVERVIEW.wards.find(w => w.id === USER.ward)?.name || 'Ward';
     }
+    // FIX FOR GOVERNOR
+    if (!locName && SCOPE_MODE === 'county' && DRILL_LEVEL === 'constituency') {
+        locName = USER.countyName ? USER.countyName + ' County' : 'Overall County';
+    }
 
     if (DRILL_LEVEL === 'county') subEl.textContent = 'All candidates ranked nationally';
     else subEl.textContent = 'Candidates ranked in ' + locName;
   }
-  
 
   // --- CAPTURE OLD VOTES FOR FLASH EFFECT ---
   const oldVotes = {};
