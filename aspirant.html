@@ -1342,13 +1342,13 @@ function renderHero() {
   if (!OVERVIEW) return;
   var el = document.getElementById('heroCard'); 
   var liveText = timeAgo(lastRefreshAt);
-  // Capture old hero vote before wiping the HTML
+  
+  // Capture old hero vote for the flash effect
   let oldHeroVote = -1;
   const oldHeroNode = el.querySelector('[data-count]');
   if (oldHeroNode) oldHeroVote = parseInt(oldHeroNode.getAttribute('data-count'), 10) || 0;
-  // ================================================================
-  // 1. NATIONAL OVERVIEW (No single leader)
-  // ================================================================
+
+  // 1. Handle National Grid view (No single leader)
   if (DRILL_LEVEL === 'county' && OVERVIEW.viewingPosition !== 'President') {
     var activeCounties = Object.keys(OVERVIEW.votesByCounty || {}).length;
     el.className = 'hero other';
@@ -1357,135 +1357,42 @@ function renderHero() {
     return;
   }
 
-  // ================================================================
-  // 2. HANDLE MCA (Ward Scope)
-  // ================================================================
-  if (OVERVIEW.viewingPosition === 'MCA') {
-    var isDrilledToWard = (DRILL_LEVEL === 'centre' || DRILL_LEVEL === 'stream');
-    var targetWardId = DRILL_WARD || (SCOPE_MODE === 'ward' ? USER.ward : '');
-
-    if (isDrilledToWard && targetWardId) {
-      var votes = OVERVIEW.votesByWard[targetWardId] || {};
-      var cands = Object.keys(votes).map(code => ({ ...OVERVIEW.candMap[code], votes: votes[code] })).sort((a,b)=>b.votes-a.votes);
-      var total = cands.reduce((s,c)=>s+c.votes, 0);
-      var leader = cands[0];
-      var runner = cands[1];
-      var margin = (leader && runner) ? leader.votes - runner.votes : (leader ? leader.votes : 0);
-      var wardName = OVERVIEW.wards.find(w=>w.id===targetWardId)?.name || 'Ward';
-
-      if (!leader) {
-        el.className = 'hero other';
-        el.innerHTML = '<div class="hero-inner"><div class="empty" style="padding:20px 0;"><div class="empty-icon"><i class="fas fa-hourglass-half"></i></div><div class="empty-title">No results in ' + esc(wardName) + '</div></div></div>';
-        return;
-      }
-      
-      var pct = total > 0 ? ((leader.votes/total)*100).toFixed(1) : '0.0';
-      el.className = 'hero mca-hero other';
-      el.innerHTML = '<div class="hero-inner"><div class="hero-top"><span class="hero-live"><span class="dot"></span>Live · ' + esc(liveText) + '</span><div class="hero-badges"><span class="badge-status leading"><i class="fas fa-crown"></i> Leading</span></div></div><div class="hero-name-row"><div class="hero-avatar"><img src="' + escAttr(leader.photo_url) + '"></div><div><div class="hero-eyebrow">MCA · ' + esc(wardName) + '</div><div class="hero-name">' + esc(leader.name) + '</div><div class="hero-meta">' + esc(leader.party) + '</div></div></div><div class="hero-stats"><div><div class="hero-stat-num ' + ((oldHeroVote !== -1 && leader.votes > oldHeroVote) ? 'flash-update' : '') + '" data-count="' + leader.votes + '">0</div><div class="hero-stat-lbl">Votes</div></div><div><div class="hero-stat-num blue">' + pct + '%</div><div class="hero-stat-lbl">Share</div></div><div><div class="hero-stat-num">+' + margin.toLocaleString() + '</div><div class="hero-stat-lbl">Margin</div></div></div></div>';
-      triggerHeroAnimation(el);
-      return;
-    }
-
-    var contested = Object.keys(OVERVIEW.votesByWard).filter(w => Object.keys(OVERVIEW.votesByWard[w]).length > 0).length;
-    el.className = 'hero mca-hero other';
-    el.innerHTML = '<div class="hero-inner"><div class="hero-top"><span class="hero-live"><span class="dot"></span>Live · ' + esc(liveText) + '</span></div><div class="hero-eyebrow">MCA · Multi-Ward Race</div><div class="hero-name">' + contested + ' Ward Races</div><div class="hero-meta">Tap a ward below to view the specific MCA race</div></div>';
-    triggerHeroAnimation(el);
-    return;
-  }
-
-  // ================================================================
-  // 3. HANDLE MP (Constituency Scope)
-  // ================================================================
-  if (OVERVIEW.viewingPosition === 'MP') {
-    var isDrilledToConst = (DRILL_LEVEL !== 'constituency');
-    var targetConstId = DRILL_CONST_ID || (SCOPE_MODE === 'constituency' ? USER.constituency : '');
-
-    if (isDrilledToConst && targetConstId) {
-      var votes = OVERVIEW.votesByConst[targetConstId] || {};
-      var cands = Object.keys(votes).map(code => ({ ...OVERVIEW.candMap[code], votes: votes[code] })).sort((a,b)=>b.votes-a.votes);
-      var total = cands.reduce((s,c)=>s+c.votes, 0);
-      var leader = cands[0];
-      var runner = cands[1];
-      var margin = (leader && runner) ? leader.votes - runner.votes : (leader ? leader.votes : 0);
-      var constName = OVERVIEW.consts.find(c=>c.id===targetConstId)?.name || 'Constituency';
-
-      if (!leader) {
-        el.className = 'hero other';
-        el.innerHTML = '<div class="hero-inner"><div class="empty" style="padding:20px 0;"><div class="empty-icon"><i class="fas fa-hourglass-half"></i></div><div class="empty-title">No results in ' + esc(constName) + '</div></div></div>';
-        return;
-      }
-      
-      var pct = total > 0 ? ((leader.votes/total)*100).toFixed(1) : '0.0';
-      el.className = 'hero other';
-      el.innerHTML = '<div class="hero-inner"><div class="hero-top"><span class="hero-live"><span class="dot"></span>Live · ' + esc(liveText) + '</span><div class="hero-badges"><span class="badge-status leading"><i class="fas fa-crown"></i> Leading</span></div></div><div class="hero-name-row"><div class="hero-avatar"><img src="' + escAttr(leader.photo_url) + '"></div><div><div class="hero-eyebrow">MP · ' + esc(constName) + '</div><div class="hero-name">' + esc(leader.name) + '</div><div class="hero-meta">' + esc(leader.party) + '</div></div></div><div class="hero-stats"><div><div class="hero-stat-num ' + ((oldHeroVote !== -1 && leader.votes > oldHeroVote) ? 'flash-update' : '') + '" data-count="' + leader.votes + '">0</div><div class="hero-stat-lbl">Votes</div></div><div><div class="hero-stat-num blue">' + pct + '%</div><div class="hero-stat-lbl">Share</div></div><div><div class="hero-stat-num">+' + margin.toLocaleString() + '</div><div class="hero-stat-lbl">Margin</div></div></div></div>';
-      triggerHeroAnimation(el);
-      return;
-    }
-
-    var contested = Object.keys(OVERVIEW.votesByConst).filter(c => Object.keys(OVERVIEW.votesByConst[c]).length > 0).length;
-    el.className = 'hero other';
-    el.innerHTML = '<div class="hero-inner"><div class="hero-top"><span class="hero-live"><span class="dot"></span>Live · ' + esc(liveText) + '</span></div><div class="hero-eyebrow">MP · Multi-Constituency Race</div><div class="hero-name">' + contested + ' Constituency Races</div><div class="hero-meta">Tap a constituency below to view the specific MP race</div></div>';
-    triggerHeroAnimation(el);
-    return;
-  }
-
-  // ================================================================
-  // 4. HANDLE COUNTY-WIDE POSITIONS & NATIONAL (President, Governor, etc.)
-  // ================================================================
-  var scopedVotes = {};
-  var scopeLabel = '';
+  // 2. Get the exact same candidates and votes as the Leaderboard
+  var pool = getRaceCandidates();
+  var votesMap = getVotesForCurrentDrill();
   
-  if (DRILL_LEVEL === 'county') { 
-      scopedVotes = {}; 
-      var keys = Object.keys(OVERVIEW.votesByCounty || {}); 
-      keys.forEach(k => { 
-          for (let c in OVERVIEW.votesByCounty[k]) { 
-              scopedVotes[c] = (scopedVotes[c]||0) + OVERVIEW.votesByCounty[k][c]; 
-          } 
-      }); 
-      scopeLabel = 'Overall National'; 
-  }
-  else if (DRILL_LEVEL === 'constituency') { 
-      if (SCOPE_MODE === 'national') {
-          scopedVotes = OVERVIEW.votesByCounty[DRILL_COUNTY_ID] || {}; 
-          scopeLabel = DRILL_COUNTY_NAME; 
-      } else {
-          scopedVotes = {}; 
-          var constKeys = Object.keys(OVERVIEW.votesByConst || {}); 
-          constKeys.forEach(k => { 
-              for (let c in OVERVIEW.votesByConst[k]) { 
-                  scopedVotes[c] = (scopedVotes[c]||0) + OVERVIEW.votesByConst[k][c]; 
-              } 
-          }); 
-          scopeLabel = 'Overall County'; 
-      }
-  }
-  else if (DRILL_LEVEL === 'ward') { 
-    var targetConst = DRILL_CONST_ID || (SCOPE_MODE === 'constituency' ? USER.constituency : '');
-    var targetConstName = DRILL_CONST_NAME;
-    if (!targetConstName && SCOPE_MODE === 'constituency') {
-        var cObj = OVERVIEW.consts.find(c => c.id === targetConst);
-        if (cObj) targetConstName = cObj.name;
-    }
-    scopedVotes = OVERVIEW.votesByConst[targetConst] || {}; 
-    scopeLabel = targetConstName || 'Constituency'; 
-  }
-  else if (DRILL_LEVEL === 'centre') { 
-      scopedVotes = OVERVIEW.votesByWard[DRILL_WARD] || {}; 
-      scopeLabel = DRILL_WARD_NAME; 
-  }
-  else if (DRILL_LEVEL === 'stream') { 
-      scopedVotes = OVERVIEW.votesByCentre[DRILL_CENTRE] || {}; 
-      scopeLabel = DRILL_CENTRE_NAME; 
-  }
+  var cands = pool.map(function(c) {
+      return { 
+          code: c.code, name: c.name, party: c.party, 
+          photo_url: normalizeImageUrl(c.photo_url), 
+          votes: votesMap[c.code] || 0 
+      };
+  }).sort(function(a,b) { return b.votes - a.votes; });
 
-  var cands = Object.keys(scopedVotes).map(code => ({ ...OVERVIEW.candMap[code], votes: scopedVotes[code] })).sort((a,b)=>b.votes-a.votes);
   var total = cands.reduce((s,c)=>s+c.votes, 0);
   var leader = cands[0];
   var runner = cands[1];
   var margin = (leader && runner) ? leader.votes - runner.votes : (leader ? leader.votes : 0);
 
-  if (!leader) {
+  // 3. Determine the Scope Label for the hero card
+  var scopeLabel = 'Overall National';
+  if (DRILL_LEVEL === 'stream') scopeLabel = DRILL_CENTRE_NAME;
+  else if (DRILL_LEVEL === 'centre') scopeLabel = DRILL_WARD_NAME;
+  else if (DRILL_LEVEL === 'ward') scopeLabel = DRILL_CONST_NAME || 'Constituency';
+  else if (DRILL_LEVEL === 'constituency') scopeLabel = DRILL_COUNTY_NAME || 'Overall County';
+
+  // If logged in as MP/MCA and not drilled, use their locked scope
+  if (!DRILL_CONST_ID && SCOPE_MODE === 'constituency' && DRILL_LEVEL === 'ward') {
+      var cObj = OVERVIEW.consts.find(c => c.id === USER.constituency);
+      if (cObj) scopeLabel = cObj.name + ' Constituency';
+  }
+  if (!DRILL_WARD && SCOPE_MODE === 'ward' && DRILL_LEVEL === 'centre') {
+      var wObj = OVERVIEW.wards.find(w => w.id === USER.ward);
+      if (wObj) scopeLabel = wObj.name + ' Ward';
+  }
+
+  // 4. Render
+  if (!leader || total === 0) {
     el.className = 'hero other';
     el.innerHTML = '<div class="hero-inner"><div class="empty" style="padding:20px 0;"><div class="empty-icon"><i class="fas fa-hourglass-half"></i></div><div class="empty-title">No results in ' + esc(scopeLabel) + '</div></div></div>';
     return;
@@ -1803,12 +1710,34 @@ function getRaceCandidates() {
 }
 // Votes map for the current drill level (returns {} if none available)
 function getVotesForCurrentDrill() {
-  if (DRILL_LEVEL === 'stream' && DRILL_CENTRE)   return OVERVIEW.votesByCentre[DRILL_CENTRE] || {};
-  if (DRILL_LEVEL === 'centre' && DRILL_WARD)     return OVERVIEW.votesByWard[DRILL_WARD]     || {};
-  if (DRILL_LEVEL === 'ward' && DRILL_CONST_ID)   return OVERVIEW.votesByConst[DRILL_CONST_ID] || {};
-  if (DRILL_LEVEL === 'constituency' && SCOPE_MODE === 'national' && DRILL_COUNTY_ID)
-                                                  return OVERVIEW.votesByCounty[DRILL_COUNTY_ID] || {};
-  // fallback for Governor viewing county, etc.
+  if (!OVERVIEW) return {};
+  
+  // 1. Stream level (Deepest drill-down)
+  if (DRILL_LEVEL === 'stream' && DRILL_CENTRE) return OVERVIEW.votesByCentre[DRILL_CENTRE] || {};
+
+  // 2. Centre level (MCA viewing their centres, or MP drilled to centre)
+  if (DRILL_LEVEL === 'centre') {
+      if (DRILL_WARD) return OVERVIEW.votesByWard[DRILL_WARD] || {};
+      // Fallback: If MCA logged in, lock to their ward
+      if (SCOPE_MODE === 'ward' && USER.ward) return OVERVIEW.votesByWard[USER.ward] || {};
+  }
+
+  // 3. Ward level (MP viewing their wards, or Governor drilled to a ward)
+  if (DRILL_LEVEL === 'ward') {
+      if (DRILL_CONST_ID) return OVERVIEW.votesByConst[DRILL_CONST_ID] || {};
+      // Fallback: If MP logged in, lock to their constituency
+      if (SCOPE_MODE === 'constituency' && USER.constituency) return OVERVIEW.votesByConst[USER.constituency] || {};
+  }
+
+  // 4. Constituency level (Governor viewing their constituencies)
+  if (DRILL_LEVEL === 'constituency') {
+      if (SCOPE_MODE === 'national' && DRILL_COUNTY_ID) return OVERVIEW.votesByCounty[DRILL_COUNTY_ID] || {};
+      // Fallback: If Governor logged in, we'll sum their constituencies later, but for now return empty 
+      // to let the board logic handle it, OR return the county view.
+      if (SCOPE_MODE === 'county' && USER.county) return OVERVIEW.votesByCounty[USER.county] || {};
+  }
+
+  // 5. National fallback
   const totals = {};
   (OVERVIEW.leaderboard || []).forEach(c => totals[c.code] = c.votes);
   return totals;
@@ -1854,20 +1783,24 @@ function renderBoard() {
 
   const subEl = document.getElementById('boardSub');
   const pos = OVERVIEW.viewingPosition;
-  if (subEl) {
-    if (pos === 'President') subEl.textContent = 'All candidates ranked nationally';
-    else if (pos === 'Governor' || pos === 'Senator' || pos === 'Women Rep') {
-        if (DRILL_LEVEL === 'constituency' && SCOPE_MODE === 'national') subEl.textContent = 'Candidates ranked in ' + (DRILL_COUNTY_NAME || 'this county');
-        else subEl.textContent = 'Candidates ranked in this county';
+    if (subEl) {
+    var locName = '';
+    if (DRILL_LEVEL === 'stream') locName = DRILL_CENTRE_NAME;
+    else if (DRILL_LEVEL === 'centre') locName = DRILL_WARD_NAME;
+    else if (DRILL_LEVEL === 'ward') locName = DRILL_CONST_NAME;
+    else if (DRILL_LEVEL === 'constituency') locName = DRILL_COUNTY_NAME;
+
+    // Fallbacks for locked scopes
+    if (!locName && SCOPE_MODE === 'constituency' && DRILL_LEVEL === 'ward') {
+        locName = OVERVIEW.consts.find(c => c.id === USER.constituency)?.name || 'Constituency';
     }
-    else if (pos === 'MP') {
-        if (DRILL_LEVEL === 'ward') subEl.textContent = 'Candidates ranked in ' + (DRILL_CONST_NAME || 'this constituency');
-        else if (DRILL_LEVEL === 'centre' || DRILL_LEVEL === 'stream') subEl.textContent = 'Candidates ranked in this constituency';
+    if (!locName && SCOPE_MODE === 'ward' && DRILL_LEVEL === 'centre') {
+        locName = OVERVIEW.wards.find(w => w.id === USER.ward)?.name || 'Ward';
     }
-    else if (pos === 'MCA') {
-        if (DRILL_LEVEL === 'centre') subEl.textContent = 'Candidates ranked in ' + (DRILL_WARD_NAME || 'this ward');
-        else if (DRILL_LEVEL === 'stream') subEl.textContent = 'Candidates ranked in this ward';
-    }
+
+    if (DRILL_LEVEL === 'county') subEl.textContent = 'All candidates ranked nationally';
+    else subEl.textContent = 'Candidates ranked in ' + locName;
+  }
   }
 
   // --- CAPTURE OLD VOTES FOR FLASH EFFECT ---
