@@ -1360,7 +1360,22 @@ function renderHero() {
     return;
   }
 
-  // 2. Get the exact same candidates and votes as the Leaderboard
+  // 2. Handle scope not deep enough (FIX: Context-Aware Prompt)
+  if (!isRaceScopeActive()) {
+      var promptText = getRequiredDrillPrompt();
+      var pos = OVERVIEW.viewingPosition;
+      el.className = 'hero other';
+      el.innerHTML = `<div class="hero-inner">
+          <div class="empty" style="padding:20px 0;">
+              <div class="empty-icon" style="color: var(--blue); background: var(--blue-soft);"><i class="fas fa-hand-pointer"></i></div>
+              <div class="empty-title">Select a ${promptText}</div>
+              <div class="empty-sub">Click on the cards in the grid above to see the specific candidates for this ${pos} race.</div>
+          </div>
+      </div>`;
+      return;
+  }
+
+  // 3. Get the exact same candidates and votes as the Leaderboard
   var pool = getRaceCandidates();
   var votesMap = getVotesForCurrentDrill();
   
@@ -1377,7 +1392,7 @@ function renderHero() {
   var runner = cands[1];
   var margin = (leader && runner) ? leader.votes - runner.votes : (leader ? leader.votes : 0);
 
-    // 3. Determine the Scope Label for the hero card
+  // 4. Determine the Scope Label for the hero card
   var scopeLabel = 'Overall National';
   if (DRILL_LEVEL === 'stream') scopeLabel = DRILL_CENTRE_NAME;
   else if (DRILL_LEVEL === 'centre') scopeLabel = DRILL_WARD_NAME;
@@ -1385,7 +1400,7 @@ function renderHero() {
   else if (DRILL_LEVEL === 'constituency') {
       scopeLabel = DRILL_COUNTY_NAME || (USER.countyName ? USER.countyName + ' County' : 'Overall County');
   }
-  // If logged in as MP/MCA and not drilled, use their locked scope
+  
   if (!DRILL_CONST_ID && SCOPE_MODE === 'constituency' && DRILL_LEVEL === 'ward') {
       var cObj = OVERVIEW.consts.find(c => c.id === USER.constituency);
       if (cObj) scopeLabel = cObj.name + ' Constituency';
@@ -1395,7 +1410,7 @@ function renderHero() {
       if (wObj) scopeLabel = wObj.name + ' Ward';
   }
 
-  // 4. Render
+  // 5. Render
   if (!leader || total === 0) {
     el.className = 'hero other';
     el.innerHTML = '<div class="hero-inner"><div class="empty" style="padding:20px 0;"><div class="empty-icon"><i class="fas fa-hourglass-half"></i></div><div class="empty-title">No results in ' + esc(scopeLabel) + '</div></div></div>';
@@ -1454,40 +1469,48 @@ function renderDrillGrid() {
   document.getElementById('drillCount').textContent = ''; 
   renderBreadcrumb();
 
-  function buildCard(item, votesMap, typeLabel, onClickAction) {
+  function buildCard(item, votesMap, typeLabel, onClickAction, showLeader = true) {
     if (!item) return '';
     var itemKey = item.id || item.code;
-    var votes = (votesMap && votesMap[itemKey]) ? votesMap[itemKey] : {};
+    var votes = (showLeader && votesMap && votesMap[itemKey]) ? votesMap[itemKey] : {};
     var topCode = Object.keys(votes).sort((a,b) => votes[b] - votes[a])[0];
-    var topCand = OVERVIEW && OVERVIEW.candMap ? OVERVIEW.candMap[topCode] : null;
+    var topCand = (showLeader && OVERVIEW && OVERVIEW.candMap) ? OVERVIEW.candMap[topCode] : null;
     var total = Object.values(votes).reduce((s,v) => s+v, 0);
     var pct = total > 0 && topCand ? ((votes[topCode]/total)*100).toFixed(1) : '0.0';
     
     var tintStyle = 'border-left: none !important;';
-    if (topCand && topCand.color && typeof tintBg === 'function') {
+    if (showLeader && topCand && topCand.color && typeof tintBg === 'function') {
       tintStyle += ` background: linear-gradient(to right, ${tintBg(topCand.color, 0.08)} 0%, #FFFFFF 50%) !important;`;
     }
-     var leaderHtml = topCand ? `
-      <div class="card-leader">
-        <div class="avatar-wrap with-crown ${topCand.photo_url ? '' : 'no-photo'}">
-          ${topCand.photo_url 
-            ? `<img src="${topCand.photo_url}" onerror="this.onerror=null; this.style.display='none'; this.parentElement.textContent='${topCand.name ? topCand.name.charAt(0) : '?'}'">` 
-            : (topCand.name ? topCand.name.charAt(0) : '?')}
-          <span class="avatar-crown"><i class="fas fa-crown"></i></span>
-        </div>
-        <div class="card-leader-info">
-          <div class="card-leader-name">${esc(topCand.name)}</div>
-          <div class="card-leader-party">${esc(topCand.party)}</div>
-        </div>
-      </div>
-      <div class="card-numbers">
-        <span class="card-votes">${votes[topCode].toLocaleString()}</span>
-        <span class="card-pct">${pct}%</span>
-      </div>
-      <div class="card-bar">
-        <div class="card-bar-fill" style="width:${pct}%;background:${topCand.color || '#A5CF83'}"></div>
-      </div>
-    ` : `<div class="card-empty-body"><i class="fas fa-hourglass-half"></i>No votes yet</div>`;   
+
+    var leaderHtml = '';
+    if (!showLeader) {
+        leaderHtml = `<div class="card-empty-body"><i class="fas fa-hand-pointer" style="color:var(--blue); opacity:0.6; margin-bottom:8px;"></i><div style="color:var(--blue); font-weight:700; font-size:12px;">Select ${typeLabel}</div></div>`;
+    } else if (topCand) {
+        leaderHtml = `
+          <div class="card-leader">
+            <div class="avatar-wrap with-crown ${topCand.photo_url ? '' : 'no-photo'}">
+              ${topCand.photo_url 
+                ? `<img src="${topCand.photo_url}" onerror="this.onerror=null; this.style.display='none'; this.parentElement.textContent='${topCand.name ? topCand.name.charAt(0) : '?'}'">` 
+                : (topCand.name ? topCand.name.charAt(0) : '?')}
+              <span class="avatar-crown"><i class="fas fa-crown"></i></span>
+            </div>
+            <div class="card-leader-info">
+              <div class="card-leader-name">${esc(topCand.name)}</div>
+              <div class="card-leader-party">${esc(topCand.party)}</div>
+            </div>
+          </div>
+          <div class="card-numbers">
+            <span class="card-votes">${votes[topCode].toLocaleString()}</span>
+            <span class="card-pct">${pct}%</span>
+          </div>
+          <div class="card-bar">
+            <div class="card-bar-fill" style="width:${pct}%;background:${topCand.color || '#A5CF83'}"></div>
+          </div>
+        `;
+    } else {
+        leaderHtml = `<div class="card-empty-body"><i class="fas fa-hourglass-half"></i>No votes yet</div>`;
+    }
 
     return `<div class="card" style="${tintStyle}" onclick="${onClickAction}">
       <div class="card-head"><div><div class="card-name">${esc(item.name || item.code)}</div><div class="card-sub">${typeLabel}</div></div></div>
@@ -1497,34 +1520,35 @@ function renderDrillGrid() {
 
   if (DRILL_LEVEL === 'county') {
     var myCounties = OVERVIEW && OVERVIEW.counties ? OVERVIEW.counties : [];
+    var show = (OVERVIEW.viewingPosition === 'President');
     el.innerHTML = myCounties.map(c => 
-      buildCard(c, OVERVIEW.votesByCounty, 'County', `drillDown('constituency', '${c.id}', '${c.name}')`)
+      buildCard(c, OVERVIEW.votesByCounty, 'County', `drillDown('constituency', '${c.id}', '${c.name}')`, show)
     ).join('');
     return;
   }
 
   if (DRILL_LEVEL === 'constituency') {
     var myConsts = OVERVIEW.consts ? OVERVIEW.consts.filter(c => SCOPE_MODE !== 'national' || c.county_id === DRILL_COUNTY_ID) : [];
+    var show = (OVERVIEW.viewingPosition === 'Governor' || OVERVIEW.viewingPosition === 'Senator' || OVERVIEW.viewingPosition === 'Women Rep');
     el.innerHTML = myConsts.map(c => 
-      buildCard(c, OVERVIEW.votesByConst, 'Constituency', `drillDown('ward', '${c.id}', '${c.name}')`)
+      buildCard(c, OVERVIEW.votesByConst, 'Constituency', `drillDown('ward', '${c.id}', '${c.name}')`, show)
     ).join('');
     return;
   }
 
   if (DRILL_LEVEL === 'ward') {
-  // If user is locked to a constituency, use that. Otherwise use the drill ID.
-  var targetConstId = DRILL_CONST_ID || (SCOPE_MODE === 'constituency' ? USER.constituency : '');
-  var myWards = OVERVIEW.wards ? OVERVIEW.wards.filter(w => w.constituency_id === targetConstId) : [];
-  el.innerHTML = myWards.map(w => 
-    buildCard(w, OVERVIEW.votesByWard, 'Ward', `drillDown('centre', '${w.id}', '${w.name}')`)
-  ).join('');
-  return;
+    var targetConstId = DRILL_CONST_ID || (SCOPE_MODE === 'constituency' ? USER.constituency : '');
+    var myWards = OVERVIEW.wards ? OVERVIEW.wards.filter(w => w.constituency_id === targetConstId) : [];
+    el.innerHTML = myWards.map(w => 
+      buildCard(w, OVERVIEW.votesByWard, 'Ward', `drillDown('centre', '${w.id}', '${w.name}')`, true)
+    ).join('');
+    return;
   }
 
   if (DRILL_LEVEL === 'centre') {
     var myCentres = OVERVIEW.centres ? OVERVIEW.centres.filter(c => c.ward_id === DRILL_WARD) : [];
     el.innerHTML = myCentres.map(c => 
-      buildCard(c, OVERVIEW.votesByCentre, 'Polling Centre', `drillDown('stream', '${c.id}', '${c.name}')`)
+      buildCard(c, OVERVIEW.votesByCentre, 'Polling Centre', `drillDown('stream', '${c.id}', '${c.name}')`, true)
     ).join('');
     return;
   }
@@ -1533,7 +1557,7 @@ function renderDrillGrid() {
     var myStreams = OVERVIEW.streams ? OVERVIEW.streams.filter(s => s.centre_id === DRILL_CENTRE) : [];
     el.innerHTML = myStreams.map(s => {
       var streamLabel = 'STR ' + String(s.stream_number).padStart(2, '0');
-      return buildCard({ code: s.code, name: streamLabel }, OVERVIEW.votesByStream, s.code, `openStreamDetail('${s.code}')`);
+      return buildCard({ code: s.code, name: streamLabel }, OVERVIEW.votesByStream, s.code, `openStreamDetail('${s.code}')`, true);
     }).join('');
     return;
   }
@@ -1647,7 +1671,17 @@ function getScopedLeaderboard() {
   }
   return null;
 }
-
+function getRequiredDrillPrompt() {
+    if (!OVERVIEW) return 'Constituency';
+    const pos = OVERVIEW.viewingPosition;
+    if (pos === 'MP') return 'Constituency';
+    if (pos === 'MCA') {
+        if (DRILL_LEVEL === 'constituency') return 'Constituency';
+        if (DRILL_LEVEL === 'ward') return 'Ward';
+        return 'Ward';
+    }
+    return 'Constituency';
+}
 // Is there an actual "race" to render at the current drill scope for this position?
 // Is there an actual "race" to render at the current drill scope for this position?
 function isRaceScopeActive() {
@@ -1759,13 +1793,16 @@ function renderBoard() {
     if (el) el.style.display = '';
     const subEl = document.getElementById('boardSub');
     const pos = OVERVIEW.viewingPosition;
+    
+    // FIX: Dynamic prompt based on the level
     if (subEl) {
         if (pos === 'MP') subEl.textContent = 'Select a constituency to view the MP race';
-        else if (pos === 'MCA') subEl.textContent = 'Select a ward to view the MCA race';
+        else if (pos === 'MCA') subEl.textContent = 'Select a ' + getRequiredDrillPrompt().toLowerCase() + ' to view the MCA race';
     }
+    
     el.innerHTML = `<div class="empty" style="padding: 40px 20px; background: #FFFFFF; border: 1px dashed var(--border-strong); border-radius: var(--radius);">
         <div class="empty-icon" style="color: var(--blue); background: var(--blue-soft);"><i class="fas fa-hand-pointer"></i></div>
-        <div class="empty-title">Select a ${pos === 'MP' ? 'Constituency' : 'Ward'}</div>
+        <div class="empty-title">Select a ${getRequiredDrillPrompt()}</div>
         <div class="empty-sub">Click on the cards in the grid above to see the specific candidates for this ${pos} race.</div>
     </div>`;
     return;
@@ -1773,13 +1810,11 @@ function renderBoard() {
 
   if (el)   el.style.display   = '';
   if (head) head.style.display = '';
-
   const racePool = getRaceCandidates();
   if (!racePool.length) {
     el.innerHTML = '<div class="empty">No candidates configured for this race.</div>';
     return;
   }
-
   const votesMap = getVotesForCurrentDrill();
   const scoped = racePool
     .map(c => ({ ...c, votes: votesMap[c.code] || 0 }))
