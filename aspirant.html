@@ -1181,7 +1181,6 @@ async function loadOverview(silent) {
   }
 }
 
-
 async function loadTracker(silent) {
   if (!silent) document.getElementById('trackerGrid').innerHTML = '<div class="load" style="grid-column:1/-1;"><div class="tally-loader"></div>Loading…</div>';
   
@@ -1192,10 +1191,10 @@ async function loadTracker(silent) {
        return;
     }
 
-    // 1. Fetch ONLY the results and forms for the streams we already have
-    let resultsData = await fetchIn('results', 'stream_code, position', 'stream_code', streamCodes, 'stream_code');
+    // 1. Fetch results AND the created_at/submitted_by timestamps
+    let resultsData = await fetchIn('results', 'stream_code, position, created_at, submitted_by', 'stream_code', streamCodes, 'stream_code');
     let formsData = await fetchIn('form_photos', 'stream_code, position, photo_url', 'stream_code', streamCodes, 'stream_code');
-        // NEW: Fetch agent names once so we can map the email to a real name
+    
     const { data: agentsData } = await db.from('aspirants').select('login_code, name');
     TRACKER_AGENTS = {};
     (agentsData || []).forEach(a => {
@@ -1213,9 +1212,24 @@ async function loadTracker(silent) {
         reportedMap[r.stream_code][r.position] = true;
     });
 
+    // 2. NEW: Build a map of the latest submission per Ward
+    const latestMap = {};
+    (resultsData || []).forEach(r => {
+        if (!r.created_at) return;
+        const streamObj = OVERVIEW.streams.find(s => s.code === r.stream_code);
+        if (!streamObj) return;
+        const wId = streamObj.ward_id;
+        
+        if (!latestMap[wId] || new Date(r.created_at) > new Date(latestMap[wId].time)) {
+            latestMap[wId] = {
+                time: r.created_at,
+                by: TRACKER_AGENTS[r.submitted_by] || r.submitted_by
+            };
+        }
+    });
+
     let totalCompleteStreams = 0;
     
-    // 2. Use OVERVIEW.wards directly (V3 Magic - no more zigzag tree building)
     const trackerWards = (OVERVIEW.wards || []).map(w => {
         const wCentres = (OVERVIEW.centres || []).filter(c => c.ward_id === w.id);
         let wStreamsTotal = 0, wStreamsComplete = 0, wCellsDone = 0, wCellsTotal = 0;
@@ -1241,6 +1255,10 @@ async function loadTracker(silent) {
         });
 
         totalCompleteStreams += wStreamsComplete;
+        
+        // 3. NEW: Inject the latest timestamp into the ward object
+        const wardLatest = latestMap[w.id];
+
         return { 
             wardId: w.id, 
             wardName: w.name, 
@@ -1249,14 +1267,16 @@ async function loadTracker(silent) {
             streamsComplete: wStreamsComplete, 
             cellsDone: wCellsDone, 
             cellsTotal: wCellsTotal, 
-            centres: trackerCentres 
+            centres: trackerCentres,
+            lastAt: wardLatest ? wardLatest.time : null,
+            lastBy: wardLatest ? wardLatest.by : null
         };
     });
 
     TRACKER_DATA = {
         isMCA: (!USER.isSpectator && USER.position === 'MCA'), scopedWardName: USER.ward || '',
         positions: POSITIONS, 
-        consts: OVERVIEW.consts || [], // Use the consts from OVERVIEW
+        consts: OVERVIEW.consts || [], 
         wards: trackerWards,
         summary: { totalStreams: OVERVIEW.streams.length, completeStreams: totalCompleteStreams, pendingStreams: OVERVIEW.streams.length - totalCompleteStreams, cellsDone: (resultsData || []).length, cellsTotal: OVERVIEW.streams.length * POSITIONS.length, staleCount: 0, lastSubmitAt: null }
     };
@@ -1266,6 +1286,7 @@ async function loadTracker(silent) {
     console.error(err); if (!silent) toast('Connection error.', 'error');
   }
 }
+
 // ================================================================
 //  RENDERING — TABS & HERO
 // ================================================================
