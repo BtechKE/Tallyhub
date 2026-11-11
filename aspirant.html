@@ -2133,9 +2133,12 @@ function renderTrackerGrid() {
 
   // --- LEVEL 4: STREAMS ---
   if (TRACKER_LEVEL === 'stream') {
-    var ward = TRACKER_DATA.wards.find(w => w.wardId === TRACKER_WARD);
+    // THE FIX: Fallback to USER.ward if TRACKER_WARD is empty (for MCA)
+    var targetTrackerWard = TRACKER_WARD || (SCOPE_MODE === 'ward' ? USER.ward : '');
+    var ward = TRACKER_DATA.wards.find(w => w.wardId === targetTrackerWard);
+    
     var centre = ward ? ward.centres.find(c => c.centreId === TRACKER_CENTRE) : null;
-    if (!centre) { gridEl.innerHTML = ''; return; }
+    if (!centre) { gridEl.innerHTML = '<div class="empty">No streams found for this centre.</div>'; return; }
     
     title.textContent = centre.centreName + ' Streams'; 
     sub.textContent = centre.streamsComplete + ' of ' + centre.streamsTotal + ' streams complete · all positions'; 
