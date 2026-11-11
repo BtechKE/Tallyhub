@@ -4342,7 +4342,7 @@ async function saveAgent(id) {
     loadAllData();
   }
 }
-}
+
 function openAspirantModal() {
   var posOpts = POSITIONS.map(p => `<option value="${p}">${p}</option>`).join('');
   var countyOpts = `<option value="">— Select county —</option>` + COUNTIES.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
