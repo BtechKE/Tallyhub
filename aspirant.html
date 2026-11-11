@@ -1981,7 +1981,7 @@ function resetDrill() {
   else if (SCOPE_MODE === 'constituency') DRILL_LEVEL = 'ward';
   else if (SCOPE_MODE === 'ward')     DRILL_LEVEL = 'centre';
 
-  renderDrillGrid(); renderBoard(); renderBreadcrumb();
+  renderHero(); renderDrillGrid(); renderBoard(); renderBreadcrumb();
 }
 function drillToWard(wardId, wardName) { 
   DRILL_WARD = wardId; 
