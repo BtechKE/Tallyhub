@@ -1191,8 +1191,8 @@ async function loadTracker(silent) {
        return;
     }
 
-    // 1. Fetch results AND the created_at/submitted_by timestamps
-    let resultsData = await fetchIn('results', 'stream_code, position, created_at, submitted_by', 'stream_code', streamCodes, 'stream_code');
+    // 1. Fetch results AND the ward_id directly from the results row
+    let resultsData = await fetchIn('results', 'stream_code, position, created_at, submitted_by, ward_id', 'stream_code', streamCodes, 'stream_code');
     let formsData = await fetchIn('form_photos', 'stream_code, position, photo_url', 'stream_code', streamCodes, 'stream_code');
     
     const { data: agentsData } = await db.from('aspirants').select('login_code, name');
@@ -1212,14 +1212,13 @@ async function loadTracker(silent) {
         reportedMap[r.stream_code][r.position] = true;
     });
 
-    // 2. NEW: Build a map of the latest submission per Ward
+    // 2. Build the latest submission map using results.ward_id directly
     const latestMap = {};
     (resultsData || []).forEach(r => {
-        if (!r.created_at) return;
-        const streamObj = OVERVIEW.streams.find(s => s.code === r.stream_code);
-        if (!streamObj) return;
-        const wId = streamObj.ward_id;
+        if (!r.created_at || !r.ward_id) return;
+        const wId = r.ward_id;
         
+        // Find the most recent submission for this ward
         if (!latestMap[wId] || new Date(r.created_at) > new Date(latestMap[wId].time)) {
             latestMap[wId] = {
                 time: r.created_at,
@@ -1256,7 +1255,6 @@ async function loadTracker(silent) {
 
         totalCompleteStreams += wStreamsComplete;
         
-        // 3. NEW: Inject the latest timestamp into the ward object
         const wardLatest = latestMap[w.id];
 
         return { 
@@ -1286,7 +1284,6 @@ async function loadTracker(silent) {
     console.error(err); if (!silent) toast('Connection error.', 'error');
   }
 }
-
 // ================================================================
 //  RENDERING — TABS & HERO
 // ================================================================
