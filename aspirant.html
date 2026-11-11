@@ -2117,8 +2117,11 @@ function renderTrackerGrid() {
 
   // --- LEVEL 3: CENTRES ---
   if (TRACKER_LEVEL === 'centre') {
-    var ward = TRACKER_DATA.wards.find(w => w.wardId === TRACKER_WARD);
-    if (!ward) { gridEl.innerHTML = ''; return; }
+    // THE FIX: Fallback to USER.ward if TRACKER_WARD is empty (for MCA)
+    var targetTrackerWard = TRACKER_WARD || (SCOPE_MODE === 'ward' ? USER.ward : '');
+    var ward = TRACKER_DATA.wards.find(w => w.wardId === targetTrackerWard);
+    
+    if (!ward) { gridEl.innerHTML = '<div class="empty">No centres found for this ward.</div>'; return; }
 
     title.textContent = ward.wardName + ' Centres'; 
     sub.textContent = ward.streamsComplete + ' of ' + ward.streamsTotal + ' streams complete'; 
@@ -2815,31 +2818,41 @@ function renderWarRoom() {
   var grid = document.getElementById('warRoomGrid');
   var bc = document.getElementById('warRoomBreadcrumb');
   
-  // 1. Render Breadcrumbs
-  var bcHtml = `<button class="bc-seg ${WAR_DRILL_LEVEL === 'constituency' ? 'current' : ''}" onclick="resetWarRoom()">All Constituencies</button>`;
+  // 1. Define Targets with fallbacks for locked scopes
+  var targetConst = WAR_DRILL_CONST || (SCOPE_MODE === 'constituency' ? USER.constituency : '');
+  var targetWard = WAR_DRILL_WARD || (SCOPE_MODE === 'ward' ? USER.ward : '');
   
-   if (targetConst) {
+  // 2. Render Breadcrumbs dynamically based on scope
+  var bcHtml = '';
+  if (SCOPE_MODE === 'ward') {
+      bcHtml = `<button class="bc-seg ${WAR_DRILL_LEVEL === 'centre' ? 'current' : ''}" onclick="resetWarRoom()">My Centres</button>`;
+  } else if (SCOPE_MODE === 'constituency') {
+      bcHtml = `<button class="bc-seg ${WAR_DRILL_LEVEL === 'ward' ? 'current' : ''}" onclick="resetWarRoom()">My Wards</button>`;
+  } else {
+      bcHtml = `<button class="bc-seg ${WAR_DRILL_LEVEL === 'constituency' ? 'current' : ''}" onclick="resetWarRoom()">All Constituencies</button>`;
+  }
+  
+  if (targetConst) {
       var cName = OVERVIEW.consts.find(c=>c.id===targetConst)?.name || 'Constituency';
       bcHtml += ` <i class="fas fa-chevron-right bc-sep"></i> <button class="bc-seg ${WAR_DRILL_LEVEL === 'ward' ? 'current' : ''}" onclick="drillWarRoom('ward', '${targetConst}', '${esc(cName)}')">${esc(cName)}</button>`;
   }
-  if (WAR_DRILL_WARD) {
-      var wName = OVERVIEW.wards.find(w=>w.id===WAR_DRILL_WARD)?.name || 'Ward';
-      bcHtml += ` <i class="fas fa-chevron-right bc-sep"></i> <button class="bc-seg ${WAR_DRILL_LEVEL === 'centre' ? 'current' : ''}" onclick="drillWarRoom('centre', '${WAR_DRILL_WARD}', '${esc(wName)}')">${esc(wName)}</button>`;
+  
+  if (targetWard) {
+      var wName = OVERVIEW.wards.find(w=>w.id===targetWard)?.name || 'Ward';
+      bcHtml += ` <i class="fas fa-chevron-right bc-sep"></i> <button class="bc-seg ${WAR_DRILL_LEVEL === 'centre' ? 'current' : ''}" onclick="drillWarRoom('centre', '${targetWard}', '${esc(wName)}')">${esc(wName)}</button>`;
   }
+  
   if (WAR_DRILL_CENTRE) {
       var cenName = OVERVIEW.centres.find(c=>c.id===WAR_DRILL_CENTRE)?.name || 'Centre';
       bcHtml += ` <i class="fas fa-chevron-right bc-sep"></i> <button class="bc-seg current">${esc(cenName)}</button>`;
   }
   bc.innerHTML = bcHtml;
 
-  // 2. Filter Data
-   // 2. Filter Data
-  var targetConst = WAR_DRILL_CONST || (SCOPE_MODE === 'constituency' ? USER.constituency : '');
-  
+  // 3. Filter Data
   var filtered = WAR_DATA.filter(function(item) {
       if (WAR_DRILL_LEVEL === 'constituency') return true; 
-      if (WAR_DRILL_LEVEL === 'ward') return item.constId === targetConst; // <-- FIXED
-      if (WAR_DRILL_LEVEL === 'centre') return item.wardId === WAR_DRILL_WARD;
+      if (WAR_DRILL_LEVEL === 'ward') return item.constId === targetConst;
+      if (WAR_DRILL_LEVEL === 'centre') return item.wardId === targetWard;
       if (WAR_DRILL_LEVEL === 'stream') return item.centreId === WAR_DRILL_CENTRE;
       return true;
   });
@@ -2850,8 +2863,6 @@ function renderWarRoom() {
   }
 
   var html = '';
-  
-  // HELPER FUNCTION: Builds the stat blocks inside the card
   function buildStats(badCount, missCount, silentCount, cleanCount, color, icon) {
       var statsHtml = '<div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 12px;">';
       
