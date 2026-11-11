@@ -4315,23 +4315,33 @@ async function saveAgent(id) {
     if (error || !data.success) return toast(error?.message || 'Failed to create agent.', 'error');
     
     // --- NEW: Calculate the unique centre names for the WhatsApp message ---
-    var uniqueCentres = new Set();
-    (streams || []).forEach(code => {
-        var streamObj = STREAMS.find(s => s.code === code);
-        if (streamObj) {
-            var centreObj = CENTRES.find(c => c.id === streamObj.centre_id);
-            if (centreObj) uniqueCentres.add(centreObj.name);
-        }
-    });
-    var centreString = Array.from(uniqueCentres).join(', ');
+    let uniqueCentres = new Set();
+    if (streams && streams.length > 0) {
+        streams.forEach(function(code) {
+            // Find the stream object
+            let streamObj = STREAMS.find(function(s) { return s.code === code; });
+            if (streamObj) {
+                // Find the centre object matching the stream's centre_id
+                let centreObj = CENTRES.find(function(c) { return c.id === streamObj.centre_id; });
+                if (centreObj) {
+                    uniqueCentres.add(centreObj.name);
+                }
+            }
+        });
+    }
+    let centreString = Array.from(uniqueCentres).join(', ');
+    
+    // Debugging log
+    console.log("Calculated Centres for WhatsApp:", centreString);
 
-    // AUTO-OPEN WHATSAPP (Passing the centreString as the 5th parameter)
+    // AUTO-OPEN WHATSAPP (Passing the centreString)
     sendWhatsAppCredentials(phone, 'Agent', email, pw, centreString);
     
     toast('Agent created. Opening WhatsApp...', 'success');
     closeModal();
     loadAllData();
   }
+}
 }
 function openAspirantModal() {
   var posOpts = POSITIONS.map(p => `<option value="${p}">${p}</option>`).join('');
@@ -6771,7 +6781,7 @@ function sendWhatsAppCredentials(phone, role, username, password, centreString =
 
     // Construct the centre text block
     let centreText = '';
-    if (centreString) {
+    if (centreString && centreString.trim() !== '') {
         centreText = `\nYour assigned centre(s): ${centreString}\n`;
     }
     
