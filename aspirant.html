@@ -1346,10 +1346,13 @@ function renderTabs() {
         else if (p === 'MCA') pillText = 'Select Ward';
     } else {
         var total = getDynamicTabTotal(p);
-        var formattedTotal = total >= 1000 ? (total / 1000).toFixed(1) + 'K' : total;
-        pillText = formattedTotal + ' votes';
         
-        // Keep the "wards" counting logic for MCA, but make it respect the current scope
+        // --- CHANGE 1: Only format and show text if total > 0 ---
+        if (total > 0) {
+            var formattedTotal = total >= 1000 ? (total / 1000).toFixed(1) + 'K' : total;
+            pillText = formattedTotal + ' votes';
+        }
+        
         if (p === 'MCA') {
             var wardsWithVotes = 0;
             var wardMap = OVERVIEW.tabTotalsByLevel && OVERVIEW.tabTotalsByLevel.ward['MCA'];
@@ -1370,11 +1373,20 @@ function renderTabs() {
                     }
                 }
             }
-            pillText = wardsWithVotes + ' wards';
+            
+            // --- CHANGE 2: Only show wards text if > 0 ---
+            if (wardsWithVotes > 0) {
+                pillText = wardsWithVotes + ' wards';
+            } else {
+                pillText = '';
+            }
         }
     }
 
-    return '<button class="' + cls + '" data-pos="' + escAttr(p) + '" onclick="switchPosition(\'' + escAttr(p) + '\')">' + esc(p) + '<span class="pill">' + pillText + '</span></button>';
+    // --- CHANGE 3: Conditionally render the span tag ---
+    var pillHtml = pillText ? '<span class="pill">' + pillText + '</span>' : '';
+
+    return '<button class="' + cls + '" data-pos="' + escAttr(p) + '" onclick="switchPosition(\'' + escAttr(p) + '\')">' + esc(p) + pillHtml + '</button>';
   }).join('');
 }
 
