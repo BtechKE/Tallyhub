@@ -1617,7 +1617,9 @@ function renderDrillGrid() {
   }
 
   if (DRILL_LEVEL === 'centre') {
-    var myCentres = OVERVIEW.centres ? OVERVIEW.centres.filter(c => c.ward_id === DRILL_WARD) : [];
+    // THE FIX: Fallback to USER.ward if DRILL_WARD is empty (for MCA)
+    var targetWardId = DRILL_WARD || (SCOPE_MODE === 'ward' ? USER.ward : '');
+    var myCentres = OVERVIEW.centres ? OVERVIEW.centres.filter(c => c.ward_id === targetWardId) : [];
     el.innerHTML = myCentres.map(c => 
       buildCard(c, OVERVIEW.votesByCentre, 'Polling Centre', `drillDown('stream', '${c.id}', '${c.name}')`, true)
     ).join('');
@@ -1788,24 +1790,27 @@ function getRaceCandidates() {
   const pool = OVERVIEW.leaderboard || [];
   const pos = OVERVIEW.viewingPosition;
 
-  // 1. President is National (no geographic filtering needed)
+  // 1. President is National
   if (pos === 'President') return pool;
 
   // 2. Governor, Senator, Women Rep (County-wide)
   if (pos === 'Governor' || pos === 'Senator' || pos === 'Women Rep') {
     if (SCOPE_MODE === 'national') {
-        if (!DRILL_COUNTY_ID) return []; // Must select a county first
-        // FIX: Filter the national pool down to just the selected county
+        if (!DRILL_COUNTY_ID) return []; 
         return pool.filter(c => OVERVIEW.candMap[c.code] && OVERVIEW.candMap[c.code].county_id === DRILL_COUNTY_ID);
     }
-    return pool; // If logged in as County scope, it's already filtered.
+    return pool; 
   }
 
   // 3. MP (Constituency-wide)
   if (pos === 'MP') {
     if (SCOPE_MODE === 'constituency') return pool;
-    if (!DRILL_CONST_ID) return [];
-    return pool.filter(c => OVERVIEW.candMap[c.code] && OVERVIEW.candMap[c.code].constituency_id === DRILL_CONST_ID);
+    
+    // THE FIX: If no DRILL_CONST_ID, fallback to the user's constituency (for MCAs)
+    var targetConst = DRILL_CONST_ID || (SCOPE_MODE === 'ward' ? USER.constituency : '');
+    if (!targetConst) return [];
+    
+    return pool.filter(c => OVERVIEW.candMap[c.code] && OVERVIEW.candMap[c.code].constituency_id === targetConst);
   }
 
   // 4. MCA (Ward-wide)
