@@ -5261,7 +5261,6 @@ async function generatePDF() {
     } else {
       var activeWards = WARDS;
       
-      // Apply Pre-Filters for MP and MCA
       if (pos === 'MP') {
         activeWards = WARDS.filter(w => w.constituency_id === targetConstId);
       } else if (pos === 'MCA') {
@@ -5288,7 +5287,7 @@ async function generatePDF() {
     var wardMap = {}; (allWards||[]).forEach(w => wardMap[w.id] = w);
     var constMap = {}; (allConsts||[]).forEach(c => constMap[c.id] = c);
     
-    var totalByCand = {}, votesByWard = {}, votesByCentre = {}, formsByWard = {};
+    var totalByCand = {}, votesByWard = {}, votesByCentre = {}, votesByStream = {}, formsByWard = {};
     var totalRegisteredVoters = 0;
     var totalValidVotes = 0;
 
@@ -5300,13 +5299,14 @@ async function generatePDF() {
       totalByCand[r.candidate_code] += r.votes;
       totalValidVotes += r.votes;
 
-      // Ward Aggregation
       if(!votesByWard[ward.id]) votesByWard[ward.id] = {};
       votesByWard[ward.id][r.candidate_code] = (votesByWard[ward.id][r.candidate_code]||0) + r.votes;
 
-      // Centre Aggregation (NEW)
       if(!votesByCentre[stream.centre_id]) votesByCentre[stream.centre_id] = {};
       votesByCentre[stream.centre_id][r.candidate_code] = (votesByCentre[stream.centre_id][r.candidate_code]||0) + r.votes;
+
+      if(!votesByStream[r.stream_code]) votesByStream[r.stream_code] = {};
+      votesByStream[r.stream_code][r.candidate_code] = (votesByStream[r.stream_code][r.candidate_code]||0) + r.votes;
     });
 
     (allStreams || []).forEach(s => {
@@ -5347,7 +5347,7 @@ async function generatePDF() {
       totalVotes: totalVotes,
       totalRegisteredVoters: totalRegisteredVoters,
       margin: margin,
-      hierarchy: buildHierarchy(allCounties, allConsts, allWards, votesByWard, votesByCentre, formsByWard, allStreams, candMap, pos),
+      hierarchy: buildHierarchy(allCounties, allConsts, allWards, votesByWard, votesByCentre, votesByStream, formsByWard, allStreams, candMap, pos),
       isNational: isNational,
       missingForms: missingForms,
       generatedAt: new Date().toISOString(),
@@ -5367,7 +5367,7 @@ async function generatePDF() {
     btn.innerHTML = '<i class="fas fa-file-pdf"></i> Generate PDF';
   }
 }
-function buildHierarchy(allCounties, allConsts, allWards, votesByWard, votesByCentre, formsByWard, allStreams, candMap, pos) {
+function buildHierarchy(allCounties, allConsts, allWards, votesByWard, votesByCentre, votesByStream, formsByWard, allStreams, candMap, pos) {
     var hierarchy = [];
     
     if (pos === 'President') {
@@ -5393,7 +5393,6 @@ function buildHierarchy(allCounties, allConsts, allWards, votesByWard, votesByCe
           }
         });
     } else {
-        // THE FIX: Only include constituencies that actually have wards in this report
         var targetConsts = allConsts.filter(c => allWards.some(w => w.constituency_id === c.id));
         
         targetConsts.forEach(cst => {
@@ -5405,17 +5404,33 @@ function buildHierarchy(allCounties, allConsts, allWards, votesByWard, votesByCe
               name: candMap[code]?.name || 'Unknown', party: candMap[code]?.party || '', votes: votesByWard[w.id][code]
             })).sort((a,b)=>b.votes-a.votes);
             
-            // THE FIX: Build Centre Array for ALL positions, not just MCA
             var centreArr = [];
             var cCentres = (CENTRES || []).filter(c => c.ward_id === w.id);
             centreArr = cCentres.map(cen => {
                 var cenCands = Object.keys(votesByCentre[cen.id]||{}).map(code => ({
                     name: candMap[code]?.name || 'Unknown', party: candMap[code]?.party || '', votes: votesByCentre[cen.id][code]
                 })).sort((a,b)=>b.votes-a.votes);
+
+                // NEW: Build Stream Array
+                var streamArr = [];
+                var cStreams = (allStreams || []).filter(s => s.centre_id === cen.id).sort((a,b) => a.stream_number - b.stream_number);
+                streamArr = cStreams.map(s => {
+                    var sCands = Object.keys(votesByStream[s.code]||{}).map(code => ({
+                        name: candMap[code]?.name || 'Unknown', party: candMap[code]?.party || '', votes: votesByStream[s.code][code]
+                    })).sort((a,b)=>b.votes-a.votes);
+                    return {
+                        streamName: 'STR ' + String(s.stream_number).padStart(2, '0'),
+                        streamCode: s.code,
+                        candidates: sCands,
+                        totalVotes: sCands.reduce((sum,c)=>sum+c.votes, 0)
+                    };
+                });
+
                 return {
                     centreName: cen.name,
                     candidates: cenCands,
-                    totalVotes: cenCands.reduce((s,c)=>s+c.votes, 0)
+                    totalVotes: cenCands.reduce((s,c)=>s+c.votes, 0),
+                    streams: streamArr
                 };
             });
 
@@ -5435,7 +5450,6 @@ function buildHierarchy(allCounties, allConsts, allWards, votesByWard, votesByCe
     }
     return hierarchy;
 }
-
 async function getBase64ImageFromUrl(imageUrl) {
   if (!imageUrl) return null;
   try {
@@ -5460,7 +5474,6 @@ async function buildPositionPDF(data) {
   var timestamp = new Date(data.generatedAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   var hash = 'TH-' + String(data.position || 'UNK').substring(0,3).toUpperCase() + '-' + Math.random().toString(36).substring(2, 8).toUpperCase();
 
-  // --- PRE-FETCH ALL PHOTOS ---
   var photoMap = {};
   if (data.leaderboard) {
       var photoPromises = data.leaderboard.map(async (c) => {
@@ -5532,11 +5545,10 @@ async function buildPositionPDF(data) {
   
   var winner = data.leaderboard[0];
   if (winner) {
-    // Draw Leader Photo
     var winnerPhoto = photoMap[winner.name];
+    
     if (winnerPhoto) {
-        // Draw a rounded rectangle as a placeholder/border, then clip the image
-        doc.addImage(winnerPhoto, 'JPEG', marginL + 8, 27, 18, 18); 
+        doc.addImage(winnerPhoto, 'JPEG', marginL + 8, 27, 18, 18);
     }
 
     var textX = winnerPhoto ? marginL + 32 : marginL + 8;
@@ -5567,7 +5579,7 @@ async function buildPositionPDF(data) {
   currentY = 105;
 
   // ==========================================
-  // NEW: OVERALL RACE RANKING (WITH PHOTOS)
+  // OVERALL RACE RANKING
   // ==========================================
   if (data.leaderboard && data.leaderboard.length > 0) {
       doc.setFillColor(INK[0], INK[1], INK[2]);
@@ -5576,9 +5588,8 @@ async function buildPositionPDF(data) {
       doc.text('OVERALL RACE RANKING', marginL + 3, currentY);
       currentY += 8;
 
-      // We create an empty string in the first column to reserve space for the photo
       var overallRows = data.leaderboard.map((c, idx) => [
-          '', // Empty space for photo
+          '', 
           String(c.name), 
           String(c.party), 
           Number(c.votes).toLocaleString(), 
@@ -5588,24 +5599,28 @@ async function buildPositionPDF(data) {
       doc.autoTable({
           startY: currentY,
           head: [['', 'Candidate', 'Party', 'Votes', 'Share']], body: overallRows, theme: 'grid',
-          styles: { font: 'helvetica', fontSize: 9, cellPadding: 2, textColor: INK, lineColor: [240, 240, 240], minCellHeight: 12 },
-          headStyles: { fillColor: GREEN_SOFT, textColor: INK, fontStyle: 'bold' },
+          styles: { font: 'helvetica', fontSize: 9, cellPadding: 3, textColor: INK, lineColor: [240, 240, 240], minCellHeight: 12 },
+          headStyles: { fillColor: GREEN_SOFT, textColor: INK, fontStyle: 'bold', halign: 'center' }, // Header styled
           alternateRowStyles: { fillColor: [253, 253, 253] },
           margin: { left: marginL, right: marginR },
-          columnStyles: { 0: { cellWidth: 15, halign: 'center' }, 3: { halign: 'right', fontStyle: 'bold' }, 4: { halign: 'right' } },
+          columnStyles: { 
+              0: { cellWidth: 15, halign: 'center' }, 
+              1: { halign: 'left' },
+              2: { halign: 'left' },
+              3: { halign: 'right', fontStyle: 'bold' }, 
+              4: { halign: 'right', fontStyle: 'bold' } // Percentage bold
+          },
           didDrawCell: function(cellData) {
               if (cellData.section === 'body' && cellData.column.index === 0) {
                   var rowIdx = cellData.row.index;
                   var candName = data.leaderboard[rowIdx].name;
                   var imgData = photoMap[candName];
                   if (imgData) {
-                      // Draw photo centered inside the cell
                       var imgSize = 10;
                       var x = cellData.cell.x + (cellData.cell.width - imgSize) / 2;
                       var y = cellData.cell.y + (cellData.cell.height - imgSize) / 2;
                       doc.addImage(imgData, 'JPEG', x, y, imgSize, imgSize);
                   } else {
-                      // Fallback: Draw the rank number if no photo exists
                       doc.setFontSize(9); doc.setTextColor(INK[0], INK[1], INK[2]);
                       doc.text(String(rowIdx + 1), cellData.cell.x + cellData.cell.width / 2, cellData.cell.y + cellData.cell.height / 2 + 2, { align: 'center' });
                   }
@@ -5616,7 +5631,7 @@ async function buildPositionPDF(data) {
   }
 
   // ==========================================
-  // PAGE 3+: HIERARCHICAL RESULTS
+  // HIERARCHICAL RESULTS (Ward -> Centre -> Stream)
   // ==========================================
   data.hierarchy.forEach(h => {
     if (currentY > pageH - 50) { doc.addPage(); currentY = 25; }
@@ -5633,10 +5648,10 @@ async function buildPositionPDF(data) {
             startY: currentY,
             head: [['#', 'Candidate', 'Party', 'Votes']], body: rows, theme: 'grid',
             styles: { font: 'helvetica', fontSize: 9, cellPadding: 3, textColor: INK, lineColor: [240, 240, 240] },
-            headStyles: { fillColor: GREEN_SOFT, textColor: INK, fontStyle: 'bold' },
+            headStyles: { fillColor: GREEN_SOFT, textColor: INK, fontStyle: 'bold', halign: 'center' },
             alternateRowStyles: { fillColor: [253, 253, 253] },
             margin: { left: marginL + 3, right: marginR },
-            columnStyles: { 0: { cellWidth: 10, halign: 'center' }, 3: { halign: 'right', fontStyle: 'bold' } }
+            columnStyles: { 0: { cellWidth: 10, halign: 'center' }, 1: { halign: 'left' }, 2: { halign: 'left' }, 3: { halign: 'right', fontStyle: 'bold' } }
         });
         currentY = doc.lastAutoTable.finalY + 10;
     }
@@ -5668,12 +5683,51 @@ async function buildPositionPDF(data) {
                         startY: currentY,
                         head: [['#', 'Candidate', 'Party', 'Votes', 'Share']], body: rows, theme: 'grid',
                         styles: { font: 'helvetica', fontSize: 8, cellPadding: 2, textColor: INK, lineColor: [245, 245, 245] },
-                        headStyles: { fillColor: [255, 255, 255], textColor: SLATE, fontStyle: 'bold', lineWidth: { bottom: 0.5 } },
+                        headStyles: { fillColor: GREEN_SOFT, textColor: INK, fontStyle: 'bold', halign: 'center', lineWidth: { bottom: 0.5 } }, // Faded Green Header
                         alternateRowStyles: { fillColor: [250, 250, 250] },
                         margin: { left: marginL + 8, right: marginR },
-                        columnStyles: { 0: { cellWidth: 10, halign: 'center' }, 3: { halign: 'right', fontStyle: 'bold' }, 4: { halign: 'right' } }
+                        columnStyles: { 
+                            0: { cellWidth: 10, halign: 'center' }, 
+                            1: { halign: 'left' },
+                            2: { halign: 'left' },
+                            3: { halign: 'right', fontStyle: 'bold' }, 
+                            4: { halign: 'right', fontStyle: 'bold' } // Percentage bold
+                        }
                       });
-                      currentY = doc.lastAutoTable.finalY + 6;
+                      currentY = doc.lastAutoTable.finalY + 4;
+
+                      // NEW: Render Streams inside Centre
+                      if (cen.streams && cen.streams.length > 0) {
+                          cen.streams.forEach(str => {
+                              if (currentY > pageH - 40) { doc.addPage(); currentY = 25; }
+                              
+                              doc.setFontSize(8); doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]); doc.setFont('helvetica', 'normal');
+                              doc.text('Stream: ' + String(str.streamName) + ' (' + str.streamCode + ')', marginL + 12, currentY);
+                              currentY += 2;
+
+                              if (str.candidates && str.candidates.length > 0) {
+                                  var strRows = str.candidates.slice(0, 3).map((c, idx) => [
+                                      String(idx + 1), String(c.name), String(c.party), Number(c.votes).toLocaleString(), str.totalVotes > 0 ? ((c.votes/str.totalVotes)*100).toFixed(1)+'%' : '0.0%'
+                                  ]);
+                                  doc.autoTable({
+                                    startY: currentY,
+                                    head: [['#', 'Candidate', 'Party', 'Votes', 'Share']], body: strRows, theme: 'grid',
+                                    styles: { font: 'helvetica', fontSize: 7, cellPadding: 1.5, textColor: INK, lineColor: [245, 245, 245] },
+                                    headStyles: { fillColor: GREEN_SOFT, textColor: INK, fontStyle: 'bold', halign: 'center', lineWidth: { bottom: 0.5 } },
+                                    alternateRowStyles: { fillColor: [250, 250, 250] },
+                                    margin: { left: marginL + 14, right: marginR },
+                                    columnStyles: { 
+                                        0: { cellWidth: 8, halign: 'center' }, 
+                                        1: { halign: 'left' },
+                                        2: { halign: 'left' },
+                                        3: { halign: 'right', fontStyle: 'bold' }, 
+                                        4: { halign: 'right', fontStyle: 'bold' }
+                                    }
+                                  });
+                                  currentY = doc.lastAutoTable.finalY + 4;
+                              }
+                          });
+                      }
                   } else {
                       doc.setFontSize(8); doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]); doc.setFont('helvetica', 'italic');
                       doc.text('No votes recorded in this centre yet.', marginL + 6, currentY + 2);
@@ -5707,299 +5761,9 @@ async function buildPositionPDF(data) {
         startY: currentY,
         head: [['Ward', 'Polling Centre', 'Stream']], body: rows, theme: 'grid',
         styles: { font: 'helvetica', fontSize: 8, cellPadding: 3, textColor: INK, lineColor: [240, 240, 240] },
-        headStyles: { fillColor: [184, 134, 11], textColor: 255, fontStyle: 'bold' },
-        margin: { left: marginL, right: marginR }
-    });
-  }
-
-  // ==========================================
-  // HEADERS, FOOTERS, PAGE NUMBERS, & WATERMARKS
-  // ==========================================
-  var totalPages = Number(doc.internal.getNumberOfPages()); 
-  if (isNaN(totalPages) || totalPages < 1) totalPages = 1;
-
-  for (var i = 2; i <= totalPages; i++) {
-      doc.setPage(i);
-      
-      doc.saveGraphicsState();
-      doc.setGState(new doc.GState({opacity: 0.05}));
-      doc.setFontSize(60); doc.setFont('helvetica', 'bold'); doc.setTextColor(165, 207, 131);
-      doc.text('TALLYHUB', pageW / 2, pageH / 2, { align: 'center', angle: 45 });
-      doc.restoreGraphicsState();
-
-      doc.setDrawColor(230, 230, 230); doc.setLineWidth(0.2);
-      doc.line(marginL, 12, pageW - marginR, 12);
-      doc.setFontSize(8); doc.setTextColor(150, 150, 150); doc.setFont('helvetica', 'normal');
-      doc.text('TallyHub Official Provisional Report', marginL, 9);
-      doc.text(scopeTitle, pageW - marginR, 9, { align: 'right' });
-
-      doc.line(marginL, pageH - 12, pageW - marginR, pageH - 12);
-      doc.text('Generated: ' + timestamp, marginL, pageH - 7);
-      doc.text('Page ' + i + ' of ' + totalPages, pageW - marginR, pageH - 7, { align: 'right' });
-  }
-
-  var safePos = String(data.position || 'Position').replace(/\s+/g, '');
-  var safeScope = scopeTitle.replace(/\s+/g, '');
-  doc.save('TallyHub-' + safePos + '-' + safeScope + '.pdf');
-}async function buildPositionPDF(data) {
-  var jsPDF = window.jspdf.jsPDF;
-  var doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
-  var pageW = 210, pageH = 297, marginL = 14, marginR = 14;
-  
-  var GREEN = [165, 207, 131], GREEN_SOFT = [244, 249, 237], INK = [26, 26, 25], SLATE = [107, 124, 147], RED = [196, 69, 58];
-  
-  var timestamp = new Date(data.generatedAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-  var hash = 'TH-' + String(data.position || 'UNK').substring(0,3).toUpperCase() + '-' + Math.random().toString(36).substring(2, 8).toUpperCase();
-
-  // --- PRE-FETCH ALL PHOTOS ---
-  var photoMap = {};
-  if (data.leaderboard) {
-      var photoPromises = data.leaderboard.map(async (c) => {
-          if (c.photo_url) {
-              photoMap[c.name] = await getBase64ImageFromUrl(c.photo_url);
-          }
-      });
-      await Promise.all(photoPromises);
-  }
-
-  // ==========================================
-  // PAGE 1: COVER PAGE
-  // ==========================================
-  doc.setFillColor(GREEN_SOFT[0], GREEN_SOFT[1], GREEN_SOFT[2]);
-  doc.rect(0, 0, pageW, pageH, 'F');
-  doc.setFillColor(GREEN[0], GREEN[1], GREEN[2]);
-  doc.rect(0, 0, pageW, 12, 'F');
-
-  doc.setTextColor(INK[0], INK[1], INK[2]);
-  doc.setFontSize(32); doc.setFont('helvetica', 'bold');
-  doc.text('TallyHub', pageW / 2, 45, { align: 'center' });
-  doc.setFontSize(14); doc.setFont('helvetica', 'normal'); doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]);
-  doc.text('Secure Election Tally System', pageW / 2, 53, { align: 'center' });
-
-  doc.setFontSize(16); doc.setFont('helvetica', 'bold'); doc.setTextColor(INK[0], INK[1], INK[2]);
-  doc.text('OFFICIAL PROVISIONAL', pageW / 2, 95, { align: 'center' });
-  doc.text('TALLY REPORT', pageW / 2, 105, { align: 'center' });
-
-  doc.setFontSize(38); doc.setTextColor(GREEN[0], GREEN[1], GREEN[2]); doc.setFont('helvetica', 'bold');
-  var posTitle = String(data.position || 'Unknown').toUpperCase();
-  doc.text(posTitle, pageW / 2, 130, { align: 'center' });
-  
-  doc.setFontSize(20); doc.setTextColor(INK[0], INK[1], INK[2]);
-  var scopeTitle = data.county;
-  if (data.posContext === 'MP' && data.targetConstId) {
-      var cObj = CONSTITUENCIES.find(c => c.id === data.targetConstId);
-      if (cObj) scopeTitle = cObj.name.toUpperCase() + ' CONSTITUENCY';
-  } else if (data.posContext === 'MCA' && data.targetWardId) {
-      var wObj = WARDS.find(w => w.id === data.targetWardId);
-      if (wObj) scopeTitle = wObj.name.toUpperCase() + ' WARD';
-  } else {
-      scopeTitle = scopeTitle.toUpperCase();
-  }
-  doc.text(scopeTitle, pageW / 2, 142, { align: 'center' });
-
-  doc.setDrawColor(GREEN[0], GREEN[1], GREEN[2]); doc.setLineWidth(0.5);
-  doc.line(marginL + 20, 165, pageW - marginR - 20, 165);
-  
-  doc.setFontSize(10); doc.setFont('helvetica', 'bold'); doc.setTextColor(INK[0], INK[1], INK[2]);
-  doc.text('Generated At:', pageW / 2 - 15, 175, { align: 'right' });
-  doc.setFont('helvetica', 'normal'); doc.text(timestamp, pageW / 2 - 10, 175, { align: 'left' });
-  doc.setFont('helvetica', 'bold'); doc.text('Verification Hash:', pageW / 2 - 15, 182, { align: 'right' });
-  doc.setFont('helvetica', 'normal'); doc.text(hash, pageW / 2 - 10, 182, { align: 'left' });
-
-  doc.saveGraphicsState();
-  doc.setGState(new doc.GState({opacity: 0.15}));
-  doc.setFontSize(80); doc.setFont('helvetica', 'bold'); doc.setTextColor(GREEN[0], GREEN[1], GREEN[2]);
-  doc.text('TALLYHUB', pageW / 2, pageH / 2, { align: 'center', angle: 45 });
-  doc.restoreGraphicsState();
-
-  // ==========================================
-  // PAGE 2: EXECUTIVE SUMMARY
-  // ==========================================
-  doc.addPage();
-  var currentY = 25;
-
-  doc.setFillColor(GREEN_SOFT[0], GREEN_SOFT[1], GREEN_SOFT[2]);
-  doc.roundedRect(marginL, 20, pageW - marginL - marginR, 45, 3, 3, 'F');
-  
-  var winner = data.leaderboard[0];
-  if (winner) {
-    // Draw Leader Photo
-    var winnerPhoto = photoMap[winner.name];
-    if (winnerPhoto) {
-        // Draw a rounded rectangle as a placeholder/border, then clip the image
-        doc.addImage(winnerPhoto, 'JPEG', marginL + 8, 27, 18, 18); 
-    }
-
-    var textX = winnerPhoto ? marginL + 32 : marginL + 8;
-
-    doc.setFontSize(10); doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]); doc.setFont('helvetica', 'bold');
-    doc.text('LEADING CANDIDATE', textX, 32);
-    doc.setFontSize(16); doc.setTextColor(INK[0], INK[1], INK[2]);
-    doc.text(String(winner.name), textX, 40);
-    doc.setFontSize(10); doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]); doc.setFont('helvetica', 'normal');
-    doc.text(String(winner.party), textX, 47);
-    doc.setFontSize(16); doc.setTextColor(GREEN[0], GREEN[1], GREEN[2]); doc.setFont('helvetica', 'bold');
-    doc.text(winner.votes.toLocaleString() + ' Votes', textX, 56);
-    
-    doc.setFontSize(11); doc.setTextColor(INK[0], INK[1], INK[2]);
-    doc.text('Margin of Victory:', pageW - marginR - 50, 35);
-    doc.setTextColor(RED[0], RED[1], RED[2]); doc.setFontSize(16);
-    doc.text('+' + data.margin.toLocaleString(), pageW - marginR - 50, 43);
-  }
-  
-  doc.setTextColor(INK[0], INK[1], INK[2]); doc.setFontSize(11); doc.setFont('helvetica', 'bold');
-  doc.text('Total Valid Votes: ' + data.totalVotes.toLocaleString(), marginL, 75);
-  if (data.totalRegisteredVoters > 0) {
-      var turnout = ((data.totalVotes / data.totalRegisteredVoters) * 100).toFixed(1);
-      doc.text('Registered Voters: ' + data.totalRegisteredVoters.toLocaleString(), marginL, 82);
-      doc.text('Voter Turnout: ' + turnout + '%', marginL, 89);
-  }
-
-  currentY = 105;
-
-  // ==========================================
-  // NEW: OVERALL RACE RANKING (WITH PHOTOS)
-  // ==========================================
-  if (data.leaderboard && data.leaderboard.length > 0) {
-      doc.setFillColor(INK[0], INK[1], INK[2]);
-      doc.rect(marginL, currentY - 6, pageW - marginL - marginR, 8, 'F');
-      doc.setTextColor(255, 255, 255); doc.setFontSize(11); doc.setFont('helvetica', 'bold');
-      doc.text('OVERALL RACE RANKING', marginL + 3, currentY);
-      currentY += 8;
-
-      // We create an empty string in the first column to reserve space for the photo
-      var overallRows = data.leaderboard.map((c, idx) => [
-          '', // Empty space for photo
-          String(c.name), 
-          String(c.party), 
-          Number(c.votes).toLocaleString(), 
-          data.totalVotes > 0 ? ((c.votes / data.totalVotes) * 100).toFixed(1) + '%' : '0.0%'
-      ]);
-
-      doc.autoTable({
-          startY: currentY,
-          head: [['', 'Candidate', 'Party', 'Votes', 'Share']], body: overallRows, theme: 'grid',
-          styles: { font: 'helvetica', fontSize: 9, cellPadding: 2, textColor: INK, lineColor: [240, 240, 240], minCellHeight: 12 },
-          headStyles: { fillColor: GREEN_SOFT, textColor: INK, fontStyle: 'bold' },
-          alternateRowStyles: { fillColor: [253, 253, 253] },
-          margin: { left: marginL, right: marginR },
-          columnStyles: { 0: { cellWidth: 15, halign: 'center' }, 3: { halign: 'right', fontStyle: 'bold' }, 4: { halign: 'right' } },
-          didDrawCell: function(cellData) {
-              if (cellData.section === 'body' && cellData.column.index === 0) {
-                  var rowIdx = cellData.row.index;
-                  var candName = data.leaderboard[rowIdx].name;
-                  var imgData = photoMap[candName];
-                  if (imgData) {
-                      // Draw photo centered inside the cell
-                      var imgSize = 10;
-                      var x = cellData.cell.x + (cellData.cell.width - imgSize) / 2;
-                      var y = cellData.cell.y + (cellData.cell.height - imgSize) / 2;
-                      doc.addImage(imgData, 'JPEG', x, y, imgSize, imgSize);
-                  } else {
-                      // Fallback: Draw the rank number if no photo exists
-                      doc.setFontSize(9); doc.setTextColor(INK[0], INK[1], INK[2]);
-                      doc.text(String(rowIdx + 1), cellData.cell.x + cellData.cell.width / 2, cellData.cell.y + cellData.cell.height / 2 + 2, { align: 'center' });
-                  }
-              }
-          }
-      });
-      currentY = doc.lastAutoTable.finalY + 15;
-  }
-
-  // ==========================================
-  // PAGE 3+: HIERARCHICAL RESULTS
-  // ==========================================
-  data.hierarchy.forEach(h => {
-    if (currentY > pageH - 50) { doc.addPage(); currentY = 25; }
-    
-    doc.setFillColor(INK[0], INK[1], INK[2]);
-    doc.rect(marginL, currentY - 6, pageW - marginL - marginR, 8, 'F');
-    doc.setTextColor(255, 255, 255); doc.setFontSize(11); doc.setFont('helvetica', 'bold');
-    doc.text(String(h.countyName || 'Unknown').toUpperCase(), marginL + 3, currentY);
-    currentY += 10;
-
-    if (h.candidates && h.candidates.length > 0) {
-        var rows = h.candidates.slice(0, 5).map((c, idx) => [String(idx + 1), String(c.name), String(c.party), Number(c.votes).toLocaleString()]);
-        doc.autoTable({
-            startY: currentY,
-            head: [['#', 'Candidate', 'Party', 'Votes']], body: rows, theme: 'grid',
-            styles: { font: 'helvetica', fontSize: 9, cellPadding: 3, textColor: INK, lineColor: [240, 240, 240] },
-            headStyles: { fillColor: GREEN_SOFT, textColor: INK, fontStyle: 'bold' },
-            alternateRowStyles: { fillColor: [253, 253, 253] },
-            margin: { left: marginL + 3, right: marginR },
-            columnStyles: { 0: { cellWidth: 10, halign: 'center' }, 3: { halign: 'right', fontStyle: 'bold' } }
-        });
-        currentY = doc.lastAutoTable.finalY + 10;
-    }
-    
-    if (h.subAreas && h.subAreas.length > 0) {
-        h.subAreas.forEach(sub => {
-          if (currentY > pageH - 40) { doc.addPage(); currentY = 25; }
-          
-          doc.setFontSize(11); doc.setTextColor(INK[0], INK[1], INK[2]); doc.setFont('helvetica', 'bold');
-          doc.text(String(sub.wardName).toUpperCase() + ' WARD', marginL + 3, currentY);
-          
-          doc.setFontSize(8); doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]); doc.setFont('helvetica', 'normal');
-          doc.text('Forms: ' + Number(sub.formsCount) + '/' + Number(sub.totalStreams) + '  |  Total Votes: ' + Number(sub.totalVotes).toLocaleString(), pageW - marginR - 30, currentY);
-          currentY += 6;
-
-          if (sub.centres && sub.centres.length > 0) {
-              sub.centres.forEach(cen => {
-                  if (currentY > pageH - 40) { doc.addPage(); currentY = 25; }
-                  
-                  doc.setFontSize(9); doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]); doc.setFont('helvetica', 'bold');
-                  doc.text('Centre: ' + String(cen.centreName), marginL + 6, currentY);
-                  currentY += 4;
-                  
-                  if (cen.candidates && cen.candidates.length > 0) {
-                      var rows = cen.candidates.slice(0, 3).map((c, idx) => [
-                          String(idx + 1), String(c.name), String(c.party), Number(c.votes).toLocaleString(), cen.totalVotes > 0 ? ((c.votes/cen.totalVotes)*100).toFixed(1)+'%' : '0.0%'
-                      ]);
-                      doc.autoTable({
-                        startY: currentY,
-                        head: [['#', 'Candidate', 'Party', 'Votes', 'Share']], body: rows, theme: 'grid',
-                        styles: { font: 'helvetica', fontSize: 8, cellPadding: 2, textColor: INK, lineColor: [245, 245, 245] },
-                        headStyles: { fillColor: [255, 255, 255], textColor: SLATE, fontStyle: 'bold', lineWidth: { bottom: 0.5 } },
-                        alternateRowStyles: { fillColor: [250, 250, 250] },
-                        margin: { left: marginL + 8, right: marginR },
-                        columnStyles: { 0: { cellWidth: 10, halign: 'center' }, 3: { halign: 'right', fontStyle: 'bold' }, 4: { halign: 'right' } }
-                      });
-                      currentY = doc.lastAutoTable.finalY + 6;
-                  } else {
-                      doc.setFontSize(8); doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]); doc.setFont('helvetica', 'italic');
-                      doc.text('No votes recorded in this centre yet.', marginL + 6, currentY + 2);
-                      currentY += 6;
-                  }
-              });
-          }
-        });
-    }
-  });
-
-  // ==========================================
-  // FINAL SECTION: MISSING FORMS
-  // ==========================================
-  if (data.missingForms && data.missingForms.length > 0) {
-    if (currentY > pageH - 50) { doc.addPage(); currentY = 25; }
-    
-    doc.setFillColor(184, 134, 11);
-    doc.rect(marginL, currentY - 6, pageW - marginL - marginR, 8, 'F');
-    doc.setTextColor(255, 255, 255); doc.setFontSize(11); doc.setFont('helvetica', 'bold');
-    doc.text('MISSING STATUTORY FORMS AUDIT', marginL + 3, currentY);
-    currentY += 10;
-
-    var rows = data.missingForms.map(mf => [
-        String(mf.ward || 'Unknown'), 
-        String(mf.centre || 'Unknown'), 
-        String(mf.stream || 'Unknown')
-    ]);
-    
-    doc.autoTable({
-        startY: currentY,
-        head: [['Ward', 'Polling Centre', 'Stream']], body: rows, theme: 'grid',
-        styles: { font: 'helvetica', fontSize: 8, cellPadding: 3, textColor: INK, lineColor: [240, 240, 240] },
-        headStyles: { fillColor: [184, 134, 11], textColor: 255, fontStyle: 'bold' },
-        margin: { left: marginL, right: marginR }
+        headStyles: { fillColor: [184, 134, 11], textColor: 255, fontStyle: 'bold', halign: 'center' },
+        margin: { left: marginL, right: marginR },
+        columnStyles: { 0: { halign: 'left' }, 1: { halign: 'left' }, 2: { halign: 'left' } }
     });
   }
 
