@@ -5600,7 +5600,7 @@ async function buildPositionPDF(data) {
           startY: currentY,
           head: [['', 'Candidate', 'Party', 'Votes', 'Share']], body: overallRows, theme: 'grid',
           styles: { font: 'helvetica', fontSize: 9, cellPadding: 3, textColor: INK, lineColor: [240, 240, 240], minCellHeight: 12 },
-          headStyles: { fillColor: GREEN_SOFT, textColor: INK, fontStyle: 'bold', halign: 'center' }, // Header styled
+          headStyles: { fillColor: GREEN_SOFT, textColor: INK, fontStyle: 'bold', halign: 'center' },
           alternateRowStyles: { fillColor: [253, 253, 253] },
           margin: { left: marginL, right: marginR },
           columnStyles: { 
@@ -5608,7 +5608,7 @@ async function buildPositionPDF(data) {
               1: { halign: 'left' },
               2: { halign: 'left' },
               3: { halign: 'right', fontStyle: 'bold' }, 
-              4: { halign: 'right', fontStyle: 'bold' } // Percentage bold
+              4: { halign: 'right', fontStyle: 'bold' } 
           },
           didDrawCell: function(cellData) {
               if (cellData.section === 'body' && cellData.column.index === 0) {
@@ -5643,7 +5643,7 @@ async function buildPositionPDF(data) {
     currentY += 10;
 
     if (h.candidates && h.candidates.length > 0) {
-        var rows = h.candidates.slice(0, 5).map((c, idx) => [String(idx + 1), String(c.name), String(c.party), Number(c.votes).toLocaleString()]);
+        var rows = h.candidates.map((c, idx) => [String(idx + 1), String(c.name), String(c.party), Number(c.votes).toLocaleString()]);
         doc.autoTable({
             startY: currentY,
             head: [['#', 'Candidate', 'Party', 'Votes']], body: rows, theme: 'grid',
@@ -5665,25 +5665,29 @@ async function buildPositionPDF(data) {
           
           doc.setFontSize(8); doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]); doc.setFont('helvetica', 'normal');
           doc.text('Forms: ' + Number(sub.formsCount) + '/' + Number(sub.totalStreams) + '  |  Total Votes: ' + Number(sub.totalVotes).toLocaleString(), pageW - marginR - 30, currentY);
-          currentY += 6;
+          currentY += 8;
 
           if (sub.centres && sub.centres.length > 0) {
               sub.centres.forEach(cen => {
                   if (currentY > pageH - 40) { doc.addPage(); currentY = 25; }
                   
-                  doc.setFontSize(9); doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]); doc.setFont('helvetica', 'bold');
+                  // CENTRE NAME (Dominant)
+                  doc.setFontSize(12); doc.setTextColor(INK[0], INK[1], INK[2]); doc.setFont('helvetica', 'bold');
                   doc.text('Centre: ' + String(cen.centreName), marginL + 6, currentY);
-                  currentY += 4;
+                  doc.setDrawColor(230, 230, 230); doc.setLineWidth(0.3);
+                  doc.line(marginL + 6, currentY + 1.5, pageW - marginR - 5, currentY + 1.5);
+                  currentY += 6;
                   
                   if (cen.candidates && cen.candidates.length > 0) {
-                      var rows = cen.candidates.slice(0, 3).map((c, idx) => [
+                      // ALL CANDIDATES IN CENTRE
+                      var rows = cen.candidates.map((c, idx) => [
                           String(idx + 1), String(c.name), String(c.party), Number(c.votes).toLocaleString(), cen.totalVotes > 0 ? ((c.votes/cen.totalVotes)*100).toFixed(1)+'%' : '0.0%'
                       ]);
                       doc.autoTable({
                         startY: currentY,
                         head: [['#', 'Candidate', 'Party', 'Votes', 'Share']], body: rows, theme: 'grid',
                         styles: { font: 'helvetica', fontSize: 8, cellPadding: 2, textColor: INK, lineColor: [245, 245, 245] },
-                        headStyles: { fillColor: GREEN_SOFT, textColor: INK, fontStyle: 'bold', halign: 'center', lineWidth: { bottom: 0.5 } }, // Faded Green Header
+                        headStyles: { fillColor: GREEN_SOFT, textColor: INK, fontStyle: 'bold', halign: 'center', lineWidth: { bottom: 0.5 } },
                         alternateRowStyles: { fillColor: [250, 250, 250] },
                         margin: { left: marginL + 8, right: marginR },
                         columnStyles: { 
@@ -5691,22 +5695,23 @@ async function buildPositionPDF(data) {
                             1: { halign: 'left' },
                             2: { halign: 'left' },
                             3: { halign: 'right', fontStyle: 'bold' }, 
-                            4: { halign: 'right', fontStyle: 'bold' } // Percentage bold
+                            4: { halign: 'right', fontStyle: 'bold' }
                         }
                       });
                       currentY = doc.lastAutoTable.finalY + 4;
 
-                      // NEW: Render Streams inside Centre
+                      // STREAMS INSIDE CENTRE
                       if (cen.streams && cen.streams.length > 0) {
                           cen.streams.forEach(str => {
                               if (currentY > pageH - 40) { doc.addPage(); currentY = 25; }
                               
-                              doc.setFontSize(8); doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]); doc.setFont('helvetica', 'normal');
+                              doc.setFontSize(9); doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]); doc.setFont('helvetica', 'bold');
                               doc.text('Stream: ' + String(str.streamName) + ' (' + str.streamCode + ')', marginL + 12, currentY);
-                              currentY += 2;
+                              currentY += 3;
 
                               if (str.candidates && str.candidates.length > 0) {
-                                  var strRows = str.candidates.slice(0, 3).map((c, idx) => [
+                                  // ALL CANDIDATES IN STREAM
+                                  var strRows = str.candidates.map((c, idx) => [
                                       String(idx + 1), String(c.name), String(c.party), Number(c.votes).toLocaleString(), str.totalVotes > 0 ? ((c.votes/str.totalVotes)*100).toFixed(1)+'%' : '0.0%'
                                   ]);
                                   doc.autoTable({
@@ -5725,13 +5730,19 @@ async function buildPositionPDF(data) {
                                     }
                                   });
                                   currentY = doc.lastAutoTable.finalY + 4;
+                              } else {
+                                  // NO VOTES IN STREAM
+                                  doc.setFontSize(8); doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]); doc.setFont('helvetica', 'italic');
+                                  doc.text('No votes recorded in this stream yet.', marginL + 14, currentY + 2);
+                                  currentY += 6;
                               }
                           });
                       }
                   } else {
+                      // NO VOTES IN CENTRE
                       doc.setFontSize(8); doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]); doc.setFont('helvetica', 'italic');
-                      doc.text('No votes recorded in this centre yet.', marginL + 6, currentY + 2);
-                      currentY += 6;
+                      doc.text('No votes recorded in this centre yet.', marginL + 8, currentY + 2);
+                      currentY += 8;
                   }
               });
           }
