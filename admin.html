@@ -5532,11 +5532,21 @@ async function buildPositionPDF(data) {
   
   var winner = data.leaderboard[0];
   if (winner) {
-    // Draw Leader Photo
     var winnerPhoto = photoMap[winner.name];
+    
+    // --- UPDATED: CIRCULAR LEADER PHOTO ---
     if (winnerPhoto) {
-        // Draw a rounded rectangle as a placeholder/border, then clip the image
-        doc.addImage(winnerPhoto, 'JPEG', marginL + 8, 27, 18, 18); 
+        var imgX = marginL + 8, imgY = 27, imgSize = 18;
+        doc.saveGraphicsState();
+        doc.circle(imgX + imgSize/2, imgY + imgSize/2, imgSize/2, null); // Create circular path
+        doc.clip(); // Apply clipping mask
+        doc.addImage(winnerPhoto, 'JPEG', imgX, imgY, imgSize, imgSize);
+        doc.restoreGraphicsState(); // Remove mask
+        
+        // Draw a neat border around the circle
+        doc.setDrawColor(GREEN[0], GREEN[1], GREEN[2]);
+        doc.setLineWidth(0.5);
+        doc.circle(imgX + imgSize/2, imgY + imgSize/2, imgSize/2, 'S');
     }
 
     var textX = winnerPhoto ? marginL + 32 : marginL + 8;
@@ -5567,7 +5577,7 @@ async function buildPositionPDF(data) {
   currentY = 105;
 
   // ==========================================
-  // NEW: OVERALL RACE RANKING (WITH PHOTOS)
+  // NEW: OVERALL RACE RANKING (WITH CIRCULAR PHOTOS)
   // ==========================================
   if (data.leaderboard && data.leaderboard.length > 0) {
       doc.setFillColor(INK[0], INK[1], INK[2]);
@@ -5576,9 +5586,8 @@ async function buildPositionPDF(data) {
       doc.text('OVERALL RACE RANKING', marginL + 3, currentY);
       currentY += 8;
 
-      // We create an empty string in the first column to reserve space for the photo
       var overallRows = data.leaderboard.map((c, idx) => [
-          '', // Empty space for photo
+          '', 
           String(c.name), 
           String(c.party), 
           Number(c.votes).toLocaleString(), 
@@ -5598,14 +5607,25 @@ async function buildPositionPDF(data) {
                   var rowIdx = cellData.row.index;
                   var candName = data.leaderboard[rowIdx].name;
                   var imgData = photoMap[candName];
+                  
                   if (imgData) {
-                      // Draw photo centered inside the cell
                       var imgSize = 10;
                       var x = cellData.cell.x + (cellData.cell.width - imgSize) / 2;
                       var y = cellData.cell.y + (cellData.cell.height - imgSize) / 2;
+                      
+                      // --- UPDATED: CIRCULAR TABLE PHOTOS ---
+                      doc.saveGraphicsState();
+                      doc.circle(x + imgSize/2, y + imgSize/2, imgSize/2, null);
+                      doc.clip();
                       doc.addImage(imgData, 'JPEG', x, y, imgSize, imgSize);
+                      doc.restoreGraphicsState();
+                      
+                      // Subtle border for the table photos
+                      doc.setDrawColor(200, 200, 200);
+                      doc.setLineWidth(0.2);
+                      doc.circle(x + imgSize/2, y + imgSize/2, imgSize/2, 'S');
+                      
                   } else {
-                      // Fallback: Draw the rank number if no photo exists
                       doc.setFontSize(9); doc.setTextColor(INK[0], INK[1], INK[2]);
                       doc.text(String(rowIdx + 1), cellData.cell.x + cellData.cell.width / 2, cellData.cell.y + cellData.cell.height / 2 + 2, { align: 'center' });
                   }
