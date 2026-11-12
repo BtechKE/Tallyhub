@@ -5501,8 +5501,10 @@ async function buildPositionPDF(data) {
       await Promise.all(photoPromises);
   }
 
-  // Helper for drawing tables consistently
+  // Helper for drawing tables consistently and safely
   function drawOverallTable(candidates, currentY, withPhotos) {
+      if (!candidates || candidates.length === 0) return currentY; // Safe exit
+
       var totalVotes = candidates.reduce((sum, cand) => sum + cand.votes, 0);
 
       var rows = candidates.map((c, idx) => [
@@ -5531,15 +5533,18 @@ async function buildPositionPDF(data) {
           },
           didDrawCell: function(cellData) {
               if (withPhotos && cellData.section === 'body' && cellData.column.index === 0) {
-                  var rowIdx = cellData.row.index;
-                  var candName = candidates[rowIdx].name;
+                  // SAFE FIX: Pull the name directly from the row data instead of array indexing
+                  var candName = cellData.row.raw[1]; 
                   var imgData = photoMap[candName];
+                  
                   if (imgData) {
                       var imgSize = 10;
                       var x = cellData.cell.x + (cellData.cell.width - imgSize) / 2;
                       var y = cellData.cell.y + (cellData.cell.height - imgSize) / 2;
                       doc.addImage(imgData, 'JPEG', x, y, imgSize, imgSize);
                   } else {
+                      // Fallback to rank number
+                      var rowIdx = cellData.row.index;
                       doc.setFontSize(9); doc.setTextColor(INK[0], INK[1], INK[2]);
                       doc.text(String(rowIdx + 1), cellData.cell.x + cellData.cell.width / 2, cellData.cell.y + cellData.cell.height / 2 + 2, { align: 'center' });
                   }
@@ -5656,9 +5661,11 @@ async function buildPositionPDF(data) {
   }
 
   // ==========================================
-  // HIERARCHICAL RESULTS (Ward -> Centre -> Stream)
+  // HIERARCHICAL RESULTS (The exact flow you requested)
   // ==========================================
   data.hierarchy.forEach(level1 => { // level1 is County
+      
+      // 1. Draw County Level (Only for President, since Page 2 for President is National)
       if (data.posContext === 'President') {
           if (currentY > pageH - 50) { doc.addPage(); currentY = 25; }
           doc.setFillColor(INK[0], INK[1], INK[2]);
@@ -5666,42 +5673,63 @@ async function buildPositionPDF(data) {
           doc.setTextColor(255, 255, 255); doc.setFontSize(11); doc.setFont('helvetica', 'bold');
           doc.text(String(level1.countyName).toUpperCase(), marginL + 3, currentY);
           currentY += 10;
-          currentY = drawOverallTable(level1.candidates, currentY, true);
+          
+          if (level1.candidates && level1.candidates.length > 0) {
+              currentY = drawOverallTable(level1.candidates, currentY, true);
+          } else {
+              doc.setFontSize(8); doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]); doc.setFont('helvetica', 'italic');
+              doc.text('No votes recorded in this county yet.', marginL + 6, currentY + 2);
+              currentY += 8;
+          }
       }
 
       level1.subAreas.forEach(level2 => { // level2 is Constituency
-          if (data.posContext !== 'MCA') {
+          
+          // 2. Draw Constituency Level (For everyone EXCEPT MCA and MP, because their Page 2 is already the Constituency/Ward)
+          if (data.posContext !== 'MCA' && data.posContext !== 'MP') {
               if (currentY > pageH - 50) { doc.addPage(); currentY = 25; }
               doc.setFillColor(INK[0], INK[1], INK[2]);
               doc.rect(marginL, currentY - 6, pageW - marginL - marginR, 8, 'F');
               doc.setTextColor(255, 255, 255); doc.setFontSize(11); doc.setFont('helvetica', 'bold');
               doc.text(String(level2.constituencyName).toUpperCase(), marginL + 3, currentY);
               currentY += 10;
-              currentY = drawOverallTable(level2.candidates, currentY, true);
+              
+              if (level2.candidates && level2.candidates.length > 0) {
+                  currentY = drawOverallTable(level2.candidates, currentY, true);
+              } else {
+                  doc.setFontSize(8); doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]); doc.setFont('helvetica', 'italic');
+                  doc.text('No votes recorded in this constituency yet.', marginL + 6, currentY + 2);
+                  currentY += 8;
+              }
           }
 
           level2.subAreas.forEach(level3 => { // level3 is Ward
-              if (currentY > pageH - 50) { doc.addPage(); currentY = 25; }
               
-              doc.setFontSize(11); doc.setTextColor(INK[0], INK[1], INK[2]); doc.setFont('helvetica', 'bold');
-              doc.text(String(level3.wardName).toUpperCase() + ' WARD', marginL + 3, currentY);
-              
-              // RIGHT ALIGNED FORMS INFO
-              doc.setFontSize(8); doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]); doc.setFont('helvetica', 'normal');
-              doc.text('Forms: ' + level3.formsCount + '/' + level3.totalStreams + '  |  Total Votes: ' + level3.totalVotes.toLocaleString(), pageW - marginR, currentY, { align: 'right' });
-              currentY += 6;
+              // 3. Draw Ward Level (For everyone EXCEPT MCA, because MCA's Page 2 is already the Ward)
+              if (data.posContext !== 'MCA') {
+                  if (currentY > pageH - 50) { doc.addPage(); currentY = 25; }
+                  
+                  doc.setFontSize(11); doc.setTextColor(INK[0], INK[1], INK[2]); doc.setFont('helvetica', 'bold');
+                  doc.text(String(level3.wardName).toUpperCase() + ' WARD', marginL + 3, currentY);
+                  
+                  // FIXED ALIGNMENT: Perfectly right-aligned
+                  doc.setFontSize(8); doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]); doc.setFont('helvetica', 'normal');
+                  doc.text('Forms: ' + level3.formsCount + '/' + level3.totalStreams + '  |  Total Votes: ' + level3.totalVotes.toLocaleString(), pageW - marginR, currentY, { align: 'right' });
+                  currentY += 6;
 
-              if (level3.candidates && level3.candidates.length > 0) {
-                  currentY = drawOverallTable(level3.candidates, currentY, false);
-              } else {
-                  doc.setFontSize(8); doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]); doc.setFont('helvetica', 'italic');
-                  doc.text('No votes recorded in this ward yet.', marginL + 6, currentY + 2);
-                  currentY += 8;
+                  if (level3.candidates && level3.candidates.length > 0) {
+                      currentY = drawOverallTable(level3.candidates, currentY, false);
+                  } else {
+                      doc.setFontSize(8); doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]); doc.setFont('helvetica', 'italic');
+                      doc.text('No votes recorded in this ward yet.', marginL + 6, currentY + 2);
+                      currentY += 8;
+                  }
               }
 
               level3.centres.forEach(level4 => { // level4 is Centre
-                  if (currentY > pageH - 50) { doc.addPage(); currentY = 25; }
                   
+                  // 4. Draw Centre Level (For everyone)
+                  if (currentY > pageH - 50) { doc.addPage(); currentY = 25; }
                   doc.setFontSize(12); doc.setTextColor(INK[0], INK[1], INK[2]); doc.setFont('helvetica', 'bold');
                   doc.text('Centre: ' + String(level4.centreName), marginL + 6, currentY);
                   doc.setDrawColor(230, 230, 230); doc.setLineWidth(0.3);
@@ -5717,8 +5745,9 @@ async function buildPositionPDF(data) {
                   }
 
                   level4.streams.forEach(level5 => { // level5 is Stream
-                      if (currentY > pageH - 50) { doc.addPage(); currentY = 25; }
                       
+                      // 5. Draw Stream Level (For everyone)
+                      if (currentY > pageH - 50) { doc.addPage(); currentY = 25; }
                       doc.setFontSize(9); doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]); doc.setFont('helvetica', 'bold');
                       doc.text('Stream: ' + String(level5.streamName) + ' (' + level5.streamCode + ')', marginL + 12, currentY);
                       currentY += 3;
