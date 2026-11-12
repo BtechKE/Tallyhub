@@ -5288,7 +5288,7 @@ async function generatePDF() {
     var wardMap = {}; (allWards||[]).forEach(w => wardMap[w.id] = w);
     var constMap = {}; (allConsts||[]).forEach(c => constMap[c.id] = c);
     
-    var totalByCand = {}, votesByWard = {}, formsByWard = {};
+   var totalByCand = {}, votesByWard = {}, votesByCentre = {}, formsByWard = {};
     var totalRegisteredVoters = 0;
     var totalValidVotes = 0;
 
@@ -5300,10 +5300,14 @@ async function generatePDF() {
       totalByCand[r.candidate_code] += r.votes;
       totalValidVotes += r.votes;
 
+      // Ward Aggregation
       if(!votesByWard[ward.id]) votesByWard[ward.id] = {};
       votesByWard[ward.id][r.candidate_code] = (votesByWard[ward.id][r.candidate_code]||0) + r.votes;
-    });
 
+      // Centre Aggregation (NEW)
+      if(!votesByCentre[stream.centre_id]) votesByCentre[stream.centre_id] = {};
+      votesByCentre[stream.centre_id][r.candidate_code] = (votesByCentre[stream.centre_id][r.candidate_code]||0) + r.votes;
+    });
     (allStreams || []).forEach(s => {
        if (s.registered_voters) totalRegisteredVoters += Number(s.registered_voters);
     });
@@ -5365,12 +5369,10 @@ async function generatePDF() {
     btn.innerHTML = '<i class="fas fa-file-pdf"></i> Generate PDF';
   }
 }
-// FIX 1: Add candMap as a parameter here
-function buildHierarchy(allCounties, allConsts, allWards, votesByWard, formsByWard, allStreams, candMap, pos) {
+function buildHierarchy(allCounties, allConsts, allWards, votesByWard, votesByCentre, formsByWard, allStreams, candMap, pos) {
     var hierarchy = [];
     
     if (pos === 'President') {
-        // National -> Counties
         (allCounties || []).forEach(county => {
           var cConsts = (allConsts || []).filter(c => c.county_id === county.id);
           var countyCands = {};
@@ -5393,7 +5395,6 @@ function buildHierarchy(allCounties, allConsts, allWards, votesByWard, formsByWa
           }
         });
     } else {
-        // County Scope -> Constituencies (or just the specific MP constituency)
         var targetConsts = allConsts;
         if (pos === 'MP') {
             targetConsts = allConsts.filter(c => allWards.some(w => w.constituency_id === c.id));
@@ -5408,11 +5409,30 @@ function buildHierarchy(allCounties, allConsts, allWards, votesByWard, formsByWa
               name: candMap[code]?.name || 'Unknown', party: candMap[code]?.party || '', votes: votesByWard[w.id][code]
             })).sort((a,b)=>b.votes-a.votes);
             
-            // REMOVED the if statement here, so it shows the ward even if 0 votes
+            // NEW: Build Centre Array for MCA
+            var centreArr = [];
+            if (pos === 'MCA') {
+                var cCentres = (CENTRES || []).filter(c => c.ward_id === w.id);
+                centreArr = cCentres.map(cen => {
+                    var cenCands = Object.keys(votesByCentre[cen.id]||{}).map(code => ({
+                        name: candMap[code]?.name || 'Unknown', party: candMap[code]?.party || '', votes: votesByCentre[cen.id][code]
+                    })).sort((a,b)=>b.votes-a.votes);
+                    return {
+                        centreName: cen.name,
+                        candidates: cenCands,
+                        totalVotes: cenCands.reduce((s,c)=>s+c.votes, 0)
+                    };
+                });
+            }
+
             countyWardsArr.push({
-              constituencyName: cst.name, wardName: w.name, candidates: wCands, 
+              constituencyName: cst.name, 
+              wardName: w.name, 
+              candidates: wCands, 
               totalVotes: wCands.reduce((s,c)=>s+c.votes, 0),
-              formsCount: formsByWard[w.id] || 0, totalStreams: allStreams.filter(s => s.ward_id === w.id).length
+              formsCount: formsByWard[w.id] || 0, 
+              totalStreams: allStreams.filter(s => s.ward_id === w.id).length,
+              centres: centreArr // <-- Pass the centres up
             });
           });
           
@@ -5564,31 +5584,63 @@ function buildPositionPDF(data) {
         h.subAreas.forEach(sub => {
           if (currentY > pageH - 40) { doc.addPage(); currentY = 25; }
           
-          doc.setFontSize(10); doc.setTextColor(GREEN[0], GREEN[1], GREEN[2]); doc.setFont('helvetica', 'bold');
-          doc.text(String(sub.constituencyName) + ' > ' + String(sub.wardName) + ' Ward', marginL + 3, currentY);
+          doc.setFontSize(11); doc.setTextColor(INK[0], INK[1], INK[2]); doc.setFont('helvetica', 'bold');
+          doc.text(String(sub.wardName).toUpperCase() + ' WARD', marginL + 3, currentY);
           
           doc.setFontSize(8); doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]); doc.setFont('helvetica', 'normal');
-          doc.text('Forms: ' + Number(sub.formsCount) + '/' + Number(sub.totalStreams), pageW - marginR - 20, currentY);
-          currentY += 4;
-          
-          if (sub.candidates && sub.candidates.length > 0) {
-              var rows = sub.candidates.slice(0, 3).map((c, idx) => [
-                  String(idx + 1), String(c.name), String(c.party), Number(c.votes).toLocaleString(), sub.totalVotes > 0 ? ((c.votes/sub.totalVotes)*100).toFixed(1)+'%' : '0.0%'
-              ]);
-              doc.autoTable({
-                startY: currentY,
-                head: [['#', 'Candidate', 'Party', 'Votes', 'Share']], body: rows, theme: 'grid',
-                styles: { font: 'helvetica', fontSize: 8, cellPadding: 2, textColor: INK, lineColor: [245, 245, 245] },
-                headStyles: { fillColor: [255, 255, 255], textColor: SLATE, fontStyle: 'bold', lineWidth: { bottom: 0.5 } },
-                alternateRowStyles: { fillColor: [250, 250, 250] },
-                margin: { left: marginL + 6, right: marginR },
-                columnStyles: { 0: { cellWidth: 10, halign: 'center' }, 3: { halign: 'right', fontStyle: 'bold' }, 4: { halign: 'right' } }
+          doc.text('Forms: ' + Number(sub.formsCount) + '/' + Number(sub.totalStreams) + '  |  Total Votes: ' + Number(sub.totalVotes).toLocaleString(), pageW - marginR - 30, currentY);
+          currentY += 6;
+
+          // If MCA, loop through Centres. Otherwise, show Ward summary.
+          if (data.posContext === 'MCA' && sub.centres && sub.centres.length > 0) {
+              sub.centres.forEach(cen => {
+                  if (currentY > pageH - 40) { doc.addPage(); currentY = 25; }
+                  
+                  doc.setFontSize(9); doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]); doc.setFont('helvetica', 'bold');
+                  doc.text('Centre: ' + String(cen.centreName), marginL + 6, currentY);
+                  currentY += 4;
+                  
+                  if (cen.candidates && cen.candidates.length > 0) {
+                      var rows = cen.candidates.slice(0, 3).map((c, idx) => [
+                          String(idx + 1), String(c.name), String(c.party), Number(c.votes).toLocaleString(), cen.totalVotes > 0 ? ((c.votes/cen.totalVotes)*100).toFixed(1)+'%' : '0.0%'
+                      ]);
+                      doc.autoTable({
+                        startY: currentY,
+                        head: [['#', 'Candidate', 'Party', 'Votes', 'Share']], body: rows, theme: 'grid',
+                        styles: { font: 'helvetica', fontSize: 8, cellPadding: 2, textColor: INK, lineColor: [245, 245, 245] },
+                        headStyles: { fillColor: [255, 255, 255], textColor: SLATE, fontStyle: 'bold', lineWidth: { bottom: 0.5 } },
+                        alternateRowStyles: { fillColor: [250, 250, 250] },
+                        margin: { left: marginL + 8, right: marginR },
+                        columnStyles: { 0: { cellWidth: 10, halign: 'center' }, 3: { halign: 'right', fontStyle: 'bold' }, 4: { halign: 'right' } }
+                      });
+                      currentY = doc.lastAutoTable.finalY + 6;
+                  } else {
+                      doc.setFontSize(8); doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]); doc.setFont('helvetica', 'italic');
+                      doc.text('No votes recorded in this centre yet.', marginL + 6, currentY + 2);
+                      currentY += 6;
+                  }
               });
-              currentY = doc.lastAutoTable.finalY + 8;
           } else {
-              doc.setFontSize(8); doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]); doc.setFont('helvetica', 'italic');
-              doc.text('No votes recorded in this area yet.', marginL + 6, currentY + 4);
-              currentY += 10;
+              // Standard Ward-level table (for MP / Governor)
+              if (sub.candidates && sub.candidates.length > 0) {
+                  var rows = sub.candidates.slice(0, 3).map((c, idx) => [
+                      String(idx + 1), String(c.name), String(c.party), Number(c.votes).toLocaleString(), sub.totalVotes > 0 ? ((c.votes/sub.totalVotes)*100).toFixed(1)+'%' : '0.0%'
+                  ]);
+                  doc.autoTable({
+                    startY: currentY,
+                    head: [['#', 'Candidate', 'Party', 'Votes', 'Share']], body: rows, theme: 'grid',
+                    styles: { font: 'helvetica', fontSize: 8, cellPadding: 2, textColor: INK, lineColor: [245, 245, 245] },
+                    headStyles: { fillColor: [255, 255, 255], textColor: SLATE, fontStyle: 'bold', lineWidth: { bottom: 0.5 } },
+                    alternateRowStyles: { fillColor: [250, 250, 250] },
+                    margin: { left: marginL + 6, right: marginR },
+                    columnStyles: { 0: { cellWidth: 10, halign: 'center' }, 3: { halign: 'right', fontStyle: 'bold' }, 4: { halign: 'right' } }
+                  });
+                  currentY = doc.lastAutoTable.finalY + 8;
+              } else {
+                  doc.setFontSize(8); doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]); doc.setFont('helvetica', 'italic');
+                  doc.text('No votes recorded in this ward yet.', marginL + 6, currentY + 2);
+                  currentY += 8;
+              }
           }
         });
     }
