@@ -5288,7 +5288,7 @@ async function generatePDF() {
     var wardMap = {}; (allWards||[]).forEach(w => wardMap[w.id] = w);
     var constMap = {}; (allConsts||[]).forEach(c => constMap[c.id] = c);
     
-   var totalByCand = {}, votesByWard = {}, votesByCentre = {}, formsByWard = {};
+    var totalByCand = {}, votesByWard = {}, votesByCentre = {}, formsByWard = {};
     var totalRegisteredVoters = 0;
     var totalValidVotes = 0;
 
@@ -5308,6 +5308,7 @@ async function generatePDF() {
       if(!votesByCentre[stream.centre_id]) votesByCentre[stream.centre_id] = {};
       votesByCentre[stream.centre_id][r.candidate_code] = (votesByCentre[stream.centre_id][r.candidate_code]||0) + r.votes;
     });
+
     (allStreams || []).forEach(s => {
        if (s.registered_voters) totalRegisteredVoters += Number(s.registered_voters);
     });
@@ -5325,7 +5326,6 @@ async function generatePDF() {
     var totalVotes = leaderboard.reduce((s, c) => s + c.votes, 0);
     var margin = leaderboard.length > 1 ? (leaderboard[0].votes - leaderboard[1].votes) : 0;
     
-    // Missing forms will naturally be scoped because allStreams is filtered above
     var missingForms = [];
     (allStreams || []).forEach(s => {
         var hasForm = (formsData || []).find(f => f.stream_code === s.code);
@@ -5347,15 +5347,13 @@ async function generatePDF() {
       totalVotes: totalVotes,
       totalRegisteredVoters: totalRegisteredVoters,
       margin: margin,
-      hierarchy: buildHierarchy(allCounties, allConsts, allWards, votesByWard, formsByWard, allStreams, candMap, pos),
+      hierarchy: buildHierarchy(allCounties, allConsts, allWards, votesByWard, votesByCentre, formsByWard, allStreams, candMap, pos),
       isNational: isNational,
       missingForms: missingForms,
       generatedAt: new Date().toISOString(),
-      
-      // PASSING THE CONTEXT SO THE COVER PAGE KNOWS WHAT TO PRINT
       posContext: pos,
       targetConstId: targetConstId,
-      targetWardId: targetWardId // <--- ADDED THIS
+      targetWardId: targetWardId
     };
 
     buildPositionPDF(data);
@@ -5432,7 +5430,7 @@ function buildHierarchy(allCounties, allConsts, allWards, votesByWard, votesByCe
               totalVotes: wCands.reduce((s,c)=>s+c.votes, 0),
               formsCount: formsByWard[w.id] || 0, 
               totalStreams: allStreams.filter(s => s.ward_id === w.id).length,
-              centres: centreArr // <-- Pass the centres up
+              centres: centreArr 
             });
           });
           
