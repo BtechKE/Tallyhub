@@ -5356,7 +5356,7 @@ async function generatePDF() {
       targetWardId: targetWardId
     };
 
-    buildPositionPDF(data);
+    await buildPositionPDF(data);
     closeExportModal();
     toast('Report downloaded.', 'success');
   } catch (e) {
@@ -5435,7 +5435,22 @@ function buildHierarchy(allCounties, allConsts, allWards, votesByWard, votesByCe
     }
     return hierarchy;
 }
-function buildPositionPDF(data) {
+
+async function getBase64ImageFromUrl(imageUrl) {
+  if (!imageUrl) return null;
+  try {
+    var res = await fetch(imageUrl);
+    var blob = await res.blob();
+    return new Promise((resolve) => {
+      var reader = new FileReader();
+      reader.onloadend = function() { resolve(reader.result); };
+      reader.readAsDataURL(blob);
+    });
+  } catch (e) {
+    return null; // If image fails to load, just return null
+  }
+}
+async function buildPositionPDF(data) {
   var jsPDF = window.jspdf.jsPDF;
   var doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
   var pageW = 210, pageH = 297, marginL = 14, marginR = 14;
@@ -5444,6 +5459,17 @@ function buildPositionPDF(data) {
   
   var timestamp = new Date(data.generatedAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   var hash = 'TH-' + String(data.position || 'UNK').substring(0,3).toUpperCase() + '-' + Math.random().toString(36).substring(2, 8).toUpperCase();
+
+  // --- PRE-FETCH ALL PHOTOS ---
+  var photoMap = {};
+  if (data.leaderboard) {
+      var photoPromises = data.leaderboard.map(async (c) => {
+          if (c.photo_url) {
+              photoMap[c.name] = await getBase64ImageFromUrl(c.photo_url);
+          }
+      });
+      await Promise.all(photoPromises);
+  }
 
   // ==========================================
   // PAGE 1: COVER PAGE
@@ -5502,37 +5528,46 @@ function buildPositionPDF(data) {
   var currentY = 25;
 
   doc.setFillColor(GREEN_SOFT[0], GREEN_SOFT[1], GREEN_SOFT[2]);
-  doc.roundedRect(marginL, 20, pageW - marginL - marginR, 40, 3, 3, 'F');
+  doc.roundedRect(marginL, 20, pageW - marginL - marginR, 45, 3, 3, 'F');
   
   var winner = data.leaderboard[0];
   if (winner) {
+    // Draw Leader Photo
+    var winnerPhoto = photoMap[winner.name];
+    if (winnerPhoto) {
+        // Draw a rounded rectangle as a placeholder/border, then clip the image
+        doc.addImage(winnerPhoto, 'JPEG', marginL + 8, 27, 18, 18); 
+    }
+
+    var textX = winnerPhoto ? marginL + 32 : marginL + 8;
+
     doc.setFontSize(10); doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]); doc.setFont('helvetica', 'bold');
-    doc.text('LEADING CANDIDATE', marginL + 6, 30);
+    doc.text('LEADING CANDIDATE', textX, 32);
     doc.setFontSize(16); doc.setTextColor(INK[0], INK[1], INK[2]);
-    doc.text(String(winner.name), marginL + 6, 38);
+    doc.text(String(winner.name), textX, 40);
     doc.setFontSize(10); doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]); doc.setFont('helvetica', 'normal');
-    doc.text(String(winner.party), marginL + 6, 45);
-    doc.setFontSize(18); doc.setTextColor(GREEN[0], GREEN[1], GREEN[2]); doc.setFont('helvetica', 'bold');
-    doc.text(winner.votes.toLocaleString() + ' Votes', marginL + 6, 55);
+    doc.text(String(winner.party), textX, 47);
+    doc.setFontSize(16); doc.setTextColor(GREEN[0], GREEN[1], GREEN[2]); doc.setFont('helvetica', 'bold');
+    doc.text(winner.votes.toLocaleString() + ' Votes', textX, 56);
     
     doc.setFontSize(11); doc.setTextColor(INK[0], INK[1], INK[2]);
-    doc.text('Margin of Victory:', pageW - marginR - 60, 35);
+    doc.text('Margin of Victory:', pageW - marginR - 50, 35);
     doc.setTextColor(RED[0], RED[1], RED[2]); doc.setFontSize(16);
-    doc.text('+' + data.margin.toLocaleString(), pageW - marginR - 60, 43);
+    doc.text('+' + data.margin.toLocaleString(), pageW - marginR - 50, 43);
   }
   
   doc.setTextColor(INK[0], INK[1], INK[2]); doc.setFontSize(11); doc.setFont('helvetica', 'bold');
-  doc.text('Total Valid Votes: ' + data.totalVotes.toLocaleString(), marginL, 70);
+  doc.text('Total Valid Votes: ' + data.totalVotes.toLocaleString(), marginL, 75);
   if (data.totalRegisteredVoters > 0) {
       var turnout = ((data.totalVotes / data.totalRegisteredVoters) * 100).toFixed(1);
-      doc.text('Registered Voters: ' + data.totalRegisteredVoters.toLocaleString(), marginL, 77);
-      doc.text('Voter Turnout: ' + turnout + '%', marginL, 84);
+      doc.text('Registered Voters: ' + data.totalRegisteredVoters.toLocaleString(), marginL, 82);
+      doc.text('Voter Turnout: ' + turnout + '%', marginL, 89);
   }
 
-  currentY = 100;
+  currentY = 105;
 
   // ==========================================
-  // NEW: OVERALL RACE RANKING
+  // NEW: OVERALL RACE RANKING (WITH PHOTOS)
   // ==========================================
   if (data.leaderboard && data.leaderboard.length > 0) {
       doc.setFillColor(INK[0], INK[1], INK[2]);
@@ -5541,8 +5576,9 @@ function buildPositionPDF(data) {
       doc.text('OVERALL RACE RANKING', marginL + 3, currentY);
       currentY += 8;
 
+      // We create an empty string in the first column to reserve space for the photo
       var overallRows = data.leaderboard.map((c, idx) => [
-          String(idx + 1), 
+          '', // Empty space for photo
           String(c.name), 
           String(c.party), 
           Number(c.votes).toLocaleString(), 
@@ -5551,12 +5587,30 @@ function buildPositionPDF(data) {
 
       doc.autoTable({
           startY: currentY,
-          head: [['#', 'Candidate', 'Party', 'Votes', 'Share']], body: overallRows, theme: 'grid',
-          styles: { font: 'helvetica', fontSize: 9, cellPadding: 3, textColor: INK, lineColor: [240, 240, 240] },
+          head: [['', 'Candidate', 'Party', 'Votes', 'Share']], body: overallRows, theme: 'grid',
+          styles: { font: 'helvetica', fontSize: 9, cellPadding: 2, textColor: INK, lineColor: [240, 240, 240], minCellHeight: 12 },
           headStyles: { fillColor: GREEN_SOFT, textColor: INK, fontStyle: 'bold' },
           alternateRowStyles: { fillColor: [253, 253, 253] },
           margin: { left: marginL, right: marginR },
-          columnStyles: { 0: { cellWidth: 15, halign: 'center' }, 3: { halign: 'right', fontStyle: 'bold' }, 4: { halign: 'right' } }
+          columnStyles: { 0: { cellWidth: 15, halign: 'center' }, 3: { halign: 'right', fontStyle: 'bold' }, 4: { halign: 'right' } },
+          didDrawCell: function(cellData) {
+              if (cellData.section === 'body' && cellData.column.index === 0) {
+                  var rowIdx = cellData.row.index;
+                  var candName = data.leaderboard[rowIdx].name;
+                  var imgData = photoMap[candName];
+                  if (imgData) {
+                      // Draw photo centered inside the cell
+                      var imgSize = 10;
+                      var x = cellData.cell.x + (cellData.cell.width - imgSize) / 2;
+                      var y = cellData.cell.y + (cellData.cell.height - imgSize) / 2;
+                      doc.addImage(imgData, 'JPEG', x, y, imgSize, imgSize);
+                  } else {
+                      // Fallback: Draw the rank number if no photo exists
+                      doc.setFontSize(9); doc.setTextColor(INK[0], INK[1], INK[2]);
+                      doc.text(String(rowIdx + 1), cellData.cell.x + cellData.cell.width / 2, cellData.cell.y + cellData.cell.height / 2 + 2, { align: 'center' });
+                  }
+              }
+          }
       });
       currentY = doc.lastAutoTable.finalY + 15;
   }
