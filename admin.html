@@ -5248,7 +5248,6 @@ async function generatePDF() {
     let cands, resultsData, formsData, allStreams, allWards, allConsts, allCounties;
 
     if (isNational) {
-      // National scope: fetch everything
       const [ c, r, f, s, w, co, ct ] = await Promise.all([
         fetchAll(() => db.from('candidates').select('*').eq('position', pos).order('code')),
         fetchAll(() => db.from('results').select('stream_code, candidate_code, votes').eq('position', pos).order('stream_code')),
@@ -5260,9 +5259,7 @@ async function generatePDF() {
       ]);
       cands = c; resultsData = r; formsData = f; allStreams = s; allWards = w; allConsts = co; allCounties = ct;
     } else {
-      // County/Constituency/Ward scope
       var activeWards = WARDS;
-      var activeCentres = CENTRES;
       
       // Apply Pre-Filters for MP and MCA
       if (pos === 'MP') {
@@ -5324,6 +5321,7 @@ async function generatePDF() {
     var totalVotes = leaderboard.reduce((s, c) => s + c.votes, 0);
     var margin = leaderboard.length > 1 ? (leaderboard[0].votes - leaderboard[1].votes) : 0;
     
+    // Missing forms will naturally be scoped because allStreams is filtered above
     var missingForms = [];
     (allStreams || []).forEach(s => {
         var hasForm = (formsData || []).find(f => f.stream_code === s.code);
@@ -5349,9 +5347,11 @@ async function generatePDF() {
       isNational: isNational,
       missingForms: missingForms,
       generatedAt: new Date().toISOString(),
-      // Pass the context so the PDF knows what level to print
+      
+      // PASSING THE CONTEXT SO THE COVER PAGE KNOWS WHAT TO PRINT
       posContext: pos,
-      targetConstId: targetConstId
+      targetConstId: targetConstId,
+      targetWardId: targetWardId // <--- ADDED THIS
     };
 
     buildPositionPDF(data);
@@ -5365,7 +5365,6 @@ async function generatePDF() {
     btn.innerHTML = '<i class="fas fa-file-pdf"></i> Generate PDF';
   }
 }
-
 // FIX 1: Add candMap as a parameter here
 function buildHierarchy(allCounties, allConsts, allWards, votesByWard, formsByWard, allStreams, candMap, pos) {
     var hierarchy = [];
@@ -5425,149 +5424,233 @@ function buildHierarchy(allCounties, allConsts, allWards, votesByWard, formsByWa
 function buildPositionPDF(data) {
   var jsPDF = window.jspdf.jsPDF;
   var doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
-  var pageW = 210, pageH = 297, marginL = 16, marginR = 16;
-  var GREEN = [165, 207, 131], GREEN_DARK = [126, 174, 92], INK = [26, 26, 25], SLATE = [67, 86, 99], BORDER = [230, 230, 230];
+  var pageW = 210, pageH = 297, marginL = 14, marginR = 14;
+  
+  // Brand Colors
+  var GREEN = [165, 207, 131], GREEN_SOFT = [244, 249, 237], INK = [26, 26, 25], SLATE = [107, 124, 147];
   
   var timestamp = new Date(data.generatedAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   var hash = 'TH-' + String(data.position || 'UNK').substring(0,3).toUpperCase() + '-' + Math.random().toString(36).substring(2, 8).toUpperCase();
 
-  // --- PAGE 1: COVER PAGE ---
-  doc.setFillColor(INK[0], INK[1], INK[2]);
+  // ==========================================
+  // PAGE 1: SOFT & PREMIUM COVER PAGE
+  // ==========================================
+  doc.setFillColor(GREEN_SOFT[0], GREEN_SOFT[1], GREEN_SOFT[2]);
   doc.rect(0, 0, pageW, pageH, 'F');
   
-  doc.setTextColor(GREEN[0], GREEN[1], GREEN[2]);
-  doc.setFontSize(40); doc.setFont('helvetica', 'bold');
-  doc.text('TallyHub', pageW / 2, 60, { align: 'center' });
-  
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(22);
-  doc.text('OFFICIAL PROVISIONAL', pageW / 2, 100, { align: 'center' });
-  doc.text('TALLY REPORT', pageW / 2, 112, { align: 'center' });
-  
-  doc.setFontSize(16); doc.setTextColor(GREEN[0], GREEN[1], GREEN[2]);
-  doc.text(String(data.position || 'Unknown').toUpperCase(), pageW / 2, 140, { align: 'center' });
-  
-  doc.setFontSize(12); doc.setTextColor(255, 255, 255);
-  doc.text(String(data.county || 'Unknown').toUpperCase(), pageW / 2, 150, { align: 'center' });
-  
-  doc.setFontSize(10); doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]);
-  doc.text('Generated: ' + timestamp, pageW / 2, 240, { align: 'center' });
-  doc.text('Verification Hash: ' + hash, pageW / 2, 246, { align: 'center' });
-  
-  doc.setFontSize(40); doc.setTextColor(255, 255, 255); doc.setFont('helvetica', 'normal');
-  doc.setTextColor(200, 200, 200);
-  doc.text('PROVISIONAL - UNOFFICIAL', pageW / 2, 200, { align: 'center', angle: 45 });
+  // Top Green Accent Bar
+  doc.setFillColor(GREEN[0], GREEN[1], GREEN[2]);
+  doc.rect(0, 0, pageW, 12, 'F');
 
-  // --- PAGE 2: EXECUTIVE SUMMARY ---
+  // Title Section
+  doc.setTextColor(INK[0], INK[1], INK[2]);
+  doc.setFontSize(26); doc.setFont('helvetica', 'bold');
+  doc.text('TallyHub', marginL, 40);
+  
+  doc.setFontSize(14); doc.setFont('helvetica', 'normal'); doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]);
+  doc.text('Secure Election Tally System', marginL, 48);
+
+  // Document Type
+  doc.setFontSize(16); doc.setFont('helvetica', 'bold'); doc.setTextColor(INK[0], INK[1], INK[2]);
+  doc.text('OFFICIAL PROVISIONAL', marginL, 90);
+  doc.text('TALLY REPORT', marginL, 100);
+
+  // Dynamic Position & Scope
+  doc.setFontSize(32); doc.setTextColor(GREEN[0], GREEN[1], GREEN[2]);
+  var posTitle = String(data.position || 'Unknown').toUpperCase();
+  doc.text(posTitle, marginL, 125);
+  
+  doc.setFontSize(18); doc.setTextColor(INK[0], INK[1], INK[2]);
+  var scopeTitle = data.county;
+  if (data.posContext === 'MP' && data.targetConstId) {
+      var cObj = CONSTITUENCIES.find(c => c.id === data.targetConstId);
+      if (cObj) scopeTitle = cObj.name.toUpperCase() + ' CONSTITUENCY';
+  } else if (data.posContext === 'MCA') {
+      var wObj = WARDS.find(w => w.id === data.targetWardId);
+      if (wObj) scopeTitle = wObj.name.toUpperCase() + ' WARD';
+  } else {
+      scopeTitle = scopeTitle.toUpperCase();
+  }
+  doc.text(scopeTitle, marginL, 135);
+
+  // Verification Block
+  doc.setDrawColor(GREEN[0], GREEN[1], GREEN[2]); doc.setLineWidth(0.5);
+  doc.line(marginL, 160, pageW - marginR, 160);
+  
+  doc.setFontSize(10); doc.setFont('helvetica', 'bold'); doc.setTextColor(INK[0], INK[1], INK[2]);
+  doc.text('Generated At:', marginL, 170);
+  doc.setFont('helvetica', 'normal'); doc.text(timestamp, marginL + 30, 170);
+  
+  doc.setFont('helvetica', 'bold'); doc.text('Verification Hash:', marginL, 178);
+  doc.setFont('helvetica', 'normal'); doc.text(hash, marginL + 35, 178);
+
+  // Faded Green Watermark
+  doc.saveGraphicsState();
+  doc.setGState(new doc.GState({opacity: 0.15}));
+  doc.setFontSize(70); doc.setFont('helvetica', 'bold'); doc.setTextColor(GREEN[0], GREEN[1], GREEN[2]);
+  doc.text('TALLYHUB', pageW / 2, pageH / 2, { align: 'center', angle: 45 });
+  doc.restoreGraphicsState();
+
+  // ==========================================
+  // PAGE 2+: EXECUTIVE SUMMARY & RESULTS
+  // ==========================================
   doc.addPage();
-  doc.setFillColor(GREEN[0], GREEN[1], GREEN[2]); doc.rect(0, 0, pageW, 20, 'F');
-  doc.setTextColor(INK[0], INK[1], INK[2]); doc.setFontSize(12); doc.setFont('helvetica', 'bold');
-  doc.text('EXECUTIVE SUMMARY', marginL, 13);
+  var currentY = 25;
+
+  // Summary Box
+  doc.setFillColor(GREEN_SOFT[0], GREEN_SOFT[1], GREEN_SOFT[2]);
+  doc.roundedRect(marginL, 20, pageW - marginL - marginR, 40, 3, 3, 'F');
   
   var winner = data.leaderboard[0];
   if (winner) {
-    doc.setDrawColor(GREEN_DARK[0], GREEN_DARK[1], GREEN_DARK[2]); doc.setLineWidth(0.5);
-    doc.rect(marginL, 30, pageW - marginL - marginR, 40);
+    doc.setFontSize(10); doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]); doc.setFont('helvetica', 'bold');
+    doc.text('LEADING CANDIDATE', marginL + 6, 30);
     
-    doc.setFontSize(14); doc.text('LEADING CANDIDATE', marginL + 5, 40);
-    doc.setFontSize(18); doc.text(String(winner.name), marginL + 5, 50);
-    doc.setFontSize(12); doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]); doc.text(String(winner.party), marginL + 5, 58);
-    doc.setFontSize(16); doc.setTextColor(GREEN_DARK[0], GREEN_DARK[1], GREEN_DARK[2]); doc.text(winner.votes.toLocaleString() + ' Votes', marginL + 5, 66);
+    doc.setFontSize(16); doc.setTextColor(INK[0], INK[1], INK[2]);
+    doc.text(String(winner.name), marginL + 6, 38);
     
-    doc.setFontSize(12); doc.setTextColor(INK[0], INK[1], INK[2]); doc.text('Margin of Victory:', pageW - marginR - 40, 50);
-    doc.setFontSize(16); doc.setTextColor(GREEN_DARK[0], GREEN_DARK[1], GREEN_DARK[2]); doc.text('+' + data.margin.toLocaleString(), pageW - marginR - 40, 58);
+    doc.setFontSize(10); doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]); doc.setFont('helvetica', 'normal');
+    doc.text(String(winner.party), marginL + 6, 45);
+    
+    doc.setFontSize(18); doc.setTextColor(GREEN[0], GREEN[1], GREEN[2]); doc.setFont('helvetica', 'bold');
+    doc.text(winner.votes.toLocaleString() + ' Votes', marginL + 6, 55);
+    
+    doc.setFontSize(11); doc.setTextColor(INK[0], INK[1], INK[2]);
+    doc.text('Margin of Victory:', pageW - marginR - 60, 35);
+    doc.setTextColor(GREEN[0], GREEN[1], GREEN[2]); doc.setFontSize(14);
+    doc.text('+' + data.margin.toLocaleString(), pageW - marginR - 60, 42);
   }
   
-  doc.setTextColor(INK[0], INK[1], INK[2]); doc.setFontSize(12); doc.setFont('helvetica', 'bold');
-  doc.text('Total Valid Votes: ' + data.totalVotes.toLocaleString(), marginL, 85);
+  doc.setTextColor(INK[0], INK[1], INK[2]); doc.setFontSize(11); doc.setFont('helvetica', 'bold');
+  doc.text('Total Valid Votes: ' + data.totalVotes.toLocaleString(), marginL, 70);
+  
   if (data.totalRegisteredVoters > 0) {
       var turnout = ((data.totalVotes / data.totalRegisteredVoters) * 100).toFixed(1);
-      doc.text('Registered Voters: ' + data.totalRegisteredVoters.toLocaleString(), marginL, 92);
-      doc.text('Voter Turnout: ' + turnout + '%', marginL, 99);
+      doc.text('Registered Voters: ' + data.totalRegisteredVoters.toLocaleString(), marginL, 77);
+      doc.text('Voter Turnout: ' + turnout + '%', marginL, 84);
   }
 
-  // --- PAGE 3+: HIERARCHY ---
-  doc.addPage();
-  var currentY = 20;
-  
-  data.hierarchy.forEach(h => {
-    if (currentY > pageH - 40) { doc.addPage(); currentY = 20; }
-    
-    // If National, print County Name. If County, print Constituency Name.
-    doc.setFontSize(14); doc.setTextColor(INK[0], INK[1], INK[2]); 
-    doc.text(String(h.countyName || 'Unknown').toUpperCase(), marginL, currentY); 
-    currentY += 8;
+  currentY = 100;
 
-    // If it has candidates (National View), print the leaderboard
+  // ==========================================
+  // HIERARCHICAL RESULTS (Strictly Categorized)
+  // ==========================================
+  data.hierarchy.forEach(h => {
+    if (currentY > pageH - 50) { doc.addPage(); currentY = 25; }
+    
+    // Constituency / County Header
+    doc.setFillColor(INK[0], INK[1], INK[2]);
+    doc.rect(marginL, currentY - 6, pageW - marginL - marginR, 8, 'F');
+    doc.setTextColor(255, 255, 255); doc.setFontSize(11); doc.setFont('helvetica', 'bold');
+    doc.text(String(h.countyName || 'Unknown').toUpperCase(), marginL + 3, currentY);
+    currentY += 10;
+
+    // If it has candidates (National View only)
     if (h.candidates && h.candidates.length > 0) {
         var rows = h.candidates.slice(0, 5).map((c, idx) => [idx + 1, String(c.name), String(c.party), c.votes.toLocaleString()]);
         doc.autoTable({
             startY: currentY,
-            head: [['', 'Candidate', 'Party', 'Votes']], body: rows, theme: 'plain',
-            styles: { font: 'helvetica', fontSize: 8, cellPadding: 2, textColor: INK },
-            headStyles: { fontStyle: 'bold', fontSize: 7, fillColor: [245, 245, 245] },
-            margin: { left: marginL + 5, right: marginR },
-            columnStyles: { 0: { cellWidth: 10 }, 3: { halign: 'right' } }
+            head: [['#', 'Candidate', 'Party', 'Votes']], body: rows, theme: 'grid',
+            styles: { font: 'helvetica', fontSize: 9, cellPadding: 3, textColor: INK, lineColor: [240, 240, 240] },
+            headStyles: { fillColor: GREEN_SOFT, textColor: INK, fontStyle: 'bold' },
+            alternateRowStyles: { fillColor: [253, 253, 253] },
+            margin: { left: marginL + 3, right: marginR },
+            columnStyles: { 0: { cellWidth: 10, halign: 'center' }, 3: { halign: 'right', fontStyle: 'bold' } }
         });
-        currentY = doc.lastAutoTable.finalY + 8;
+        currentY = doc.lastAutoTable.finalY + 10;
     }
     
-    // If it has subAreas (County View), print the wards
+    // If it has subAreas (Wards for MP/Governor)
     if (h.subAreas && h.subAreas.length > 0) {
         h.subAreas.forEach(sub => {
-          if (currentY > pageH - 40) { doc.addPage(); currentY = 20; }
-          doc.setFontSize(11); doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]); 
-          doc.text(sub.constituencyName + ' > ' + sub.wardName + ' Ward (Forms: ' + sub.formsCount + '/' + sub.totalStreams + ')', marginL, currentY); currentY += 5;
+          if (currentY > pageH - 40) { doc.addPage(); currentY = 25; }
+          
+          doc.setFontSize(10); doc.setTextColor(GREEN[0], GREEN[1], GREEN[2]); doc.setFont('helvetica', 'bold');
+          doc.text(sub.constituencyName + ' > ' + sub.wardName + ' Ward', marginL + 3, currentY);
+          
+          doc.setFontSize(8); doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]); doc.setFont('helvetica', 'normal');
+          doc.text('Forms: ' + sub.formsCount + '/' + sub.totalStreams, pageW - marginR - 20, currentY);
+          currentY += 4;
           
           if (sub.candidates && sub.candidates.length > 0) {
-              var rows = sub.candidates.slice(0, 3).map((c, idx) => [idx + 1, String(c.name), String(c.party), c.votes.toLocaleString(), sub.totalVotes > 0 ? ((c.votes/sub.totalVotes)*100).toFixed(1)+'%' : '0.0%']);
+              var rows = sub.candidates.slice(0, 3).map((c, idx) => [
+                  idx + 1, String(c.name), String(c.party), c.votes.toLocaleString(), sub.totalVotes > 0 ? ((c.votes/sub.totalVotes)*100).toFixed(1)+'%' : '0.0%'
+              ]);
               doc.autoTable({
                 startY: currentY,
-                head: [['', 'Candidate', 'Party', 'Votes', 'Share']], body: rows, theme: 'plain',
-                styles: { font: 'helvetica', fontSize: 8, cellPadding: 2, textColor: INK },
-                headStyles: { fontStyle: 'bold', fontSize: 7, fillColor: [245, 245, 245] },
-                margin: { left: marginL + 5, right: marginR },
-                columnStyles: { 0: { cellWidth: 10 }, 3: { halign: 'right' }, 4: { halign: 'right' } }
+                head: [['#', 'Candidate', 'Party', 'Votes', 'Share']], body: rows, theme: 'grid',
+                styles: { font: 'helvetica', fontSize: 8, cellPadding: 2, textColor: INK, lineColor: [245, 245, 245] },
+                headStyles: { fillColor: [255, 255, 255], textColor: SLATE, fontStyle: 'bold', lineWidth: { bottom: 0.5 } },
+                alternateRowStyles: { fillColor: [250, 250, 250] },
+                margin: { left: marginL + 6, right: marginR },
+                columnStyles: { 0: { cellWidth: 10, halign: 'center' }, 3: { halign: 'right', fontStyle: 'bold' }, 4: { halign: 'right' } }
               });
               currentY = doc.lastAutoTable.finalY + 8;
           } else {
-              doc.setFontSize(9); doc.setTextColor(196, 69, 58);
-              doc.text('No votes recorded in this ward yet.', marginL + 5, currentY + 2);
+              doc.setFontSize(8); doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]); doc.setFont('helvetica', 'italic');
+              doc.text('No votes recorded in this area yet.', marginL + 6, currentY + 4);
               currentY += 10;
           }
         });
     }
   });
 
-  // --- FINAL PAGE: MISSING FORMS ---
+  // ==========================================
+  // FINAL SECTION: MISSING FORMS
+  // ==========================================
   if (data.missingForms.length > 0) {
-    doc.addPage();
-    doc.setFontSize(14); doc.setTextColor(196, 69, 58); doc.text('MISSING STATUTORY FORMS AUDIT', marginL, 20);
+    if (currentY > pageH - 50) { doc.addPage(); currentY = 25; }
     
-    var colWidth = (pageW - marginL - marginR) / 4;
-    var startY = 30;
-    var rowH = 12;
-    var x = marginL;
-    var y = startY;
-    var colCount = 0;
+    doc.setFillColor(184, 134, 11); // Warning color
+    doc.rect(marginL, currentY - 6, pageW - marginL - marginR, 8, 'F');
+    doc.setTextColor(255, 255, 255); doc.setFontSize(11); doc.setFont('helvetica', 'bold');
+    doc.text('MISSING STATUTORY FORMS AUDIT', marginL + 3, currentY);
+    currentY += 10;
 
-    data.missingForms.forEach(mf => {
-        if (colCount === 4) { colCount = 0; x = marginL; y += rowH; }
-        if (y > pageH - 20) { doc.addPage(); y = 20; x = marginL; colCount = 0; }
-        
-        doc.setFontSize(8); doc.setTextColor(INK[0], INK[1], INK[2]);
-        doc.text(String(mf.ward || 'Unknown').substring(0, 15), x, y);
-        doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]);
-        doc.text(String(mf.centre || 'Unknown').substring(0, 15) + ' (' + String(mf.stream) + ')', x, y + 4);
-        
-        x += colWidth;
-        colCount++;
+    var rows = data.missingForms.map(mf => [String(mf.ward || 'Unknown'), String(mf.centre || 'Unknown'), String(mf.stream)]);
+    doc.autoTable({
+        startY: currentY,
+        head: [['Ward', 'Polling Centre', 'Stream']], body: rows, theme: 'grid',
+        styles: { font: 'helvetica', fontSize: 8, cellPadding: 3, textColor: INK, lineColor: [240, 240, 240] },
+        headStyles: { fillColor: [184, 134, 11], textColor: 255, fontStyle: 'bold' },
+        margin: { left: marginL, right: marginR }
     });
   }
 
-  var safePos = String(data.position || 'Position').replace(/\s+/g, ''); 
-  var safeCon = String(data.county || 'County').replace(/\s+/g, '');
-  doc.save('TallyHub-' + safePos + '-' + safeCon + '.pdf');
+  // ==========================================
+  // HEADERS, FOOTERS, PAGE NUMBERS, & WATERMARKS
+  // ==========================================
+  var totalPages = doc.internal.getNumberOfPages();
+  var pageH = doc.internal.pageSize.height || doc.internal.pageSize.getHeight();
+  var pageW = doc.internal.pageSize.width || doc.internal.pageSize.getWidth();
+
+  for (var i = 2; i <= totalPages; i++) {
+      doc.setPage(i);
+      
+      // Watermark on inner pages
+      doc.saveGraphicsState();
+      doc.setGState(new doc.GState({opacity: 0.05}));
+      doc.setFontSize(60); doc.setFont('helvetica', 'bold'); doc.setTextColor(165, 207, 131);
+      doc.text('TALLYHUB', pageW / 2, pageH / 2, { align: 'center', angle: 45 });
+      doc.restoreGraphicsState();
+
+      // Header
+      doc.setDrawColor(230, 230, 230); doc.setLineWidth(0.2);
+      doc.line(marginL, 12, pageW - marginR, 12);
+      doc.setFontSize(8); doc.setTextColor(150, 150, 150); doc.setFont('helvetica', 'normal');
+      doc.text('TallyHub Official Provisional Report', marginL, 9);
+      doc.text(scopeTitle, pageW - marginR, 9, { align: 'right' });
+
+      // Footer
+      doc.line(marginL, pageH - 12, pageW - marginR, pageH - 12);
+      doc.text('Generated: ' + timestamp, marginL, pageH - 7);
+      doc.text('Page ' + i + ' of ' + totalPages, pageW - marginR, pageH - 7, { align: 'right' });
+  }
+
+  // Save File
+  var safePos = String(data.position || 'Position').replace(/\s+/g, '');
+  var safeScope = scopeTitle.replace(/\s+/g, '');
+  doc.save('TallyHub-' + safePos + '-' + safeScope + '.pdf');
 }
 // ================================================================
 //  SETTINGS & CONFIG
