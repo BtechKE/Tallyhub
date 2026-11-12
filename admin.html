@@ -5275,7 +5275,18 @@ async function generatePDF() {
         fetchIn('form_photos', 'stream_code', 'stream_code', streamCodes, 'stream_code', q => q.eq('position', pos))
       ]);
       
-      cands = c; resultsData = r; formsData = f; 
+      // THE FIX: FILTER CANDIDATES BASED ON THE SELECTED SCOPE
+      if (pos === 'Governor' || pos === 'Senator' || pos === 'Women Rep') {
+          cands = c.filter(cand => cand.county_id === CURRENT_COUNTY);
+      } else if (pos === 'MP') {
+          cands = c.filter(cand => cand.constituency_id === targetConstId);
+      } else if (pos === 'MCA') {
+          cands = c.filter(cand => cand.ward_id === targetWardId);
+      } else {
+          cands = c;
+      }
+
+      resultsData = r; formsData = f; 
       allStreams = STREAMS.filter(s => activeWards.some(w => w.id === s.ward_id)); 
       allWards = activeWards; 
       allConsts = CONSTITUENCIES; 
