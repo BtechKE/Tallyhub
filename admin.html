@@ -3110,13 +3110,60 @@ async function saveGateOpensAt() {
 //  ACTIVE USERS
 // ================================================================
 async function loadActiveUsers() {
-  // Since Supabase handles auth, we mock active users based on recently updated profiles (or just mock it for now)
-  // For a true live count, you'd need a 'last_seen' column updated by the portals.
-  document.getElementById('statOnline').textContent = '1'; // Just you
-}
+  try {
+    const twoMinsAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+    
+    const [agentsRes, aspRes] = await Promise.all([
+      db.from('agents').select('id', { count: 'exact' }).gte('last_seen', twoMinsAgo),
+      db.from('aspirants').select('id', { count: 'exact' }).gte('last_seen', twoMinsAgo)
+    ]);
 
-function openActiveUsers() {
-  openModal(modalHead('Active Users', 'Live sessions') + '<div class="empty">Session tracking requires a custom implementation in Supabase.</div><div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Close</button></div>');
+    const totalAgents = agentsRes.count || 0;
+    const totalAspirants = aspRes.count || 0;
+    const total = totalAgents + totalAspirants;
+
+    document.getElementById('statOnline').textContent = total;
+  } catch (err) {
+    console.error("Failed to load active users", err);
+  }
+}
+  async function openActiveUsers() {
+  openModal(modalHead('Live Users', 'Active in the last 2 minutes') + '<div class="loading-inline"><i class="fas fa-spinner"></i>Loading…</div><div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Close</button></div>');
+  
+  try {
+    const twoMinsAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+    
+    const [agentsRes, aspRes] = await Promise.all([
+      db.from('agents').select('name, phone, last_seen').gte('last_seen', twoMinsAgo).order('last_seen', { ascending: false }),
+      db.from('aspirants').select('name, position, last_seen').gte('last_seen', twoMinsAgo).order('last_seen', { ascending: false })
+    ]);
+
+    var html = '<div class="user-list">';
+    
+    if (agentsRes.data && agentsRes.data.length > 0) {
+      html += '<div style="padding: 10px; background: var(--bg); font-weight: 700; font-size: 12px; color: var(--slate);">AGENTS ONLINE</div>';
+      agentsRes.data.forEach(a => {
+        html += `<div class="user-row"><div class="user-info"><div class="user-name">${esc(a.name)}</div><div class="user-meta">${esc(a.phone || 'No phone')}</div></div><div class="user-times" style="color: var(--green-dark); font-weight: 600; font-size: 11px;">Just now</div></div>`;
+      });
+    }
+
+    if (aspRes.data && aspRes.data.length > 0) {
+      html += '<div style="padding: 10px; background: var(--bg); font-weight: 700; font-size: 12px; color: var(--slate);">ASPIRANTS ONLINE</div>';
+      aspRes.data.forEach(a => {
+        html += `<div class="user-row"><div class="user-info"><div class="user-name">${esc(a.name)}</div><div class="user-meta">${esc(a.position)}</div></div><div class="user-times" style="color: var(--green-dark); font-weight: 600; font-size: 11px;">Just now</div></div>`;
+      });
+    }
+
+    if ((!agentsRes.data || agentsRes.data.length === 0) && (!aspRes.data || aspRes.data.length === 0)) {
+       html += '<div class="empty">No users currently online.</div>';
+    }
+    
+    html += '</div>';
+
+    openModal(modalHead('Live Users', 'Active in the last 2 minutes') + html + '<div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">Close</button></div>');
+  } catch (err) {
+    toast('Failed to load active users', 'error');
+  }
 }
 
 // ================================================================
