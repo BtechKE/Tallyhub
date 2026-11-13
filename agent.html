@@ -1,850 +1,853 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <base target="_top">
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <meta name="theme-color" content="#FDFAF6">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#A5CF83">
   <title>Agent — TallyHub</title>
-  
-  <!-- Font Awesome & Supabase -->
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.0"></script>
   <script src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js"></script>
-  
 
   <style>
-    /* ================================================================
-       YOUR EXACT CSS IS PASTED HERE (I have kept all of it, untouched)
-       ================================================================ */
-    .th-modal-bg { position: fixed; inset: 0; background: rgba(27, 33, 26, 0.5); display: none; align-items: center; justify-content: center; z-index: 10000; padding: 20px; opacity: 0; transition: opacity 0.18s ease; }
-    .th-modal-bg.active { display: flex; opacity: 1; }
-    .th-modal { background: var(--surface, #fff); border-radius: 20px; padding: 26px 24px 22px; width: 100%; max-width: 380px; box-shadow: 0 24px 72px rgba(27, 33, 26, 0.25); transform: scale(0.94) translateY(8px); transition: transform 0.22s cubic-bezier(0.34, 1.4, 0.64, 1); font-family: 'Segoe UI', system-ui, sans-serif; }
-    .th-modal-bg.active .th-modal { transform: scale(1) translateY(0); }
-    .th-modal-icon { width: 56px; height: 56px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 22px; margin: 0 auto 16px; }
-    .th-modal-icon.warn   { background: var(--warning-soft, rgba(184,134,11,0.12)); color: var(--warning, #b8860b); }
-    .th-modal-icon.danger { background: var(--danger-soft, rgba(196,69,58,0.08));   color: var(--danger, #c4453a); }
-    .th-modal-icon.info   { background: var(--primary-soft, rgba(165,207,131,0.15)); color: var(--primary-dark, #8bb869); }
-    .th-modal-title { font-size: 17px; font-weight: 700; text-align: center; margin-bottom: 6px; color: var(--text, #1B211A); letter-spacing: -0.2px; }
-    .th-modal-msg { font-size: 13.5px; color: var(--text-muted, #6b7a6a); text-align: center; line-height: 1.55; }
-    .th-modal-msg strong { color: var(--text, #1B211A); font-weight: 600; }
-    .th-modal-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 22px; }
-    .th-modal-actions.single { grid-template-columns: 1fr; }
-    .th-btn { padding: 12px 16px; border: none; border-radius: 11px; font-size: 14px; font-weight: 700; font-family: inherit; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: background-color 0.15s, color 0.15s, transform 0.1s; }
-    .th-btn:active { transform: scale(0.98); }
-    .th-btn-ghost { background: var(--bg, #FDFAF6); color: var(--text, #1B211A); border: 1.5px solid var(--border-strong, rgba(27,33,26,0.14)); }
-    .th-btn-ghost:hover { background: var(--primary-tint, rgba(165,207,131,0.07)); }
-    .th-btn-primary { background: var(--text, #1B211A); color: var(--bg, #FDFAF6); }
-    .th-btn-primary:hover { background: var(--primary-dark, #8bb869); color: var(--text, #1B211A); }
-    .th-btn-danger { background: var(--danger, #c4453a); color: #fff; }
-    .th-btn-danger:hover { background: #a93a30; }
-    .btn.is-loading, .btn-toggle.is-loading { opacity: 0.75; cursor: wait !important; pointer-events: none; }
-
-    :root { --primary: #A5CF83; --primary-dark: #8bb869; --primary-soft: rgba(165, 207, 131, 0.15); --primary-tint: rgba(165, 207, 131, 0.07); --text: #1B211A; --text-muted: #6b7a6a; --text-faint: #9ca89b; --bg: #FDFAF6; --surface: #ffffff; --border: rgba(27, 33, 26, 0.08); --border-strong: rgba(27, 33, 26, 0.14); --danger: #c4453a; --danger-soft: rgba(196, 69, 58, 0.08); --warning: #b8860b; --warning-soft: rgba(184, 134, 11, 0.12); --success: #4a7c3a; --shadow-sm: 0 1px 3px rgba(27, 33, 26, 0.06); --shadow-md: 0 8px 24px rgba(27, 33, 26, 0.10); --shadow-lg: 0 20px 48px rgba(27, 33, 26, 0.16); --radius: 14px; --radius-lg: 20px; --topbar-h: 60px; }
-    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-    html, body { overscroll-behavior-y: contain; }
-    body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); min-height: 100dvh; -webkit-font-smoothing: antialiased; font-size: 15px; }
-
-    .topbar { background: linear-gradient(135deg, #A5CF83 0%, #8FBF6C 100%); color: #1A1A19; border-bottom: none; box-shadow: 0 2px 12px rgba(165, 207, 131, 0.35); padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 60px; position: sticky; top: 0; z-index: 100; }
-    .topbar-brand { display: flex; align-items: center; gap: 10px; min-width: 0; flex-shrink: 0; }
-    .topbar-mark { width: 38px; height: 38px; border-radius: 11px; background: #1A1A19; color: #A5CF83; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; box-shadow: 0 3px 10px rgba(26, 26, 25, 0.18); }
-    .brand-text { min-width: 0; }
-    .brand-name { font-size: 15px; font-weight: 800; color: #1A1A19; letter-spacing: -0.3px; line-height: 1.15; }
-    .brand-sub { font-size: 11px; color: rgba(26, 26, 25, 0.65); font-weight: 600; margin-top: 1px; }
-    .topbar-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; min-width: 0; }
-    .agent-chip { display: flex; align-items: center; gap: 8px; padding: 5px 12px 5px 5px; background: rgba(26, 26, 25, 0.12); border-radius: 22px; max-width: 220px; min-width: 0; }
-    .agent-chip-initial { width: 28px; height: 28px; border-radius: 50%; background: #1A1A19; color: #A5CF83; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; flex-shrink: 0; }
-    .agent-chip-info { min-width: 0; }
-    .agent-chip-name { font-size: 12.5px; font-weight: 800; color: #1A1A19; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .agent-chip-id { font-size: 10.5px; color: rgba(26, 26, 25, 0.60); font-weight: 700; letter-spacing: 0.3px; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .topbar-refresh { background: rgba(26, 26, 25, 0.10); border: none; width: 38px; height: 38px; border-radius: 11px; color: #1A1A19; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 14px; transition: background-color 0.15s, transform 0.12s; flex-shrink: 0; }
-    .topbar-refresh:hover { background: rgba(26, 26, 25, 0.20); }
-    .topbar-refresh:active { transform: scale(0.94); }
-    .topbar-refresh .spin { animation: spin 0.9s linear infinite; display: inline-block; }
-    .topbar-logout { background: rgba(26, 26, 25, 0.08); border: 1px solid rgba(26, 26, 25, 0.25); color: #1A1A19; padding: 8px 14px; border-radius: 11px; font-size: 12.5px; font-weight: 700; font-family: inherit; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: background-color 0.15s, border-color 0.15s, color 0.15s; flex-shrink: 0; }
-    .topbar-logout:hover { background: rgba(196, 69, 58, 0.15); border-color: #C4453A; color: #B23A32; }
-    .topbar-logout span { display: none; }
-    @media (min-width: 480px) { .topbar-logout span { display: inline; } }
-
-    .closed-banner { display: none; padding: 10px 14px; background: var(--danger-soft); border-bottom: 1px solid rgba(196, 69, 58, 0.15); color: var(--danger); font-size: 12.5px; font-weight: 600; align-items: center; gap: 8px; position: sticky; top: var(--topbar-h); z-index: 90; }
-    .closed-banner.active { display: flex; }
-    .closed-banner i { font-size: 14px; }
-
-    .screen { display: none; padding-bottom: 32px; }
-    .screen.active { display: block; }
-
-    .picker-header { padding: 22px 20px 12px; max-width: 1400px; margin: 0 auto; width: 100%; }
-    .picker-greeting { font-size: 12px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #7EAE5C; margin-bottom: 6px; }
-    .picker-name { font-size: clamp(24px, 4.5vw, 34px); font-weight: 800; color: #0F172A; letter-spacing: -0.7px; line-height: 1.1; margin-bottom: 6px; }
-    .picker-sub { font-size: 13.5px; color: #6B7C93; font-weight: 500; }
-    .stream-list { padding: 8px 12px 20px; max-width: 1400px; margin: 0 auto; }
-    .stream-card { background: #FFFFFF; border: 1px solid rgba(21, 145, 220, 0.10); box-shadow: 0 2px 10px rgba(21, 145, 220, 0.06); transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease; border-radius: var(--radius); padding: 14px 16px; margin-bottom: 10px; cursor: pointer; position: relative; overflow: hidden; }
-    .stream-card:hover { border-color: rgba(21, 145, 220, 0.35); box-shadow: 0 8px 24px -8px rgba(21, 145, 220, 0.25); transform: translateY(-2px); }
-    .stream-card:active { border-color: #1591DC; transform: scale(0.985); }
-    .stream-card::before { content: ''; position: absolute; top: 0; left: 0; width: 4px; height: 100%; background: #1591DC; }
-    .stream-card.status-complete::before { background: #7EAE5C; }
-    .stream-card.status-partial::before  { background: #1591DC; }
-    .stream-card.status-pending::before  { background: #9CA3AF; }
-    .stream-card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 8px; }
-    .stream-card-name { font-size: 15px; font-weight: 700; color: #0F172A; line-height: 1.25; flex: 1; min-width: 0; }
-    .stream-card-centre { font-size: 12px; color: #6B7C93; margin-top: 2px; font-weight: 500; }
-    .stream-card-badge { font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 20px; background: rgba(21, 145, 220, 0.10); color: #1591DC; white-space: nowrap; flex-shrink: 0; }
-    .stream-card.status-complete .stream-card-badge { background: rgba(165, 207, 131, 0.20); color: #4A7C3A; }
-    .stream-card.status-partial .stream-card-badge { background: rgba(21, 145, 220, 0.10); color: #1591DC; }
-    .progress-track { height: 8px; background: rgba(21, 145, 220, 0.10); border-radius: 20px; overflow: hidden; margin-bottom: 8px; }
-    .progress-fill { height: 100%; background: linear-gradient(90deg, #A5CF83 0%, #7EAE5C 100%); box-shadow: 0 0 8px rgba(165, 207, 131, 0.35); border-radius: 20px; transition: width 0.4s ease; }
-    .stream-card.status-partial .progress-fill { background: linear-gradient(90deg, #A5CF83 0%, #7EAE5C 100%); }
-    .stream-card.status-complete .progress-fill { background: linear-gradient(90deg, #7EAE5C 0%, #4A7C3A 100%); }
-    .stream-card-meta { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #6B7C93; font-weight: 500; }
-    .stream-card-meta .arrow { color: #1591DC; font-size: 13px; }
-
-    .sub-header { background: #FFFFFF; border-bottom: 1px solid rgba(21, 145, 220, 0.10); padding: 12px 14px; display: flex; align-items: center; gap: 12px; position: sticky; top: var(--topbar-h); z-index: 90; }
-    .back-btn { background: rgba(21, 145, 220, 0.08); border: 1px solid rgba(21, 145, 220, 0.15); color: #1591DC; width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; font-size: 15px; transition: background-color 0.15s, border-color 0.15s; }
-    .back-btn:active { background: rgba(21, 145, 220, 0.20); border-color: #1591DC; }
-    .sub-header-title { font-size: 15px; font-weight: 800; color: #0F172A; line-height: 1.2; min-width: 0; flex: 1; }
-    .sub-header-sub { font-size: 11.5px; color: #6B7C93; margin-top: 2px; font-weight: 500; }
-
-    .position-list { padding: 12px 12px 20px; max-width: 1400px; margin: 0 auto; }
-    .position-card { background: #FFFFFF; border: 1px solid rgba(21, 145, 220, 0.10); box-shadow: 0 2px 8px rgba(21, 145, 220, 0.05); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 10px; display: flex; align-items: center; gap: 14px; cursor: pointer; transition: transform 0.15s, border-color 0.15s; }
-    .position-card:active { transform: scale(0.985); border-color: #1591DC; background: rgba(21, 145, 220, 0.03); }
-    .position-card.submitted { cursor: pointer; border-left: 3px solid #7EAE5C; }
-    .position-card.pending { border-left: 3px solid #1591DC; }
-    .position-card.locked { border-left: 3px solid #CBD5E1; opacity: 0.55; cursor: not-allowed; }
-    .position-icon { width: 44px; height: 44px; border-radius: 12px; background: rgba(21, 145, 220, 0.10); color: #1591DC; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
-    .position-card.pending .position-icon { background: rgba(21, 145, 220, 0.10); color: #1591DC; }
-    .position-card.submitted .position-icon { background: rgba(165, 207, 131, 0.18); color: #4A7C3A; }
-    .position-info { flex: 1; min-width: 0; }
-    .position-name { font-size: 15px; font-weight: 800; color: #0F172A; line-height: 1.2; }
-    .position-meta { font-size: 12px; color: #6B7C93; margin-top: 4px; display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
-    .position-meta .by { color: #1591DC; font-weight: 700; }
-    .position-meta i { font-size: 11px; }
-    .position-chevron { color: var(--text-faint); font-size: 14px; flex-shrink: 0; }
-
-    .entry-form { padding: 14px 14px 240px; max-width: 800px; margin: 0 auto; }
-    .entry-hint { padding: 10px 14px; background: rgba(21, 145, 220, 0.06); color: #435663; border-left: 3px solid #1591DC; border-radius: 10px; font-size: 12.5px; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; line-height: 1.4; }
-    .entry-hint i { color: #1591DC; font-size: 14px; flex-shrink: 0; }
-    .candidate-entry { background: #FFFFFF; border: 1.5px solid rgba(21, 145, 220, 0.10); border-radius: var(--radius); padding: 12px 14px; margin-bottom: 8px; display: flex; align-items: center; gap: 12px; }
-    .candidate-entry.has-vote { border-color: #1591DC; background: linear-gradient(to right, rgba(21, 145, 220, 0.05) 0%, #FFFFFF 40%); box-shadow: 0 2px 8px rgba(21, 145, 220, 0.08); }
-    .candidate-entry.missing { border-color: rgba(184, 134, 11, 0.35); background: linear-gradient(to right, rgba(184, 134, 11, 0.05) 0%, var(--surface) 40%); }
-    .candidate-entry.missing .vote-input { border-color: rgba(184, 134, 11, 0.4); background: rgba(184, 134, 11, 0.04); }
-    .candidate-entry-info { flex: 1; min-width: 0; }
-    .candidate-entry-name { font-size: 14.5px; font-weight: 700; color: #0F172A; line-height: 1.2; word-wrap: break-word; }
-    .candidate-entry-party { font-size: 11.5px; color: #6B7C93; margin-top: 3px; font-weight: 500; }
-    .vote-input { width: 96px; padding: 12px 10px; border: 2px solid var(--border-strong); border-radius: 12px; font-size: 17px; font-weight: 700; font-family: 'SF Mono', Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; background: var(--bg); color: var(--text); text-align: right; transition: border-color 0.15s, background-color 0.15s, box-shadow 0.15s; -moz-appearance: textfield; }
-    .vote-input:focus { outline: none; border-color: #1591DC; background: var(--surface); box-shadow: 0 0 0 4px rgba(21, 145, 220, 0.15); }
-    .vote-input::-webkit-outer-spin-button, .vote-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-    .candidate-entry.has-vote .vote-input { border-color: #1591DC; background: #FFFFFF; }
-
-    .entry-footer { position: fixed; left: 0; right: 0; bottom: 0; background: #FFFFFF; border-top: 1px solid rgba(21, 145, 220, 0.10); padding: 12px 14px calc(12px + env(safe-area-inset-bottom, 0px)); z-index: 200; box-shadow: 0 -6px 24px rgba(21, 145, 220, 0.06); }
-    @media (max-width: 640px) { .entry-footer { padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px)); } }
-    .entry-total { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px dashed var(--border); }
-    .entry-total-label { font-size: 12px; font-weight: 600; color: #6B7C93; text-transform: uppercase; letter-spacing: 0.5px; }
-    .entry-total-value { font-size: 20px; font-weight: 800; color: #0F172A; font-variant-numeric: tabular-nums; letter-spacing: -0.3px; }
-    .entry-total-value.warn { color: var(--danger); }
-    .entry-total-value.error { color: var(--danger); font-weight: 800; }
-    .entry-warn { display: none; align-items: flex-start; gap: 8px; padding: 10px 12px; border-radius: 10px; font-size: 12.5px; font-weight: 600; line-height: 1.4; margin-bottom: 10px; }
-    .entry-warn.warn { background: rgba(184, 134, 11, 0.12); border: 1px solid rgba(184, 134, 11, 0.25); color: #8a6508; }
-    .entry-warn.error { background: rgba(196, 69, 58, 0.08); border: 1px solid rgba(196, 69, 58, 0.2); color: #a93a30; }
-    .entry-warn i { font-size: 14px; flex-shrink: 0; margin-top: 1px; }
-    .submit-hint { font-size: 11.5px; text-align: center; margin-top: 6px; color: var(--text-muted, #6b7a6a); font-weight: 500; }
-
-    .entry-buttons { display: grid; grid-template-columns: 1fr 1.6fr; gap: 8px; }
-    .btn { padding: 14px 16px; border-radius: 12px; border: none; font-size: 14.5px; font-weight: 700; font-family: inherit; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: background-color 0.15s, color 0.15s, border-color 0.15s; touch-action: manipulation; }
-    .btn:active { transform: scale(0.98); }
-    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-    .btn-ghost { background: #FFFFFF; color: #1591DC; border: 1.5px solid rgba(21, 145, 220, 0.25); }
-    .btn-ghost:active { background: rgba(21, 145, 220, 0.08); border-color: #1591DC; }
-    .btn-primary { background: linear-gradient(135deg, #1591DC 0%, #0F7BC0 100%); color: #FFFFFF; box-shadow: 0 4px 14px rgba(21, 145, 220, 0.30); }
-    .btn-primary:active { background: #0F7BC0; box-shadow: 0 2px 6px rgba(21, 145, 220, 0.35); }
-    .btn-primary:disabled { background: #CBD5E1; box-shadow: none; opacity: 1; }
-
-    .modal-bg { position: fixed; inset: 0; background: rgba(27, 33, 26, 0.55); display: none; align-items: center; justify-content: center; z-index: 1000; padding: 20px; }
-    .modal-bg.active { display: flex; }
-    .modal { background: var(--surface); border-radius: var(--radius-lg); padding: 24px 22px; width: 100%; max-width: 380px; box-shadow: var(--shadow-lg); }
-    .modal-icon { width: 52px; height: 52px; border-radius: 50%; background: rgba(21, 145, 220, 0.12); color: #1591DC; display: flex; align-items: center; justify-content: center; font-size: 22px; margin: 0 auto 14px; }
-    .modal-icon.danger { background: var(--danger-soft); color: var(--danger); }
-    .modal-title { font-size: 17px; font-weight: 700; text-align: center; color: var(--text); letter-spacing: -0.2px; line-height: 1.3; }
-    .modal-body { font-size: 13px; color: var(--text-muted); text-align: center; line-height: 1.5; margin-top: 8px; }
-    .modal-body strong { color: var(--text); font-weight: 600; }
-    .modal-body .warn-line { margin-top: 10px; padding: 8px 12px; background: var(--danger-soft); border-radius: 8px; color: var(--danger); font-weight: 600; font-size: 12px; }
-    .modal-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 20px; }
-    .modal-actions .btn { padding: 12px; font-size: 14px; }
-
-    .toasts { position: fixed; top: calc(var(--topbar-h) + 12px); left: 12px; right: 12px; z-index: 5000; display: flex; flex-direction: column; gap: 8px; pointer-events: none; align-items: center; }
-    .toast { padding: 11px 16px; background: var(--text); color: var(--bg); border-radius: 12px; font-size: 13.5px; font-weight: 600; box-shadow: var(--shadow-md); display: flex; align-items: center; gap: 9px; pointer-events: auto; max-width: 100%; animation: toastIn 0.22s ease; }
-    .toast i { font-size: 14px; flex-shrink: 0; }
-    .toast.success i { color: var(--primary); }
-    .toast.error i { color: #ff8b7e; }
-    .toast.info i { color: var(--primary); }
-    @keyframes toastIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
-
-    .loading { text-align: center; padding: 40px 20px; color: var(--text-muted); font-size: 13.5px; }
-    .loading i { font-size: 22px; color: #1591DC; animation: spin 0.9s linear infinite; display: block; margin-bottom: 10px; }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    .empty-state { text-align: center; padding: 48px 24px; }
-    .empty-state .icon-wrap { width: 64px; height: 64px; border-radius: 50%; background: rgba(21, 145, 220, 0.10); color: #1591DC; display: flex; align-items: center; justify-content: center; font-size: 26px; margin: 0 auto 16px; }
-    .empty-state .title { font-size: 16px; font-weight: 700; color: #0F172A; margin-bottom: 6px; }
-    .empty-state .sub { font-size: 13px; color: #6B7C93; line-height: 1.5; max-width: 320px; margin: 0 auto; }
-
-    body { background: #ECFAE5; background-image: radial-gradient(circle at 100% 0%, rgba(165, 207, 131, 0.20) 0%, transparent 55%), radial-gradient(circle at 0% 100%, rgba(165, 207, 131, 0.14) 0%, transparent 55%); background-attachment: fixed; }
-    
-    /* Read-only view CSS */
-    .readonly-body { padding: 14px 14px 20px; max-width: 800px; margin: 0 auto; }
-    .readonly-info { background: rgba(21, 145, 220, 0.06); border-left: 3px solid #1591DC; border-radius: 12px; padding: 12px 14px; margin-bottom: 14px; display: flex; flex-direction: column; gap: 6px; }
-    .readonly-info-row { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: #6B7C93; }
-    .readonly-info-row i { color: #1591DC; font-size: 12px; width: 14px; text-align: center; flex-shrink: 0; }
-    .readonly-info-row strong { color: #0F172A; font-weight: 600; }
-    .readonly-row { 
-  background: #FFFFFF; 
-  border: 1.5px solid rgba(21, 145, 220, 0.10); 
-  border-radius: var(--radius); 
-  padding: 12px 14px; 
-  margin-bottom: 8px; 
-  display: flex; 
-  align-items: center; 
-  gap: 12px; 
-  justify-content: space-between; /* This pushes the votes to the right */
-}
-
-.readonly-name { 
-  flex: 1; /* Takes up available space */
-  min-width: 0; /* Prevents text overflow from breaking layout */
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-}
-
-.readonly-name .n { 
-  font-size: 14.5px; 
-  font-weight: 800; 
-  color: #0F172A; 
-  line-height: 1.2; 
-  /* Allow 2 lines for long names so it doesn't squash the number */
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.readonly-name .p { 
-  font-size: 11.5px; 
-  color: #6B7C93; 
-  margin-top: 2px; 
-}
-
-.readonly-votes { 
-  font-size: 20px; /* Made slightly bigger to stand out */
-  font-weight: 900; 
-  color: #0F172A; 
-  font-variant-numeric: tabular-nums; 
-  flex-shrink: 0; 
-  text-align: right;
-  padding-left: 10px; /* Gives space between the name and the number */
-  }
-    
-    .readonly-row.leader { border-color: #7EAE5C; background: linear-gradient(to right, rgba(165, 207, 131, 0.10) 0%, #FFFFFF 40%); }
-    .readonly-rank { width: 30px; height: 30px; border-radius: 50%; background: #F4F8FC; border: 1px solid rgba(21, 145, 220, 0.15); color: #6B7C93; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; flex-shrink: 0; }
-    .readonly-row.leader .readonly-rank { background: #A5CF83; border-color: #7EAE5C; color: #1A1A19; }
-    .readonly-name { flex: 1; min-width: 0; }
-    .readonly-name .n { font-size: 14.5px; font-weight: 800; color: #0F172A; line-height: 1.2; }
-    .readonly-name .p { font-size: 11.5px; color: #6B7C93; margin-top: 2px; }
-    .readonly-votes { font-size: 16px; font-weight: 800; color: #0F172A; font-variant-numeric: tabular-nums; flex-shrink: 0; }
-    .readonly-row.leader .readonly-votes { color: #4A7C3A; }
-    
-    /* Avatars */
-    .avatar-wrap { position: relative; width: 44px; height: 44px; border-radius: 50%; flex-shrink: 0; background: linear-gradient(135deg, rgba(165, 207, 131, 0.35) 0%, rgba(126, 174, 92, 0.25) 100%); display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 800; color: #4A7C3A; border: 2px solid rgba(255, 255, 255, 0.7); box-shadow: 0 2px 8px rgba(26, 26, 25, 0.08); }
-    .avatar-wrap img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; }
-    .avatar-wrap.small { width: 36px; height: 36px; font-size: 14px; }
-    .avatar-rank { position: absolute; bottom: -3px; right: -3px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 20px; background: #1A1A19; color: #F0F0F0; font-size: 10px; font-weight: 800; display: flex; align-items: center; justify-content: center; border: 2px solid #FFFFFF; font-variant-numeric: tabular-nums; letter-spacing: -0.3px; }
-    .readonly-row.leader .avatar-rank { background: #7EAE5C; color: #FFFFFF; }
-    
-    @media (max-width: 640px) {
-      .topbar { padding: 8px 12px; gap: 8px; } .topbar-mark { width: 34px; height: 34px; font-size: 15px; } .brand-name { font-size: 14px; } .brand-sub { font-size: 10.5px; } .agent-chip { padding: 4px 6px; gap: 6px; } .agent-chip-info { display: none; } .agent-chip-initial { width: 30px; height: 30px; font-size: 13px; } .topbar-logout { padding: 8px 10px; } .picker-header { padding: 18px 16px 10px; } .picker-name { font-size: 26px; } .picker-sub { font-size: 13px; }
-      .avatar-wrap { width: 38px; height: 38px; font-size: 14px; } .avatar-wrap .avatar-rank { min-width: 16px; height: 16px; font-size: 9px; }
-    }
-        /* ================================================================
-       AGENT ENTRY AVATARS (The missing piece!)
-    ================================================================ */
-    .candidate-entry .entry-avatar {
-      width: 38px;
-      height: 38px;
-      border-radius: 50%;
-      overflow: hidden;
-      flex-shrink: 0;
-      background: linear-gradient(135deg, rgba(165, 207, 131, 0.35) 0%, rgba(126, 174, 92, 0.25) 100%);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 14px;
-      font-weight: 800;
-      color: #4A7C3A;
-      border: 1.5px solid rgba(255, 255, 255, 0.7);
-    }
-    .candidate-entry .entry-avatar img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      display: block;
-    }
-    
-    @media (max-width: 640px) {
-      .candidate-entry .entry-avatar { 
-        width: 34px; 
-        height: 34px; 
-        font-size: 13px; 
-      }
-    }
-    /* ================================================================
-   PREMIUM UI UPGRADE - FROSTED GLASS (ULTIMATE OVERRIDE)
+/* ================================================================
+   DESIGN TOKENS
 ================================================================ */
+:root {
+  /* Brand */
+  --green: #A5CF83;            /* primary brand green */
+  --green-strong: #2F7D3F;     /* green for text/icons on white */
+  --green-deep: #2F5E3A;
+  --green-ink: #33452F;        /* secondary text on green */
+  --green-soft: #DCEBD0;
+  --green-tint: #F2F5EF;       /* soft rows */
+  --green-line: #DCE2D8;
 
-/* 1. The Canvas - A soft, cool grey/blue to make white pop */
-body { 
-  background: #E2E8F0 !important; 
-  background-image: 
-    radial-gradient(circle at 100% 0%, rgba(165, 207, 131, 0.4) 0%, transparent 50%),
-    radial-gradient(circle at 0% 100%, rgba(21, 145, 220, 0.2) 0%, transparent 50%) !important;
-  background-attachment: fixed !important;
-}
+  /* Neutrals */
+  --ink: #16181A;
+  --ink-logo: #1A1A19;
+  --muted: #5C6560;
+  --faint: #8A928C;
+  --line: #E3E8E0;
+  --surface: #FFFFFF;
 
-/* 2. Frosted Glass Cards - Streams, Positions, Candidates */
-.stream-card, 
-.position-card, 
-.candidate-entry {
-  background: rgba(255, 255, 255, 0.55) !important;
-  backdrop-filter: blur(20px) saturate(180%) !important;
-  -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
-  border: 1px solid rgba(255, 255, 255, 0.9) !important;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05) !important;
-  border-radius: 22px !important;
-  transition: all 0.2s ease !important;
-}
+  /* Dark panels */
+  --panel: #16181A;
+  --panel-2: #24272A;
+  --panel-line: #3A3E42;
+  --panel-muted: #9EA5A0;
 
-/* 3. Make the cards lift up nicely when tapped */
-.stream-card:active, 
-.position-card:active {
-  background: rgba(255, 255, 255, 0.9) !important;
-  transform: scale(0.97) !important;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08) !important;
-}
+  /* Status */
+  --amber-bg: #FBF1DA;
+  --amber: #6B4D05;
+  --danger: #C4453A;
+  --danger-bg: #FBEAE8;
 
-/* 4. Sticky Headers & Footers */
-.sub-header, 
-.entry-footer {
-  background: rgba(226, 232, 240, 0.85) !important;
-  backdrop-filter: blur(20px) !important;
-  -webkit-backdrop-filter: blur(20px) !important;
-  border-color: rgba(0, 0, 0, 0.05) !important;
-}
+  /* Legacy aliases (still referenced from older inline styles) */
+  --primary: var(--green);
+  --primary-dark: var(--green-deep);
+  --primary-soft: var(--green-soft);
+  --primary-tint: var(--green-tint);
+  --text: var(--ink);
+  --text-muted: var(--muted);
+  --text-faint: var(--faint);
+  --bg: var(--surface);
+  --border: var(--line);
+  --border-strong: var(--green-line);
+  --success: var(--green-strong);
+  --warning: #B8860B;
+  --warning-soft: var(--amber-bg);
+  --danger-soft: var(--danger-bg);
+  --blue: var(--green-deep);
+  --blue-soft: var(--green-soft);
 
-/* 5. Entry Form Fine-Tuning */
-.candidate-entry {
-  margin-bottom: 12px !important;
-  padding: 14px 16px !important;
-}
-.candidate-entry.has-vote {
-  background: rgba(255, 255, 255, 0.95) !important;
-  border-color: #1591DC !important;
-  box-shadow: 0 8px 24px rgba(21, 145, 220, 0.15) !important;
-}
-.candidate-entry.missing {
-  background: rgba(255, 255, 255, 0.4) !important;
-  border-color: rgba(184, 134, 11, 0.4) !important;
-}
-
-/* 6. Make the total votes bar look clean */
-.entry-total {
-  border-bottom: 1px dashed rgba(0, 0, 0, 0.15) !important;
-      }
-        /* ================================================================
-       PREMIUM LOADING OVERLAY & SUCCESS ANIMATION
-    ================================================================ */
-    .app-loading-overlay {
-      position: fixed; inset: 0; z-index: 9999;
-      background: rgba(244, 247, 246, 0.7);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      display: flex; flex-direction: column; align-items: center; justify-content: center;
-      opacity: 0; pointer-events: none; transition: opacity 0.3s ease;
-    }
-    .app-loading-overlay.active { opacity: 1; pointer-events: auto; }
-    
-    .app-spinner {
-      width: 40px; height: 40px;
-      border: 3px solid rgba(21, 145, 220, 0.2);
-      border-top-color: #1591DC;
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-      margin-bottom: 16px;
-    }
-    .app-loading-text { font-size: 14px; font-weight: 600; color: #0F172A; }
-
-    /* Success Modal */
-    .success-overlay {
-      position: fixed; inset: 0; z-index: 10000;
-      background: rgba(15, 23, 42, 0.4);
-      backdrop-filter: blur(8px);
-      display: flex; align-items: center; justify-content: center;
-      opacity: 0; pointer-events: none; transition: opacity 0.3s ease;
-    }
-    .success-overlay.active { opacity: 1; pointer-events: auto; }
-    
-    .success-card {
-      background: rgba(255, 255, 255, 0.95);
-      border: 1px solid rgba(255, 255, 255, 1);
-      box-shadow: 0 20px 40px rgba(0,0,0,0.1);
-      border-radius: 24px; padding: 40px 32px; text-align: center;
-      transform: scale(0.9) translateY(20px); transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-    }
-    .success-overlay.active .success-card { transform: scale(1) translateY(0); }
-
-    .success-svg { width: 80px; height: 80px; margin-bottom: 20px; }
-    .success-circle {
-      stroke-dasharray: 166; stroke-dashoffset: 166;
-      stroke-width: 4; stroke-miterlimit: 10; stroke: #7EAE5C; fill: none;
-      animation: stroke 0.6s cubic-bezier(0.65, 0, 0.45, 1) forwards;
-    }
-    .success-check {
-      transform-origin: 50% 50%; stroke-dasharray: 48; stroke-dashoffset: 48;
-      stroke-width: 5; stroke-linecap: round; stroke: #7EAE5C; fill: none;
-      animation: stroke 0.3s cubic-bezier(0.65, 0, 0.45, 1) 0.6s forwards;
-    }
-    @keyframes stroke { 100% { stroke-dashoffset: 0; } }
-    
-    .success-title { font-size: 20px; font-weight: 800; color: #0F172A; margin-bottom: 6px; }
-    .success-sub { font-size: 14px; color: #6B7C93; font-weight: 500; }
-    /* --- FORM UPLOAD PREMIUM UI --- */
-.action-sheet-option {
-  display: flex; align-items: center; gap: 16px; width: 100%;
-  padding: 16px; border-radius: 16px; border: 1px solid var(--border);
-  background: var(--surface); font-size: 15px; font-weight: 700; color: var(--text);
-  font-family: inherit; cursor: pointer; transition: all 0.15s ease;
-  margin-bottom: 10px; text-align: left;
-}
-.action-sheet-option:hover { background: var(--primary-tint); border-color: var(--primary); }
-.action-sheet-option i { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 16px; }
-
-.action-sheet-option.camera i { background: var(--primary-soft); color: var(--primary-dark); }
-.action-sheet-option.gallery i { background: var(--blue-soft); color: var(--blue); }
-
-.form-pending-badge {
-  display: inline-flex; align-items: center; gap: 4px;
-  background: rgba(184, 134, 11, 0.12); color: #b8860b;
-  padding: 3px 8px; border-radius: 20px; font-size: 10px; font-weight: 800; text-transform: uppercase;
-  margin-top: 6px;
+  --r-sm: 12px;
+  --r-md: 18px;
+  --r-lg: 26px;
+  --shadow-lg: 0 24px 64px rgba(22, 24, 26, 0.22);
+  --font: 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
 
-.form-attach-btn {
-  width: 100%; padding: 16px; border-radius: 14px; border: 2px dashed var(--border-strong);
-  background: var(--bg); color: var(--text-muted); font-size: 14px; font-weight: 700;
-  display: flex; flex-direction: column; align-items: center; gap: 6px; cursor: pointer;
-  margin-top: 16px; transition: all 0.2s;
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { overscroll-behavior-y: contain; }
+html { background: var(--green); }
+body {
+  font-family: var(--font);
+  background: var(--surface);
+  color: var(--ink);
+  min-height: 100dvh;
+  -webkit-font-smoothing: antialiased;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
 }
-.form-attach-btn:hover { border-color: var(--primary); background: var(--primary-tint); color: var(--primary-dark); }
+button, input { font-family: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 3px solid var(--green-strong); outline-offset: 2px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
-.form-thumbnail-wrap {
-  margin-top: 16px; border-radius: 12px; overflow: hidden; border: 1px solid var(--border);
-  position: relative; cursor: pointer;
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
-.form-thumbnail-wrap img { width: 100%; height: 120px; object-fit: cover; display: block; }
-.form-thumbnail-overlay {
-  position: absolute; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center;
-  color: white; font-weight: 700; font-size: 13px; gap: 6px; backdrop-filter: blur(2px);
-}
-    @media (max-width: 900px), (pointer: coarse) {
-  body { background-attachment: scroll !important; }
-  .stream-card, .position-card, .candidate-entry,
-  .sub-header, .entry-footer,
-  .app-loading-overlay, .success-overlay {
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-  }
-  .stream-card, .position-card, .candidate-entry { background: rgba(255,255,255,0.92) !important; }
-  .sub-header, .entry-footer { background: rgba(226,232,240,0.97) !important; }
-}
-    /* ================================================================
-   PSYCHOLOGICAL TRICK: LIVE PULSING RED DOT
+
+/* ================================================================
+   SCREEN SHELL: green hero + white sheet
 ================================================================ */
-.live-dot-red {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  background-color: #FF3B30; /* Vivid Red */
-  border-radius: 50%;
-  margin-left: 6px;
-  vertical-align: middle;
+.screen { display: none; min-height: 100dvh; background: var(--surface); }
+.screen.active { display: block; }
+
+.hero {
+  background: var(--green);
+  color: var(--ink-logo);
+  padding: calc(14px + env(safe-area-inset-top, 0px)) 18px 50px;
+}
+.hero-inner { max-width: 640px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+.hero-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.hero-left { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.hero-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
+.sheet {
   position: relative;
-  box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.7);
-  animation: pulse-red 1.5s infinite;
+  margin-top: -28px;
+  background: var(--surface);
+  border-radius: 30px 30px 0 0;
+  min-height: calc(100dvh - 150px);
+}
+.sheet-inner { max-width: 640px; margin: 0 auto; padding: 20px 16px 36px; display: flex; flex-direction: column; gap: 14px; }
+
+/* Brand mark (logo) */
+.logo-mark {
+  width: 40px; height: 40px; border-radius: 12px; flex-shrink: 0;
+  background: var(--ink-logo); color: var(--green);
+  display: flex; align-items: center; justify-content: center; font-size: 17px;
+}
+.brand { display: flex; flex-direction: column; min-width: 0; }
+.brand-name { font-size: 16px; font-weight: 800; letter-spacing: -0.01em; line-height: 1.15; }
+.brand-sub { font-size: 11.5px; font-weight: 700; color: var(--green-ink); }
+
+/* Header buttons */
+.icon-btn {
+  width: 44px; height: 44px; border-radius: 14px; border: none; flex-shrink: 0;
+  background: var(--surface); color: var(--ink-logo);
+  display: flex; align-items: center; justify-content: center; font-size: 16px;
+  transition: transform 0.12s;
+}
+.icon-btn:active { transform: scale(0.94); }
+.avatar-btn {
+  width: 44px; height: 44px; border-radius: 22px; border: none;
+  background: var(--ink-logo); color: var(--green); font-weight: 800; font-size: 16px;
 }
 
-@keyframes pulse-red {
-  0% {
-    transform: scale(0.95);
-    box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.7);
-  }
-  70% {
-    transform: scale(1);
-    box-shadow: 0 0 0 6px rgba(255, 59, 48, 0);
-  }
-  100% {
-    transform: scale(0.95);
-    box-shadow: 0 0 0 0 rgba(255, 59, 48, 0);
-  }
+/* Sync status pill — reflects real connection + queue state */
+.sync-pill {
+  height: 36px; padding: 0 12px; border-radius: 18px; border: none;
+  background: var(--surface); color: var(--ink-logo);
+  font-size: 12px; font-weight: 700; display: flex; align-items: center; gap: 7px; white-space: nowrap;
 }
-    /* NEW TURNOUT DASHBOARD STYLES */
-.turnout-card {
-  background: #FFFFFF;
-  border-radius: 16px;
-  padding: 12px 14px;
-  margin-bottom: 16px;
-  border: 1px solid rgba(21, 145, 220, 0.15);
-  box-shadow: 0 4px 12px rgba(21, 145, 220, 0.05);
+.sync-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green-strong); flex-shrink: 0; }
+.sync-pill.is-pending .sync-dot { background: #D99A1E; }
+.sync-pill.is-offline .sync-dot { background: var(--danger); }
+.sync-pill.is-syncing .sync-dot {
+  background: transparent; border: 2px solid var(--green-strong); border-top-color: transparent;
+  width: 10px; height: 10px; animation: spin 0.8s linear infinite;
 }
-.turnout-header {
-  font-size: 11px;
-  font-weight: 800;
-  color: #1591DC;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 10px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.turnout-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 8px;
-}
-.turnout-item {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.turnout-item label {
-  font-size: 10.5px;
-  font-weight: 700;
-  color: #6B7C93;
-  text-transform: uppercase;
-}
-.turnout-input {
-  width: 100%;
-  padding: 10px 8px;
-  border: 2px solid #E2E8F0;
-  border-radius: 10px;
-  font-size: 18px;
-  font-weight: 800;
-  text-align: center;
-  color: #0F172A;
-  background: #F8FAFC;
-  font-family: 'SF Mono', Menlo, Consolas, monospace;
-  transition: all 0.2s ease;
-}
-.turnout-input:focus {
-  outline: none;
-  border-color: #1591DC;
-  background: #FFFFFF;
-  box-shadow: 0 0 0 3px rgba(21, 145, 220, 0.15);
-}
-.turnout-input.error {
-  border-color: #C4453A;
-  color: #C4453A;
-  background: rgba(196, 69, 58, 0.05);
-}
-.valid-box {
-  background: rgba(165, 207, 131, 0.12);
-  border-radius: 10px;
-  padding: 6px 8px;
-  border: 1px solid rgba(126, 174, 92, 0.2);
-  justify-content: center;
-}
-.valid-box label { color: #4A7C3A !important; }
-.turnout-valid-num {
-  font-size: 20px;
-  font-weight: 900;
-  color: #4A7C3A;
-  text-align: center;
-  font-family: 'SF Mono', Menlo, Consolas, monospace;
-  line-height: 1.2;
-  }
 
-  /* ================================================================
-   V3 UI ALIGNMENT FIXES
+/* Hero titles */
+.hero-titles { display: flex; flex-direction: column; gap: 4px; }
+.hero-kicker { font-size: 13px; font-weight: 700; color: var(--green-ink); }
+.hero-title { font-size: clamp(28px, 7vw, 34px); font-weight: 800; letter-spacing: -0.03em; line-height: 1.05; overflow-wrap: anywhere; }
+.hero-meta { font-size: 13px; font-weight: 600; color: var(--green-ink); }
+.screen-title { font-size: 17px; font-weight: 800; line-height: 1.2; overflow-wrap: anywhere; }
+.screen-sub { font-size: 12px; font-weight: 600; color: var(--green-ink); margin-top: 1px; overflow-wrap: anywhere; }
+
+.hero-count { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
+.hero-big { font-size: 40px; font-weight: 800; letter-spacing: -0.03em; line-height: 1; }
+.hero-tag {
+  font-size: 12px; font-weight: 700; padding: 6px 10px; border-radius: 10px;
+  background: var(--ink-logo); color: var(--green); white-space: nowrap;
+}
+.seg-bar { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 5px; }
+.seg-bar span { height: 8px; border-radius: 4px; background: #C7DEB3; }
+.seg-bar span.done { background: var(--ink-logo); }
+.seg-bar span.next { background: var(--surface); }
+
+/* Closed banner */
+.closed-banner {
+  display: none; position: sticky; top: 0; z-index: 150;
+  padding: calc(10px + env(safe-area-inset-top, 0px)) 16px 10px;
+  background: var(--danger); color: #FFFFFF;
+  font-size: 13px; font-weight: 700; align-items: center; justify-content: center; gap: 8px;
+}
+.closed-banner.active { display: flex; }
+
+/* Section headings inside sheets */
+.section-head { display: flex; justify-content: space-between; align-items: baseline; padding: 4px 4px 0; gap: 12px; }
+.section-title { font-size: 17px; font-weight: 800; }
+.section-meta { font-size: 13px; font-weight: 700; color: var(--green-strong); }
+
+/* ================================================================
+   HOME: continue card (dark) with segmented gauge
 ================================================================ */
+.continue-card {
+  background: var(--panel); color: #F3F4F1;
+  border-radius: var(--r-lg); padding: 16px; display: flex; flex-direction: column; gap: 4px;
+}
+.continue-card:empty { display: none; }
+.cc-kicker { font-size: 12px; font-weight: 600; color: var(--panel-muted); }
+.cc-title { font-size: 16px; font-weight: 800; }
+.cc-title small { font-size: 12px; font-weight: 500; color: var(--panel-muted); }
+.gauge-wrap { display: flex; justify-content: center; }
+.gauge { width: 230px; max-width: 100%; height: auto; }
+.gauge .seg { fill: none; stroke-width: 13; stroke-linecap: round; }
+.gauge .seg-done { stroke: var(--green); }
+.gauge .seg-next { stroke: #48543F; }
+.gauge .seg-todo { stroke: #2A2E31; }
+.gauge .g-num { font-family: var(--font); font-size: 36px; font-weight: 800; fill: #F3F4F1; letter-spacing: -1px; }
+.gauge .g-lbl { font-family: var(--font); font-size: 10px; font-weight: 600; fill: var(--panel-muted); }
+.gauge-labels { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); text-align: center; font-size: 11px; font-weight: 700; color: #6F7672; padding: 0 8px 8px; }
+.gauge-labels .done { color: var(--green); }
+.gauge-labels .next { color: #F3F4F1; }
 
-/* 1. Turnout Card: Center the labels to match the centered numbers */
-.turnout-item label {
-  text-align: center !important;
-  width: 100%;
-  display: block;
+.cta-green {
+  height: 56px; border-radius: 17px; border: none; width: 100%;
+  background: var(--green); color: var(--ink);
+  display: flex; align-items: center; justify-content: space-between; padding: 0 8px 0 18px;
+  font-size: 15px; font-weight: 800; text-align: left; transition: transform 0.12s;
 }
-.turnout-item {
-  align-items: center;
+.cta-green:active { transform: scale(0.98); }
+.cta-green .cta-arrow {
+  width: 40px; height: 40px; border-radius: 12px; flex-shrink: 0;
+  background: var(--panel); color: var(--green);
+  display: flex; align-items: center; justify-content: center; font-size: 15px;
 }
+.all-done { display: flex; align-items: center; gap: 14px; padding: 6px 2px; }
+.all-done .tick {
+  width: 48px; height: 48px; border-radius: 16px; background: var(--green); color: var(--ink);
+  display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0;
+}
+
+/* Stream rows */
+.stream-list { display: flex; flex-direction: column; gap: 8px; }
+.stream-row {
+  width: 100%; border: none; text-align: left; color: var(--ink);
+  display: flex; align-items: center; gap: 12px;
+  background: var(--green-tint); border-radius: var(--r-md);
+  padding: 10px 14px 10px 10px; min-height: 62px;
+  transition: transform 0.12s, background-color 0.15s;
+}
+.stream-row:active { transform: scale(0.985); background: #E8EEE3; }
+.stream-row.is-complete { background: var(--surface); border: 1px solid var(--line); }
+.ring { flex-shrink: 0; }
+.ring-track { fill: var(--surface); stroke: var(--green-line); stroke-width: 3.5; }
+.ring-fill { fill: none; stroke: var(--green-strong); stroke-width: 3.5; stroke-linecap: round; }
+.ring-text { font-family: var(--font); font-size: 12px; font-weight: 800; fill: var(--ink); }
+.row-info { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.row-title { font-size: 15px; font-weight: 700; }
+.row-sub { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row-count { font-size: 14px; font-weight: 800; flex-shrink: 0; }
+.row-count small { font-size: 14px; color: var(--faint); font-weight: 700; }
+.row-done { font-size: 12px; font-weight: 700; color: var(--green-strong); display: flex; align-items: center; gap: 5px; flex-shrink: 0; }
+
+/* ================================================================
+   POSITIONS
+================================================================ */
+.pos-list { display: flex; flex-direction: column; gap: 10px; }
+.pos-row {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--green-tint); border-radius: var(--r-md);
+  padding: 10px; min-height: 66px;
+}
+.pos-main {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px;
+  border: none; background: transparent; color: inherit; text-align: left; padding: 0;
+  min-height: 46px;
+}
+.pos-icon {
+  width: 44px; height: 44px; border-radius: 14px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; font-size: 17px;
+  background: var(--green); color: var(--ink-logo);
+}
+.pos-info { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
+.pos-name { font-size: 15px; font-weight: 700; }
+.pos-meta { font-size: 12px; font-weight: 600; color: var(--muted); }
+.pos-end { padding-right: 4px; color: var(--green-strong); font-size: 18px; flex-shrink: 0; }
+
+.pos-row.is-done .pos-meta { color: var(--green-strong); }
+.pos-row.is-form .pos-meta { color: #7A5806; }
+.pos-attach {
+  height: 42px; padding: 0 12px; border-radius: 12px; border: none; flex-shrink: 0;
+  background: var(--amber-bg); color: var(--amber); font-size: 13px; font-weight: 700;
+  display: flex; align-items: center; gap: 6px;
+}
+.pos-row.is-next { background: var(--panel); color: #F3F4F1; min-height: 70px; }
+.pos-row.is-next .pos-icon { background: #2A2E31; color: var(--green); }
+.pos-row.is-next .pos-meta { color: var(--green); }
+.pos-enter {
+  height: 44px; padding: 0 16px; border-radius: 13px; background: var(--green); color: var(--ink);
+  font-size: 14px; font-weight: 800; display: flex; align-items: center; flex-shrink: 0;
+}
+.pos-row.is-todo { background: var(--surface); border: 1px solid var(--line); }
+.pos-row.is-todo .pos-icon { background: var(--green-tint); color: var(--muted); }
+.pos-row.is-todo .pos-end { color: var(--faint); font-size: 14px; }
+.pos-row.is-locked { background: var(--surface); border: 1px dashed var(--line); opacity: 0.7; }
+.pos-row.is-locked .pos-icon { background: var(--green-tint); color: var(--faint); }
+.pos-row.is-locked .pos-end { color: var(--faint); font-size: 14px; }
+
+/* ================================================================
+   ENTRY FORM
+================================================================ */
+.turnout-card {
+  background: var(--panel); color: #F3F4F1; border-radius: 22px; padding: 14px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.turnout-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.turnout-title { font-size: 13px; font-weight: 700; }
+.turnout-reg { font-size: 12px; color: var(--panel-muted); font-weight: 600; }
+.turnout-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.turnout-item { display: flex; flex-direction: column; gap: 5px; }
+.turnout-item label, .turnout-item .t-label { font-size: 11px; font-weight: 600; color: var(--panel-muted); text-align: center; }
 .turnout-input {
-  text-align: center !important; /* Ensure numbers stay centered */
+  height: 50px; width: 100%; border-radius: 14px; border: 1.5px solid var(--panel-line);
+  background: var(--panel-2); color: #FFFFFF; font-size: 19px; font-weight: 800; text-align: center;
+  -moz-appearance: textfield; transition: border-color 0.15s;
+}
+.turnout-input::placeholder { color: #6F7672; }
+.turnout-input:focus { outline: none; border-color: var(--green); }
+.turnout-input.error { border-color: #F08A7E; color: #FFB4AA; }
+.turnout-input::-webkit-outer-spin-button, .turnout-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.valid-box .t-label { color: var(--green); font-weight: 700; }
+.turnout-valid-num {
+  height: 50px; border-radius: 14px; background: var(--green); color: var(--ink);
+  font-size: 19px; font-weight: 800; display: flex; align-items: center; justify-content: center;
+}
+.turnout-note { font-size: 12px; font-weight: 600; color: #FFB4AA; display: none; }
+.turnout-note.show { display: block; }
+
+.draft-pill {
+  align-self: flex-start; display: inline-flex; align-items: center; gap: 6px;
+  background: var(--amber-bg); color: var(--amber); font-size: 12px; font-weight: 700;
+  padding: 6px 10px; border-radius: 10px;
 }
 
-/* 2. Candidate Rows (Read-Only): Perfectly align the name and votes */
+.candidate-entry {
+  display: flex; align-items: center; gap: 12px;
+  background: var(--green-tint); border-radius: 20px; padding: 10px 10px 10px 12px;
+  border: 1.5px solid transparent; transition: border-color 0.15s, background-color 0.15s;
+}
+.candidate-entry.has-vote { background: var(--surface); border-color: var(--green); }
+.entry-avatar {
+  width: 42px; height: 42px; border-radius: 50%; overflow: hidden; flex-shrink: 0;
+  background: var(--green-soft); color: var(--green-deep);
+  display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 800;
+}
+.entry-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.candidate-entry-info { flex: 1; min-width: 0; }
+.candidate-entry-name { font-size: 14.5px; font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; }
+.candidate-entry-party { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.vote-input {
+  width: 92px; height: 50px; padding: 0 12px; flex-shrink: 0;
+  border: 2px solid var(--green-line); border-radius: 14px; background: var(--surface); color: var(--ink);
+  font-size: 19px; font-weight: 800; text-align: right; -moz-appearance: textfield;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.vote-input::placeholder { color: #B5BCB6; }
+.vote-input:focus { outline: none; border-color: var(--green-strong); box-shadow: 0 0 0 4px rgba(165, 207, 131, 0.35); }
+.vote-input::-webkit-outer-spin-button, .vote-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.candidate-entry.has-vote .vote-input { border-color: var(--green-strong); }
+
+#screenEntry .sheet-inner { padding-bottom: 200px; }
+.entry-footer {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 200;
+  background: var(--surface); border-top: 1px solid var(--line);
+  padding: 12px 16px calc(14px + env(safe-area-inset-bottom, 0px));
+  box-shadow: 0 -10px 30px rgba(22, 24, 26, 0.06);
+}
+.entry-footer-inner { max-width: 640px; margin: 0 auto; display: flex; flex-direction: column; gap: 10px; }
+.entry-total { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.entry-total-label { font-size: 13px; font-weight: 600; color: var(--muted); }
+.entry-total-value { font-size: 22px; font-weight: 800; letter-spacing: -0.02em; }
+.entry-total-value.ok { color: var(--green-strong); }
+.entry-total-value.bad { color: var(--danger); }
+.entry-total-ref { font-size: 13px; font-weight: 600; color: var(--muted); }
+.entry-check { font-size: 12px; font-weight: 600; color: var(--danger); display: none; }
+.entry-check.show { display: block; }
+.entry-buttons { display: grid; grid-template-columns: 1fr 1.8fr; gap: 10px; }
+
+/* ================================================================
+   BUTTONS (shared)
+================================================================ */
+.btn {
+  height: 52px; padding: 0 16px; border-radius: 16px; border: none;
+  font-size: 15px; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 8px;
+  touch-action: manipulation; transition: background-color 0.15s, color 0.15s, transform 0.1s;
+}
+.btn:active { transform: scale(0.98); }
+.btn:disabled { cursor: not-allowed; }
+.btn-ghost { background: var(--surface); color: var(--ink); border: 1.5px solid var(--green-line); }
+.btn-ghost:active { background: var(--green-tint); }
+.btn-primary { background: var(--panel); color: #FFFFFF; }
+.btn-primary i { color: var(--green); }
+.btn-primary:disabled { background: #D5DAD3; color: #7D857F; }
+.btn-primary:disabled i { color: inherit; }
+.btn-primary.is-anomaly { background: var(--danger); }
+.btn-primary.is-anomaly i { color: #FFFFFF; }
+.btn-primary.is-queued { background: #D99A1E; color: var(--ink); }
+.btn-primary.is-locked { background: var(--green); color: var(--ink); }
+.btn-primary.is-locked i, .btn-primary.is-queued i { color: inherit; }
+.btn-green { background: var(--green); color: var(--ink); font-weight: 800; }
+.btn-danger-soft { background: var(--danger-bg); color: var(--danger); font-weight: 800; }
+.btn.is-loading { opacity: 0.75; pointer-events: none; }
+
+/* ================================================================
+   READ-ONLY
+================================================================ */
+.ro-info {
+  background: var(--green-tint); border-radius: var(--r-md); padding: 12px 14px;
+  display: flex; flex-direction: column; gap: 7px;
+}
+.ro-info-row { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
+.ro-info-row i { width: 16px; text-align: center; color: var(--green-strong); }
+.ro-info-row strong { color: var(--ink); font-weight: 700; }
+.ro-info-row.pending i { color: #B07A0E; }
 .readonly-row {
-  display: flex !important;
-  align-items: center !important;
-  justify-content: space-between !important;
-  padding: 12px 16px !important;
+  display: flex; align-items: center; gap: 12px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md);
+  padding: 10px 14px 10px 10px;
 }
-.readonly-name {
-  flex: 1;
-  text-align: left;
+.readonly-row.leader { background: var(--green-tint); border-color: var(--green); }
+.avatar-wrap {
+  position: relative; width: 42px; height: 42px; border-radius: 50%; flex-shrink: 0;
+  background: var(--green-soft); color: var(--green-deep);
+  display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 800;
 }
-.readonly-votes {
-  text-align: right;
-  min-width: 50px; /* Ensures numbers line up perfectly vertically even if one has 2 digits and another has 3 */
+.avatar-wrap img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; }
+.avatar-rank {
+  position: absolute; bottom: -3px; right: -4px; min-width: 19px; height: 19px; padding: 0 5px;
+  border-radius: 10px; background: var(--panel); color: #FFFFFF; border: 2px solid var(--surface);
+  font-size: 10px; font-weight: 800; display: flex; align-items: center; justify-content: center;
 }
+.readonly-row.leader .avatar-rank { background: var(--green); color: var(--ink); }
+.readonly-name { flex: 1; min-width: 0; }
+.readonly-name .n { font-size: 14.5px; font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; }
+.readonly-name .p { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.readonly-votes { font-size: 19px; font-weight: 800; min-width: 50px; text-align: right; flex-shrink: 0; }
+.readonly-row.leader .readonly-votes { color: var(--green-strong); }
 
-/* 3. Form Photo & Replace Button: Match widths and rounding */
-.form-thumbnail-wrap {
-  width: 100% !important;
-  border-radius: 12px !important;
-  overflow: hidden !important;
-  margin-bottom: 8px !important; /* Tighten the gap between image and button */
+.form-thumb {
+  position: relative; display: block; width: 100%; border: none; padding: 0;
+  border-radius: var(--r-md); overflow: hidden; background: var(--panel);
 }
-.form-thumbnail-wrap img {
-  width: 100% !important;
-  height: 140px !important; /* Slightly taller for better visibility */
-  object-fit: cover !important;
-  display: block;
+.form-thumb img { width: 100%; height: 160px; object-fit: cover; display: block; }
+.form-thumb-overlay {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 8px;
+  background: rgba(22, 24, 26, 0.45); color: #FFFFFF; font-size: 14px; font-weight: 700;
 }
+.form-attach-btn {
+  width: 100%; min-height: 96px; border-radius: var(--r-md); border: 2px dashed var(--green-line);
+  background: var(--green-tint); color: var(--ink); font-size: 15px; font-weight: 700;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+}
+.form-attach-btn i { font-size: 22px; color: var(--green-strong); }
 
-/* The Replace Photo Button */
-button.btn[onclick^="openUploadModal"] {
-  width: 100% !important;
-  border-radius: 12px !important; /* Match the image's corners */
-  padding: 14px !important;
-  font-weight: 800 !important;
-  box-shadow: 0 4px 12px rgba(165, 207, 131, 0.3) !important;
-  margin-top: 0 !important; /* Let the margin-bottom of the image handle the spacing */
+/* ================================================================
+   EMPTY / LOADING
+================================================================ */
+.loading { text-align: center; padding: 40px 20px; color: var(--muted); font-size: 14px; font-weight: 600; }
+.loading i { font-size: 22px; color: var(--green-strong); animation: spin 0.9s linear infinite; display: block; margin-bottom: 10px; }
+.empty-state { text-align: center; padding: 40px 20px; }
+.empty-state .icon-wrap {
+  width: 64px; height: 64px; border-radius: 20px; background: var(--green-tint); color: var(--green-strong);
+  display: flex; align-items: center; justify-content: center; font-size: 26px; margin: 0 auto 14px;
 }
+.empty-state .title { font-size: 16px; font-weight: 800; margin-bottom: 6px; }
+.empty-state .sub { font-size: 13.5px; color: var(--muted); line-height: 1.5; max-width: 320px; margin: 0 auto; }
 
-/* 4. Slight spacing adjustment for the whole page */
-.readonly-body {
-  padding: 16px 16px 40px !important;
-  max-width: 600px; /* Keeps it from stretching too wide on tablets */
-  margin: 0 auto;
+/* ================================================================
+   MODALS (both systems share one look)
+================================================================ */
+.modal-bg, .th-modal-bg {
+  position: fixed; inset: 0; z-index: 1000; padding: 16px;
+  background: rgba(22, 24, 26, 0.55);
+  display: none; align-items: flex-end; justify-content: center;
 }
+.modal-bg.active, .th-modal-bg.active { display: flex; }
+@media (min-width: 560px) { .modal-bg, .th-modal-bg { align-items: center; } }
+.th-modal-bg { z-index: 10000; opacity: 0; transition: opacity 0.18s ease; }
+.th-modal-bg.active { opacity: 1; }
+
+.modal, .th-modal {
+  background: var(--surface); width: 100%; max-width: 400px;
+  border-radius: 28px; padding: 24px 20px calc(20px + env(safe-area-inset-bottom, 0px));
+  box-shadow: var(--shadow-lg);
+}
+.th-modal { transform: translateY(12px); transition: transform 0.22s cubic-bezier(0.34, 1.4, 0.64, 1); }
+.th-modal-bg.active .th-modal { transform: translateY(0); }
+
+.modal-icon, .th-modal-icon {
+  width: 56px; height: 56px; border-radius: 18px; margin: 0 auto 14px;
+  display: flex; align-items: center; justify-content: center; font-size: 22px;
+  background: var(--green-soft); color: var(--green-deep);
+}
+.modal-icon.danger, .th-modal-icon.danger { background: var(--danger-bg); color: var(--danger); }
+.th-modal-icon.warn { background: var(--amber-bg); color: var(--amber); }
+.th-modal-icon.info { background: var(--green-soft); color: var(--green-deep); }
+.modal-title, .th-modal-title { font-size: 18px; font-weight: 800; text-align: center; letter-spacing: -0.01em; line-height: 1.3; }
+.modal-body, .th-modal-msg { font-size: 14px; color: var(--muted); text-align: center; line-height: 1.55; margin-top: 8px; }
+.modal-body strong, .th-modal-msg strong { color: var(--ink); font-weight: 700; }
+.modal-body .warn-line {
+  margin-top: 12px; padding: 10px 12px; background: var(--danger-bg); border-radius: 12px;
+  color: var(--danger); font-weight: 700; font-size: 13px;
+}
+.modal-actions, .th-modal-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 20px; }
+.th-modal-actions.single { grid-template-columns: 1fr; }
+
+.th-btn {
+  height: 52px; border-radius: 16px; border: none; font-size: 15px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+}
+.th-btn-ghost { background: var(--surface); color: var(--ink); border: 1.5px solid var(--green-line); }
+.th-btn-primary { background: var(--panel); color: #FFFFFF; }
+.th-btn-danger { background: var(--danger); color: #FFFFFF; }
+
+.action-sheet-option {
+  width: 100%; height: 60px; padding: 0 16px; margin-bottom: 10px;
+  display: flex; align-items: center; gap: 14px;
+  border-radius: 18px; border: 1.5px solid var(--green-line); background: var(--surface);
+  font-size: 15px; font-weight: 700; color: var(--ink); text-align: left;
+}
+.action-sheet-option i {
+  width: 38px; height: 38px; border-radius: 12px; display: flex; align-items: center; justify-content: center;
+  font-size: 16px; background: var(--green); color: var(--ink);
+}
+.preview-wrap { margin: 16px 0 10px; border-radius: 16px; overflow: hidden; background: #000; }
+.preview-wrap img { width: 100%; max-height: 260px; object-fit: contain; display: block; }
+.upload-status { font-size: 13px; text-align: center; color: var(--muted); margin-bottom: 4px; }
+
+.account-card { display: flex; align-items: center; gap: 12px; background: var(--green-tint); border-radius: 18px; padding: 12px; margin: 14px 0 6px; }
+.account-card .avatar-btn { pointer-events: none; }
+.account-name { font-size: 15px; font-weight: 800; overflow-wrap: anywhere; }
+.account-id { font-size: 12px; color: var(--muted); font-weight: 600; }
+
+/* Image viewer */
+.viewer-inner { width: 100%; max-width: 520px; display: flex; flex-direction: column; align-items: center; gap: 14px; padding-bottom: env(safe-area-inset-bottom, 0px); }
+.viewer-inner img { width: 100%; max-height: 78vh; object-fit: contain; border-radius: 14px; }
+#imageViewerModal { align-items: center; background: rgba(0, 0, 0, 0.88); }
+
+/* ================================================================
+   TOASTS, LOADER, SUCCESS
+================================================================ */
+.toasts {
+  position: fixed; top: calc(12px + env(safe-area-inset-top, 0px)); left: 12px; right: 12px; z-index: 12000;
+  display: flex; flex-direction: column; gap: 8px; pointer-events: none; align-items: center;
+}
+.toast {
+  padding: 12px 16px; background: var(--panel); color: #FFFFFF; border-radius: 14px;
+  font-size: 13.5px; font-weight: 600; box-shadow: var(--shadow-lg);
+  display: flex; align-items: center; gap: 10px; pointer-events: auto; max-width: 480px;
+  animation: toastIn 0.22s ease;
+}
+.toast i { font-size: 14px; flex-shrink: 0; color: var(--green); }
+.toast.error i { color: #FF8B7E; }
+@keyframes toastIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+
+.app-loading-overlay {
+  position: fixed; inset: 0; z-index: 9999; background: rgba(255, 255, 255, 0.86);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+  opacity: 0; pointer-events: none; transition: opacity 0.25s ease;
+}
+.app-loading-overlay.active { opacity: 1; pointer-events: auto; }
+.app-spinner { width: 40px; height: 40px; border: 3px solid var(--green-soft); border-top-color: var(--green-strong); border-radius: 50%; animation: spin 0.8s linear infinite; }
+.app-loading-text { font-size: 14px; font-weight: 700; }
+
+.success-overlay {
+  position: fixed; inset: 0; z-index: 10000; background: rgba(22, 24, 26, 0.5);
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+  opacity: 0; pointer-events: none; transition: opacity 0.25s ease;
+}
+.success-overlay.active { opacity: 1; pointer-events: auto; }
+.success-card {
+  background: var(--surface); border-radius: 28px; padding: 36px 28px; text-align: center; max-width: 340px; width: 100%;
+  transform: translateY(16px) scale(0.96); transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.success-overlay.active .success-card { transform: none; }
+.success-svg { width: 84px; height: 84px; margin-bottom: 18px; }
+.success-bg { fill: var(--green); }
+.success-check { fill: none; stroke: var(--ink); stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 60; stroke-dashoffset: 60; }
+.success-overlay.active .success-check { animation: stroke 0.35s cubic-bezier(0.65, 0, 0.45, 1) 0.15s forwards; }
+@keyframes stroke { to { stroke-dashoffset: 0; } }
+.success-title { font-size: 20px; font-weight: 800; margin-bottom: 6px; letter-spacing: -0.01em; }
+.success-sub { font-size: 14px; color: var(--muted); font-weight: 500; line-height: 1.45; }
   </style>
 </head>
 <body>
 
-<!-- TOP BAR -->
-<div class="topbar">
-  <div class="topbar-brand">
-    <div class="topbar-mark"><i class="fas fa-vote-yea"></i></div>
-    <div class="brand-text">
-      <div class="brand-name">TallyHub <span class="live-dot-red"></span></div>
-      <div class="brand-sub">Presiding Agent</div>
-    </div>
-  </div>
-  <div class="topbar-right">
-    <div class="agent-chip">
-      <span class="agent-chip-initial" id="agentInitial">J</span>
-      <div class="agent-chip-info">
-        <div class="agent-chip-name" id="agentName">Agent</div>
-        <div class="agent-chip-id" id="agentSub">AGT001</div>
-      </div>
-    </div>
-    <button class="topbar-refresh" onclick="manualRefresh()" title="Refresh">
-      <i class="fas fa-arrows-rotate" id="topRefreshIcon"></i>
-    </button>
-    <button class="topbar-logout" onclick="doLogout()">
-      <i class="fas fa-sign-out-alt"></i>
-      <span>Logout</span>
-    </button>
-  </div>
-</div>
-
-<div class="closed-banner" id="closedBanner">
+<div class="closed-banner" id="closedBanner" role="status">
   <i class="fas fa-lock"></i>
-  <span>Submission is currently closed — you can view only.</span>
+  <span>Submission is closed. You can still view results.</span>
 </div>
 
-<!-- SCREEN 1 — STREAM PICKER -->
+<!-- ============================================================
+     SCREEN 1 — HOME / STREAMS
+============================================================ -->
 <div class="screen active" id="screenStreams">
- <div class="picker-header">
-  <div class="picker-greeting" id="pickerGreeting">Welcome</div>
-  <h1 class="picker-name" id="pickerName">Agent</h1>
-  <div class="picker-sub" id="pickerSub">Loading your streams…</div>
-</div>
-  <div class="stream-list" id="streamList">
-    <div class="loading"><i class="fas fa-spinner"></i>Loading your streams…</div>
-  </div>
+  <header class="hero">
+    <div class="hero-inner">
+      <div class="hero-row">
+        <div class="hero-left">
+          <div class="logo-mark" aria-hidden="true"><i class="fas fa-vote-yea"></i></div>
+          <div class="brand">
+            <span class="brand-name">TallyHub</span>
+            <span class="brand-sub">Presiding Agent</span>
+          </div>
+        </div>
+        <div class="hero-right">
+          <button class="sync-pill is-synced" id="syncPill" onclick="manualRefresh()" aria-label="Sync status. Tap to refresh.">
+            <span class="sync-dot"></span><span id="syncText">Synced</span>
+          </button>
+          <button class="avatar-btn" id="agentInitial" onclick="openAccount()" aria-label="Account">J</button>
+        </div>
+      </div>
+      <div class="hero-titles">
+        <span class="hero-kicker" id="pickerGreeting">Welcome</span>
+        <h1 class="hero-title" id="pickerName">Agent</h1>
+        <span class="hero-meta" id="pickerSub">Loading your streams…</span>
+      </div>
+    </div>
+  </header>
+  <main class="sheet">
+    <div class="sheet-inner">
+      <section class="continue-card" id="continueCard" aria-label="Continue"></section>
+      <div class="section-head">
+        <h2 class="section-title">All streams</h2>
+        <span class="section-meta" id="streamCount"></span>
+      </div>
+      <div class="stream-list" id="streamList">
+        <div class="loading"><i class="fas fa-spinner"></i>Loading your streams…</div>
+      </div>
+    </div>
+  </main>
 </div>
 
-<!-- SCREEN 2 — POSITION LIST -->
+<!-- ============================================================
+     SCREEN 2 — POSITIONS
+============================================================ -->
 <div class="screen" id="screenPositions">
-  <div class="sub-header">
-    <button class="back-btn" onclick="goToStreams()"><i class="fas fa-arrow-left"></i></button>
-    <div style="flex:1; min-width:0;">
-      <div class="sub-header-title" id="posStreamName">Stream</div>
-      <div class="sub-header-sub" id="posStreamCode">—</div>
+  <header class="hero">
+    <div class="hero-inner">
+      <div class="hero-row">
+        <div class="hero-left">
+          <button class="icon-btn" onclick="goToStreams()" aria-label="Back to streams"><i class="fas fa-arrow-left"></i></button>
+          <div style="min-width:0;">
+            <div class="screen-title" id="posStreamName">Stream</div>
+            <div class="screen-sub" id="posStreamCode">—</div>
+          </div>
+        </div>
+        <div class="logo-mark" aria-hidden="true"><i class="fas fa-vote-yea"></i></div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        <div class="hero-count">
+          <div style="display:flex; flex-direction:column; gap:2px;">
+            <span class="hero-big" id="posCount">0 of 6</span>
+            <span class="hero-meta">positions submitted</span>
+          </div>
+          <span class="hero-tag" id="posFormTag" style="display:none;"></span>
+        </div>
+        <div class="seg-bar" id="posSegBar" aria-hidden="true"></div>
+      </div>
     </div>
-  </div>
-  <div class="position-list" id="positionList"></div>
+  </header>
+  <main class="sheet">
+    <div class="sheet-inner">
+      <h2 class="section-title" style="padding: 4px 4px 0;">Positions</h2>
+      <div class="pos-list" id="positionList"></div>
+    </div>
+  </main>
 </div>
 
-<!-- SCREEN 3 — ENTRY FORM -->
+<!-- ============================================================
+     SCREEN 3 — ENTRY FORM
+============================================================ -->
 <div class="screen" id="screenEntry">
-  <div class="sub-header">
-    <button class="back-btn" onclick="goToPositions()"><i class="fas fa-arrow-left"></i></button>
-    <div style="flex:1; min-width:0;">
-      <div class="sub-header-title" id="entryTitle">Position</div>
-      <div class="sub-header-sub" id="entrySub">—</div>
-    </div>
-  </div>
-<div class="entry-form" id="entryForm">
-    
-    <!-- NEW: THE TURNOUT CARD -->
-    <div class="turnout-card">
-      <div class="turnout-header">
-        <span><i class="fas fa-users"></i> STREAM TURNOUT</span>
-        <span id="entryRegVoters" style="font-size:11px; background:rgba(21,145,220,0.1); padding:2px 8px; border-radius:10px;">Reg: 0</span>
-      </div>
-      <div class="turnout-grid">
-        <div class="turnout-item">
-          <label>Total Cast</label>
-          <input type="number" inputmode="numeric" id="entryTotalCast" class="turnout-input" placeholder="0" oninput="calculateTurnout()">
+  <header class="hero">
+    <div class="hero-inner">
+      <div class="hero-row">
+        <div class="hero-left">
+          <button class="icon-btn" onclick="goToPositions()" aria-label="Back to positions"><i class="fas fa-arrow-left"></i></button>
+          <div style="min-width:0;">
+            <div class="screen-title" id="entryTitle" style="font-size:20px;">Position</div>
+            <div class="screen-sub" id="entrySub">—</div>
+          </div>
         </div>
-        <div class="turnout-item">
-          <label>Rejected</label>
-          <input type="number" inputmode="numeric" id="entryRejected" class="turnout-input" placeholder="0" oninput="calculateTurnout()">
-        </div>
-        <div class="turnout-item valid-box">
-          <label>Valid Votes</label>
-          <div id="entryValidVotes" class="turnout-valid-num">0</div>
-        </div>
+        <div class="logo-mark" aria-hidden="true"><i class="fas fa-vote-yea"></i></div>
       </div>
     </div>
+  </header>
+  <main class="sheet">
+    <div class="sheet-inner" id="entryForm">
+      <div class="turnout-card">
+        <div class="turnout-head">
+          <span class="turnout-title">Stream turnout</span>
+          <span class="turnout-reg" id="entryRegVoters">Reg: 0</span>
+        </div>
+        <div class="turnout-grid">
+          <div class="turnout-item">
+            <label for="entryTotalCast">Total cast</label>
+            <input type="number" inputmode="numeric" id="entryTotalCast" class="turnout-input" placeholder="0" oninput="calculateTurnout(); scheduleDraftSave();">
+          </div>
+          <div class="turnout-item">
+            <label for="entryRejected">Rejected</label>
+            <input type="number" inputmode="numeric" id="entryRejected" class="turnout-input" placeholder="0" oninput="calculateTurnout(); scheduleDraftSave();">
+          </div>
+          <div class="turnout-item valid-box">
+            <span class="t-label">Valid votes</span>
+            <div id="entryValidVotes" class="turnout-valid-num">0</div>
+          </div>
+        </div>
+        <div class="turnout-note" id="turnoutNote"></div>
+      </div>
 
-    <!-- Keep the draft pill below the turnout -->
-    <div class="draft-pill" id="draftPill" style="display:none; margin-bottom: 12px;">
-      <i class="fas fa-history"></i> Draft restored
+      <div class="draft-pill" id="draftPill" style="display:none;">
+        <i class="fas fa-history"></i> Draft restored
+      </div>
+
+      <h2 class="section-title" style="padding: 4px 4px 0;">Candidates</h2>
+      <div id="candidateEntryList" style="display:flex; flex-direction:column; gap:10px;"></div>
     </div>
-    
-    <div id="candidateEntryList"></div>
-</div>
+  </main>
+
   <div class="entry-footer">
-    <div class="entry-total">
-      <span class="entry-total-label">Total Votes</span>
-      <span class="entry-total-value" id="entryTotal">0</span>
-    </div>
-    <div class="entry-buttons">
-      <button class="btn btn-ghost" onclick="goToPositions()">Cancel</button>
-      <button class="btn btn-primary" id="submitBtn" onclick="confirmSubmit()">
-        <i class="fas fa-lock"></i> Submit &amp; Lock
-      </button>
+    <div class="entry-footer-inner">
+      <div class="entry-total">
+        <span class="entry-total-label">Total votes</span>
+        <span><span class="entry-total-value" id="entryTotal">0</span> <span class="entry-total-ref" id="entryTotalRef"></span></span>
+      </div>
+      <div class="entry-check" id="entryCheck"></div>
+      <div class="entry-buttons">
+        <button class="btn btn-ghost" onclick="goToPositions()">Cancel</button>
+        <button class="btn btn-primary" id="submitBtn" onclick="confirmSubmit()" disabled>
+          <i class="fas fa-lock"></i> Submit &amp; lock
+        </button>
+      </div>
     </div>
   </div>
 </div>
 
-<!-- SCREEN 4 — READ-ONLY VIEW -->
+<!-- ============================================================
+     SCREEN 4 — READ-ONLY
+============================================================ -->
 <div class="screen" id="screenReadonly">
-  <div class="sub-header">
-    <button class="back-btn" onclick="goToPositions()"><i class="fas fa-arrow-left"></i></button>
-    <div style="flex:1; min-width:0;">
-      <div class="sub-header-title" id="roTitle">Submitted</div>
-      <div class="sub-header-sub" id="roSub">—</div>
+  <header class="hero">
+    <div class="hero-inner">
+      <div class="hero-row">
+        <div class="hero-left">
+          <button class="icon-btn" onclick="goToPositions()" aria-label="Back to positions"><i class="fas fa-arrow-left"></i></button>
+          <div style="min-width:0;">
+            <div class="screen-title" id="roTitle" style="font-size:20px;">Submitted</div>
+            <div class="screen-sub" id="roSub">—</div>
+          </div>
+        </div>
+        <div class="logo-mark" aria-hidden="true"><i class="fas fa-vote-yea"></i></div>
+      </div>
     </div>
-  </div>
-  <div class="readonly-body" id="readonlyBody">
-    <div class="loading"><i class="fas fa-spinner"></i>Loading…</div>
-  </div>
+  </header>
+  <main class="sheet">
+    <div class="sheet-inner" id="readonlyBody">
+      <div class="loading"><i class="fas fa-spinner"></i>Loading…</div>
+    </div>
+  </main>
 </div>
 
-<!-- CONFIRM MODAL -->
+<!-- CONFIRM SUBMIT -->
 <div class="modal-bg" id="confirmModal">
-  <div class="modal">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
     <div class="modal-icon" id="confirmIcon"><i class="fas fa-lock"></i></div>
     <div class="modal-title" id="confirmTitle">Lock this submission?</div>
     <div class="modal-body" id="confirmBody"></div>
     <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="closeConfirm()">Cancel</button>
-      <button class="btn btn-primary" id="confirmBtn" onclick="submitNow()">
-        <i class="fas fa-check"></i> Confirm
-      </button>
+      <button class="btn btn-ghost" onclick="closeConfirm()">Go back</button>
+      <button class="btn btn-primary" id="confirmBtn" onclick="submitNow()"><i class="fas fa-check"></i> Lock results</button>
+    </div>
+  </div>
+</div>
+
+<!-- ACCOUNT -->
+<div class="modal-bg" id="accountModal" onclick="if(event.target===this) closeAccount()">
+  <div class="modal" role="dialog" aria-modal="true" aria-label="Account">
+    <div class="modal-title">Account</div>
+    <div class="account-card">
+      <span class="avatar-btn" id="accountInitial" style="display:flex;align-items:center;justify-content:center;">J</span>
+      <div style="min-width:0;">
+        <div class="account-name" id="agentName">Agent</div>
+        <div class="account-id" id="agentSub">AGT001</div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeAccount()">Close</button>
+      <button class="btn btn-danger-soft" onclick="closeAccount(); doLogout();"><i class="fas fa-sign-out-alt"></i> Sign out</button>
     </div>
   </div>
 </div>
 
 <!-- TOASTS -->
-<div class="toasts" id="toasts"></div>
-  <!-- APP LOADING OVERLAY -->
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<!-- LOADER -->
 <div class="app-loading-overlay" id="appLoader">
   <div class="app-spinner"></div>
-  <div class="app-loading-text" id="appLoaderText">Securely connecting...</div>
+  <div class="app-loading-text" id="appLoaderText">Connecting…</div>
 </div>
 
-<!-- ANIMATED SUCCESS MODAL -->
+<!-- SUCCESS -->
 <div class="success-overlay" id="successOverlay">
   <div class="success-card">
-    <svg class="success-svg" viewBox="0 0 100 100">
-      <circle class="success-circle" cx="50" cy="50" r="40" />
-      <path class="success-check" d="M30 50 L45 65 L70 35" />
+    <svg class="success-svg" viewBox="0 0 100 100" aria-hidden="true">
+      <rect class="success-bg" x="6" y="6" width="88" height="88" rx="28"/>
+      <path class="success-check" d="M30 51 L44 65 L71 36"/>
     </svg>
-    <div class="success-title" id="successTitle">Submission Locked!</div>
-    <div class="success-sub" id="successSub">Redirecting to the next position...</div>
+    <div class="success-title" id="successTitle">Results locked</div>
+    <div class="success-sub" id="successSub">Next, attach the form.</div>
   </div>
 </div>
-<!-- UPLOAD OPTIONS MODAL (Action Sheet) -->
+
+<!-- UPLOAD OPTIONS -->
 <div class="modal-bg" id="uploadOptionsModal" style="z-index: 10005;">
-  <div class="modal">
-    <div class="modal-icon" style="background: var(--primary-soft); color: var(--primary-dark);">
-      <i class="fas fa-file-image"></i>
-    </div>
-    <div class="modal-title" id="uploadModalTitle">Attach Form</div>
-    <div class="modal-body" style="margin-bottom: 20px;">
-      Please provide a clear, portrait photo of the statutory form.
-    </div>
-    
-    <!-- Hidden Input (Gallery / Native Camera) -->
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="uploadModalTitle">
+    <div class="modal-icon"><i class="fas fa-file-image"></i></div>
+    <div class="modal-title" id="uploadModalTitle">Attach form</div>
+    <div class="modal-body" style="margin-bottom: 18px;">Take a clear, upright (portrait) photo of the signed statutory form.</div>
     <input type="file" id="galleryInput" accept="image/*" style="display:none;" onchange="handleFormUpload(event)">
-
-    <button class="action-sheet-option gallery" onclick="document.getElementById('galleryInput').click()">
-      <i class="fas fa-images"></i> Choose from Gallery
+    <button class="action-sheet-option" onclick="document.getElementById('galleryInput').click()">
+      <i class="fas fa-camera"></i> Take or choose a photo
     </button>
-    <button class="btn" style="margin-top: 12px; width: 100%; background: rgba(196, 69, 58, 0.08) !important; color: var(--danger) !important; border: 1.5px solid rgba(196, 69, 58, 0.15) !important; border-radius: 16px; font-weight: 800; box-shadow: 0 6px 16px rgba(196, 69, 58, 0.08); transition: all 0.2s ease;" onclick="closeUploadModal()">
-      Cancel
-    </button>
-   
+    <button class="btn btn-ghost" style="width:100%;" onclick="closeUploadModal()">Later</button>
   </div>
 </div>
 
-<!-- FORM PREVIEW & UPLOAD MODAL -->
+<!-- UPLOAD PREVIEW -->
 <div class="modal-bg" id="formPreviewModal" style="z-index: 10006;">
-  <div class="modal">
-    <div class="modal-title">Confirm Upload</div>
-    <div id="previewImageWrap" style="margin: 16px 0; border-radius: 12px; overflow: hidden; border: 1px solid var(--border);">
-      <img id="previewImage" style="width: 100%; max-height: 250px; object-fit: contain; display: block; background: #000;">
-    </div>
-    <div id="uploadStatusText" style="font-size: 12px; text-align: center; color: var(--text-muted); margin-bottom: 16px;">Checking image quality...</div>
-    
-    <div class="modal-actions" style="grid-template-columns: 1fr 1fr;">
+  <div class="modal" role="dialog" aria-modal="true" aria-label="Confirm upload">
+    <div class="modal-title">Check the photo</div>
+    <div class="preview-wrap"><img id="previewImage" alt="Form preview"></div>
+    <div class="upload-status" id="uploadStatusText">Checking image…</div>
+    <div class="modal-actions">
       <button class="btn btn-ghost" onclick="retakePhoto()">Retake</button>
-      <button class="btn btn-primary" id="confirmUploadBtn" onclick="executeFormUpload()" disabled>
-        <i class="fas fa-cloud-upload-alt"></i> Upload
-      </button>
+      <button class="btn btn-primary" id="confirmUploadBtn" onclick="executeFormUpload()" disabled><i class="fas fa-cloud-upload-alt"></i> Upload</button>
     </div>
   </div>
 </div>
-  <!-- FULL SCREEN IMAGE VIEWER -->
-<div class="modal-bg" id="imageViewerModal" style="z-index: 10007; background: rgba(0,0,0,0.85);" onclick="if(event.target===this) this.classList.remove('active')">
-  <div style="width: 100%; max-width: 500px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px;">
-    <img id="imageViewerImg" src="" style="width: 100%; max-height: 80vh; object-fit: contain; border-radius: 12px;">
-    <button class="btn btn-ghost" style="margin-top: 16px; background: white; color: black; width: 100%;" onclick="document.getElementById('imageViewerModal').classList.remove('active')">
-      <i class="fas fa-times"></i> Close
-    </button>
+
+<!-- IMAGE VIEWER -->
+<div class="modal-bg" id="imageViewerModal" style="z-index: 10007;" onclick="if(event.target===this) this.classList.remove('active')">
+  <div class="viewer-inner">
+    <img id="imageViewerImg" src="" alt="Statutory form">
+    <button class="btn btn-ghost" style="width:100%;" onclick="document.getElementById('imageViewerModal').classList.remove('active')"><i class="fas fa-times"></i> Close</button>
   </div>
 </div>
-  
 
 <script>
 // ================================================================
@@ -853,7 +856,8 @@ button.btn[onclick^="openUploadModal"] {
 const supabaseUrl = 'https://mqafninsctppbkpwwmxx.supabase.co';
 const supabaseKey = 'sb_publishable_ooW3EE91PVdXoXM7tdxwKw_r51RrZ2z';
 const db = window.supabase.createClient(supabaseUrl, supabaseKey);
-  // 1. Register Service Worker
+
+// 1. Register Service Worker
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js').then(() => {
     console.log('Offline Service Worker Registered');
@@ -865,14 +869,17 @@ const offlineStore = localforage.createInstance({ name: "TallyHubOffline" });
 
 // 3. Monitor Internet Connection
 window.addEventListener('online', () => {
-  toast('Internet restored. Syncing pending data...', 'success');
+  toast('Back online. Syncing saved results…', 'success');
+  updateSyncPill();
   loadCountingStatus();
   syncOfflineData();
   prefetchOfflineData();
 });
-window.addEventListener('offline', () => { 
-    toast('You are offline. Data will save locally.', 'error'); 
+window.addEventListener('offline', () => {
+  toast('You are offline. Results will be saved on this phone.', 'error');
+  updateSyncPill();
 });
+
 // Helper to get/generate a unique device ID
 function getDeviceId() {
   let devId = localStorage.getItem('tallyhub_device_id');
@@ -897,17 +904,32 @@ var draftSaveTimer = null;
 var refreshTimer = null;
 var STREAM_MAX = 700;
 var isPoppingState = false;
+let syncing = false;   // prevents two syncs running at once
 
 const POSITIONS = ['President', 'Governor', 'Senator', 'MP', 'Women Rep', 'MCA'];
 const POSITION_ICONS = {
   'President': 'fa-flag', 'Governor': 'fa-landmark', 'Senator': 'fa-university',
   'MP': 'fa-user-tie', 'Women Rep': 'fa-female', 'MCA': 'fa-map-pin'
 };
+const POSITION_SHORT = {
+  'President': 'Pres', 'Governor': 'Gov', 'Senator': 'Sen',
+  'MP': 'MP', 'Women Rep': 'WR', 'MCA': 'MCA'
+};
 
-// FIX #2: FORMS must always exist, even before the first load
 window.FORMS = window.FORMS || {};
 
-// FIX #3: queue a vote AND persist the "submitted" status so it survives refresh
+// ---- small helpers ----
+function pad2(n) { return n < 10 ? '0' + n : String(n); }
+function isSubmitted(statuses, pos) { return !!(statuses && statuses[pos] && statuses[pos].status === 'submitted'); }
+function countSubmitted(code) {
+  var st = STATUSES[code] || {};
+  return POSITIONS.filter(p => isSubmitted(st, p)).length;
+}
+function hasForm(code, pos) { return !!(FORMS[code] && FORMS[code][pos]); }
+// Safe JS string argument inside an HTML onclick="" attribute
+function jsArg(s) { return escAttr(JSON.stringify(String(s == null ? '' : s))); }
+
+// Queue a vote AND persist the "submitted" status so it survives refresh
 async function queueVote(streamCode, position, payload, totalCast, rejected) {
   await offlineStore.setItem('vote_' + streamCode + '_' + position, {
     streamCode, position, payload, totalCast, rejected, type: 'vote'
@@ -916,9 +938,10 @@ async function queueVote(streamCode, position, payload, totalCast, rejected) {
   if (!STATUSES[streamCode]) STATUSES[streamCode] = {};
   STATUSES[streamCode][position] = { status: 'submitted', pending: true };
   await offlineStore.setItem('cached_statuses', STATUSES);
+  updateSyncPill();
 }
 
-// FIX #3: re-apply anything still waiting in the queue on top of server/cached state
+// Re-apply anything still waiting in the queue on top of server/cached state
 async function applyPendingQueue() {
   const keys = await offlineStore.keys();
   for (const k of keys) {
@@ -935,21 +958,43 @@ async function applyPendingQueue() {
   }
 }
 
-// FIX #7: is there unsynced work on this device?
-async function hasPending() {
+// How many votes/forms are waiting to sync on this device?
+async function pendingCount() {
   const keys = await offlineStore.keys();
+  let n = 0;
   for (const k of keys) {
+    if (!(k.startsWith('vote_') || k.startsWith('form_'))) continue;
     const it = await offlineStore.getItem(k);
-    if (it && (it.type === 'vote' || it.type === 'form')) return true;
+    if (it && (it.type === 'vote' || it.type === 'form')) n++;
   }
-  return false;
+  return n;
+}
+async function hasPending() { return (await pendingCount()) > 0; }
+
+// ================================================================
+//  SYNC STATUS PILL (replaces the always-on red dot)
+// ================================================================
+async function updateSyncPill() {
+  var pill = document.getElementById('syncPill');
+  var text = document.getElementById('syncText');
+  if (!pill || !text) return;
+  var state, label;
+  if (!navigator.onLine) { state = 'offline'; label = 'Offline'; }
+  else if (syncing) { state = 'syncing'; label = 'Syncing…'; }
+  else {
+    var n = 0;
+    try { n = await pendingCount(); } catch (e) {}
+    if (n > 0) { state = 'pending'; label = n + ' to sync'; }
+    else { state = 'synced'; label = 'Synced'; }
+  }
+  pill.className = 'sync-pill is-' + state;
+  text.textContent = label;
 }
 
 // Shared success overlay used by both the offline and weak-network paths
 function showQueuedSuccess(streamCode, position, btn, title, sub) {
-  btn.innerHTML = '<i class="fas fa-check-circle"></i> Saved on Device';
-  btn.style.background = 'var(--warning)';
-  btn.style.color = '#1A1A19';
+  btn.innerHTML = '<i class="fas fa-check-circle"></i> Saved on phone';
+  btn.classList.add('is-queued');
 
   document.getElementById('successTitle').textContent = title;
   document.getElementById('successSub').textContent = sub;
@@ -957,22 +1002,24 @@ function showQueuedSuccess(streamCode, position, btn, title, sub) {
 
   setTimeout(() => {
     document.getElementById('successOverlay').classList.remove('active');
-    btn.style.background = '';
-    btn.style.color = '';
+    btn.classList.remove('is-queued');
     setTimeout(() => openUploadModal(streamCode, position), 300);
   }, 2000);
 }
+
 async function updateHeartbeat() {
-  const { data: { user } } = await db.auth.getUser();
-  if (user) {
+  try {
+    const { data: { user } } = await db.auth.getUser();
+    if (user) {
       await db.from('agents').update({ last_seen: new Date().toISOString() }).eq('auth_user_id', user.id);
-  }
+    }
+  } catch (e) { /* offline: ignore */ }
 }
+
 // ================================================================
 //  AUTH & INIT
 // ================================================================
 async function init() {
-  // Ask the browser not to evict our offline data
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
 
   // 1. GET USER (offline-safe)
@@ -991,7 +1038,6 @@ async function init() {
 
   const cachedProfile = await offlineStore.getItem('cached_user_profile');
 
-  // No readable session: if offline and we have a cached profile, carry on. Otherwise go to login.
   if (!user) {
     if (!navigator.onLine && cachedProfile) {
       // continue with cached profile
@@ -1006,7 +1052,6 @@ async function init() {
 
   // 2. FETCH AGENT PROFILE
   let profile = null;
-
   if (navigator.onLine && user) {
     try {
       const { data, error } = await db.from('agents').select('*').eq('auth_user_id', user.id).single();
@@ -1033,8 +1078,9 @@ async function init() {
   var fullName = USER.name || 'Agent';
   var initial = fullName.trim().charAt(0).toUpperCase();
   document.getElementById('agentInitial').textContent = initial;
+  document.getElementById('accountInitial').textContent = initial;
   document.getElementById('agentName').textContent = fullName;
-  document.getElementById('agentSub').textContent = USER.id + ' · Agent';
+  document.getElementById('agentSub').textContent = USER.id + ' · Presiding Agent';
 
   var h = new Date().getHours();
   document.getElementById('pickerGreeting').textContent = h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
@@ -1046,22 +1092,18 @@ async function init() {
   updateHeartbeat();
   startAutoRefresh();
   syncOfflineData();
+  updateSyncPill();
 }
-function silentRefresh() { 
-    setPulse('loading'); 
-    updateHeartbeat();
-    loadOverview(true); 
-}
+
 // ================================================================
 //  DATA LOADING (SUPABASE)
 // ================================================================
 async function loadStreams(silent) {
   if (!silent) {
     document.getElementById('appLoader').classList.add('active');
-    document.getElementById('appLoaderText').textContent = "Loading your assigned streams...";
+    document.getElementById('appLoaderText').textContent = "Loading your streams…";
   }
 
-  // Load from the phone's cache (used when offline OR when the network call fails)
   async function loadFromCache() {
     const cachedStreams = await offlineStore.getItem('cached_streams');
     if (!cachedStreams) return false;
@@ -1070,14 +1112,13 @@ async function loadStreams(silent) {
     window.FORMS = (await offlineStore.getItem('cached_forms')) || {};
     await applyPendingQueue();
     renderStreams();
-   
     return true;
   }
 
   try {
     if (!navigator.onLine) {
       if (await loadFromCache()) return;
-      throw new Error("No cached streams found. Please connect to the internet first.");
+      throw new Error("No saved streams on this phone yet. Connect to the internet once to download them.");
     }
 
     const { data: streamsData, error: streamErr } = await db.from('streams')
@@ -1110,8 +1151,8 @@ async function loadStreams(silent) {
     STREAMS.forEach(st => {
       STATUSES[st.code] = {};
       POSITIONS.forEach(pos => {
-        const isSubmitted = existingResults && existingResults.find(r => r.stream_code === st.code && r.position === pos);
-        STATUSES[st.code][pos] = isSubmitted ? { status: 'submitted' } : { status: 'pending' };
+        const done = existingResults && existingResults.find(r => r.stream_code === st.code && r.position === pos);
+        STATUSES[st.code][pos] = done ? { status: 'submitted' } : { status: 'pending' };
       });
     });
 
@@ -1121,7 +1162,6 @@ async function loadStreams(silent) {
       FORMS[f.stream_code][f.position] = true;
     });
 
-    // Overlay anything still waiting to sync, then cache the merged result
     await applyPendingQueue();
     await offlineStore.setItem('cached_streams', STREAMS);
     await offlineStore.setItem('cached_statuses', STATUSES);
@@ -1132,7 +1172,6 @@ async function loadStreams(silent) {
 
   } catch (e) {
     console.error("Load Streams Error:", e);
-    // Weak network (navigator.onLine is true but the request failed): fall back to cache
     let usedCache = false;
     try { usedCache = await loadFromCache(); } catch (_) {}
     if (!usedCache && !silent) toast(e.message || 'Connection error.', 'error');
@@ -1146,7 +1185,6 @@ let prefetching = false;
 async function prefetchOfflineData(force) {
   if (prefetching || !navigator.onLine || !USER || !STREAMS.length) return;
 
-  // Skip if we already did a full download in the last 6 hours (unless forced)
   const last = await offlineStore.getItem('prefetch_done_at');
   if (!force && last && (Date.now() - last) < 6 * 60 * 60 * 1000) return;
 
@@ -1155,7 +1193,6 @@ async function prefetchOfflineData(force) {
   const photoUrls = new Set();
 
   try {
-    // 1. Registered voters for all streams in one query
     const codes = STREAMS.map(s => s.code);
     const { data: regs, error: regErr } = await db.from('streams')
       .select('code, registered_voters').in('code', codes);
@@ -1164,7 +1201,6 @@ async function prefetchOfflineData(force) {
       await offlineStore.setItem('cached_reg_' + r.code, r.registered_voters || 0);
     }
 
-    // 2. Candidates for every stream x position (4 at a time)
     const tasks = [];
     STREAMS.forEach(st => POSITIONS.forEach(pos => tasks.push({ code: st.code, pos })));
 
@@ -1188,7 +1224,6 @@ async function prefetchOfflineData(force) {
     }
     await Promise.all([worker(), worker(), worker(), worker()]);
 
-    // 3. Photos: loading them as images sends them through the service worker, which caches them
     await Promise.all([...photoUrls].map(url => new Promise(res => {
       const img = new Image();
       img.onload = img.onerror = () => res();
@@ -1197,9 +1232,9 @@ async function prefetchOfflineData(force) {
 
     if (failures === 0) {
       await offlineStore.setItem('prefetch_done_at', Date.now());
-      toast('Ready for offline use.', 'success');
+      toast('Ready to work offline.', 'success');
     } else {
-      toast('Some data could not be downloaded. Will retry.', 'info');
+      toast('Some data didn’t download. Retrying later.', 'info');
     }
   } catch (e) {
     console.warn('Prefetch error', e);
@@ -1208,15 +1243,13 @@ async function prefetchOfflineData(force) {
   }
 }
 
-  async function loadCountingStatus() {
+async function loadCountingStatus() {
   const prev = SUBMISSION_OPEN;
   try {
     if (!navigator.onLine) throw new Error('offline');
-
     const { data, error } = await db.from('config')
       .select('value').eq('key', 'SubmissionOpen').single();
     if (error || !data) throw error || new Error('no config data');
-
     SUBMISSION_OPEN = (data.value === 'TRUE');
     await offlineStore.setItem('cached_submission_open', SUBMISSION_OPEN);
   } catch (e) {
@@ -1226,13 +1259,44 @@ async function prefetchOfflineData(force) {
 
   document.getElementById('closedBanner').classList.toggle('active', !SUBMISSION_OPEN);
 
-  // Only re-render the position list if the value changed
-  if (SUBMISSION_OPEN !== prev &&
-      document.getElementById('screenPositions').classList.contains('active') && currentStream) {
-    isPoppingState = true;                 // stops showScreen from pushing history
-    goToPositions(currentStream.code);
-    isPoppingState = false;
+  if (SUBMISSION_OPEN !== prev) {
+    if (document.getElementById('screenPositions').classList.contains('active') && currentStream) {
+      isPoppingState = true;
+      goToPositions(currentStream.code);
+      isPoppingState = false;
+    } else if (document.getElementById('screenStreams').classList.contains('active')) {
+      renderStreams();
+    }
   }
+}
+
+// ================================================================
+//  SVG BUILDERS
+// ================================================================
+function ringSVG(done, total, label) {
+  var C = 2 * Math.PI * 16;
+  var fill = done > 0
+    ? '<circle cx="20" cy="20" r="16" class="ring-fill" stroke-dasharray="' + (C * done / total).toFixed(1) + ' ' + C.toFixed(1) + '" transform="rotate(-90 20 20)"/>'
+    : '';
+  return '<svg class="ring" width="42" height="42" viewBox="0 0 40 40" role="img" aria-label="' + done + ' of ' + total + ' submitted">' +
+    '<circle cx="20" cy="20" r="16" class="ring-track"/>' + fill +
+    '<text x="20" y="24.5" text-anchor="middle" class="ring-text">' + esc(label) + '</text></svg>';
+}
+
+// Six-segment half gauge: one segment per position, in POSITIONS order
+function gaugeSVG(states, done) {
+  var R = 80, cx = 100, cy = 100, gap = 9;
+  function pt(deg) {
+    var r = deg * Math.PI / 180;
+    return (cx + R * Math.cos(r)).toFixed(2) + ' ' + (cy + R * Math.sin(r)).toFixed(2);
+  }
+  var paths = states.map(function (s, i) {
+    var a1 = 180 + i * 30 + gap / 2, a2 = 180 + (i + 1) * 30 - gap / 2;
+    return '<path class="seg seg-' + s + '" d="M ' + pt(a1) + ' A ' + R + ' ' + R + ' 0 0 1 ' + pt(a2) + '"/>';
+  }).join('');
+  return '<svg class="gauge" viewBox="0 0 200 112" role="img" aria-label="' + done + ' of 6 positions submitted">' + paths +
+    '<text x="100" y="88" text-anchor="middle" class="g-num">' + done + '/6</text>' +
+    '<text x="100" y="106" text-anchor="middle" class="g-lbl">positions submitted</text></svg>';
 }
 
 // ================================================================
@@ -1241,31 +1305,75 @@ async function prefetchOfflineData(force) {
 function renderStreams() {
   var el = document.getElementById('streamList');
   var pickerSub = document.getElementById('pickerSub');
+  var countEl = document.getElementById('streamCount');
 
-  if (pickerSub) pickerSub.textContent = STREAMS.length ? 'You have ' + STREAMS.length + ' stream(s) assigned' : 'No streams assigned';
+  var centres = [...new Set(STREAMS.map(s => s.centreName))];
+  var multiCentre = centres.length > 1;
+
+  if (pickerSub) {
+    pickerSub.textContent = STREAMS.length
+      ? STREAMS.length + (STREAMS.length === 1 ? ' stream' : ' streams') + (multiCentre ? ' across ' + centres.length + ' centres' : ' · ' + centres[0])
+      : 'No streams assigned';
+  }
 
   if (!STREAMS.length) {
-    el.innerHTML = '<div class="empty-state"><div class="icon-wrap"><i class="fas fa-inbox"></i></div><div class="title">No streams assigned</div><div class="sub">Contact your coordinator.</div></div>';
+    document.getElementById('continueCard').innerHTML = '';
+    countEl.textContent = '';
+    el.innerHTML = '<div class="empty-state"><div class="icon-wrap"><i class="fas fa-inbox"></i></div><div class="title">No streams assigned</div><div class="sub">Ask your coordinator to assign you a stream, then tap Synced to refresh.</div></div>';
     return;
   }
 
-  el.innerHTML = STREAMS.map(st => {
-    var statuses = STATUSES[st.code] || {};
-    var submitted = POSITIONS.filter(p => statuses[p] && statuses[p].status === 'submitted').length;
-    var total = POSITIONS.length;
-    var pct = Math.round(submitted / total * 100);
-    var cls = submitted === total ? 'status-complete' : submitted > 0 ? 'status-partial' : 'status-pending';
-    var badgeText = submitted === total ? 'Complete' : submitted > 0 ? submitted + '/' + total + ' done' : 'Not started';
-    var num = st.streamNumber < 10 ? '0' + st.streamNumber : String(st.streamNumber);
+  var completeCount = STREAMS.filter(st => countSubmitted(st.code) === POSITIONS.length).length;
+  countEl.textContent = completeCount + ' of ' + STREAMS.length + ' complete';
 
-    return '<div class="stream-card ' + cls + '" onclick="goToPositions(\'' + st.code + '\')">' +
-      '<div class="stream-card-top"><div style="min-width:0;">' +
-          '<div class="stream-card-name">' + esc(st.centreName) + '</div>' +
-          '<div class="stream-card-centre">STR ' + num + ' · ' + esc(st.code) + '</div>' +
-      '</div><span class="stream-card-badge">' + badgeText + '</span></div>' +
-      '<div class="progress-track"><div class="progress-fill" style="width:' + pct + '%"></div></div>' +
-      '<div class="stream-card-meta"><span>' + submitted + ' of ' + total + ' positions submitted</span><span class="arrow"><i class="fas fa-chevron-right"></i></span></div></div>';
+  el.innerHTML = STREAMS.map(st => {
+    var submitted = countSubmitted(st.code);
+    var total = POSITIONS.length;
+    var complete = submitted === total;
+    var num = pad2(st.streamNumber);
+    var sub = esc(st.code) + (multiCentre ? ' · ' + esc(st.centreName) : '');
+    var end = complete
+      ? '<span class="row-done"><i class="fas fa-check"></i> Done</span>'
+      : '<span class="row-count">' + submitted + '<small>/' + total + '</small></span>';
+
+    return '<button type="button" class="stream-row' + (complete ? ' is-complete' : '') + '" onclick="goToPositions(' + jsArg(st.code) + ')">' +
+      ringSVG(submitted, total, num) +
+      '<span class="row-info"><span class="row-title">Stream ' + num + '</span><span class="row-sub">' + sub + '</span></span>' +
+      end + '</button>';
   }).join('');
+
+  renderContinueCard();
+}
+
+function renderContinueCard() {
+  var card = document.getElementById('continueCard');
+  // Prefer a stream already under way, then the first not finished
+  var target = STREAMS.find(st => { var n = countSubmitted(st.code); return n > 0 && n < POSITIONS.length; })
+            || STREAMS.find(st => countSubmitted(st.code) < POSITIONS.length);
+
+  if (!target) {
+    card.innerHTML = '<div class="all-done"><span class="tick"><i class="fas fa-check"></i></span>' +
+      '<div><div class="cc-title">All streams submitted</div><div class="cc-kicker">Check that every position has its form attached.</div></div></div>';
+    return;
+  }
+
+  var statuses = STATUSES[target.code] || {};
+  var done = countSubmitted(target.code);
+  var nextPos = POSITIONS.find(p => !isSubmitted(statuses, p));
+  var states = POSITIONS.map(p => isSubmitted(statuses, p) ? 'done' : (p === nextPos ? 'next' : 'todo'));
+  var num = pad2(target.streamNumber);
+
+  var labels = POSITIONS.map((p, i) => '<span class="' + states[i] + '">' + POSITION_SHORT[p] + '</span>').join('');
+
+  var cta = SUBMISSION_OPEN
+    ? '<button type="button" class="cta-green" onclick="goToEntry(' + jsArg(target.code) + ',' + jsArg(nextPos) + ')"><span>Enter ' + esc(nextPos) + ' results</span><span class="cta-arrow"><i class="fas fa-arrow-right"></i></span></button>'
+    : '<button type="button" class="cta-green" onclick="goToPositions(' + jsArg(target.code) + ')"><span>View Stream ' + num + '</span><span class="cta-arrow"><i class="fas fa-arrow-right"></i></span></button>';
+
+  card.innerHTML =
+    '<div><div class="cc-kicker">' + (done > 0 ? 'Continue' : 'Start') + '</div>' +
+    '<div class="cc-title">Stream ' + num + ' <small>· ' + esc(target.code) + '</small></div></div>' +
+    '<div class="gauge-wrap">' + gaugeSVG(states, done) + '</div>' +
+    '<div class="gauge-labels" aria-hidden="true">' + labels + '</div>' + cta;
 }
 
 function goToStreams() {
@@ -1278,47 +1386,70 @@ function goToPositions(streamCode) {
   if (streamCode) currentStream = STREAMS.find(s => s.code === streamCode);
   if (!currentStream) { goToStreams(); return; }
 
-  var num = currentStream.streamNumber < 10 ? '0' + currentStream.streamNumber : String(currentStream.streamNumber);
-  document.getElementById('posStreamName').textContent = currentStream.centreName + ' · STR ' + num;
-  document.getElementById('posStreamCode').textContent = currentStream.code;
-  
-  var statuses = STATUSES[currentStream.code] || {};
-  
+  var code = currentStream.code;
+  var num = pad2(currentStream.streamNumber);
+  document.getElementById('posStreamName').textContent = 'Stream ' + num;
+  document.getElementById('posStreamCode').textContent = code + ' · ' + currentStream.centreName;
+
+  var statuses = STATUSES[code] || {};
+  var done = countSubmitted(code);
+  var formsMissing = POSITIONS.filter(p => isSubmitted(statuses, p) && !hasForm(code, p)).length;
+  var nextPos = SUBMISSION_OPEN ? POSITIONS.find(p => !isSubmitted(statuses, p)) : null;
+
+  document.getElementById('posCount').textContent = done + ' of ' + POSITIONS.length;
+  var tag = document.getElementById('posFormTag');
+  if (formsMissing) {
+    tag.textContent = formsMissing + (formsMissing === 1 ? ' form missing' : ' forms missing');
+    tag.style.display = '';
+  } else if (done === POSITIONS.length) {
+    tag.textContent = 'Complete';
+    tag.style.display = '';
+  } else {
+    tag.style.display = 'none';
+  }
+  document.getElementById('posSegBar').innerHTML = POSITIONS.map(p =>
+    '<span class="' + (isSubmitted(statuses, p) ? 'done' : (p === nextPos ? 'next' : '')) + '"></span>').join('');
+
   document.getElementById('positionList').innerHTML = POSITIONS.map(pos => {
     var hit = statuses[pos] || { status: 'pending' };
-    var isSubmitted = hit.status === 'submitted';
-    
-    // NEW LOGIC: Check if submission is closed AND it hasn't been submitted yet
-    var isLocked = !isSubmitted && !SUBMISSION_OPEN;
+    var submitted = hit.status === 'submitted';
+    var icon = '<span class="pos-icon"><i class="fas ' + (POSITION_ICONS[pos] || 'fa-user') + '"></i></span>';
+    var name = '<span class="pos-name">' + esc(pos) + '</span>';
+    var c = jsArg(code), p = jsArg(pos);
 
-    var cls = isSubmitted ? 'submitted' : (isLocked ? 'locked' : 'pending');
-    
-    var metaHtml = '';
-    if (isSubmitted) {
-  var hasForm = FORMS[currentStream.code] && FORMS[currentStream.code][pos];
-  if (hasForm) {
-    metaHtml = '<div class="position-meta"><i class="fas fa-check-circle" style="color:var(--success);"></i> Submitted · <i class="fas fa-file-image" style="color:var(--success);"></i> Form Attached</div>';
-  } else {
-    metaHtml = '<div class="position-meta" style="flex-direction:column;align-items:flex-start;gap:4px;"><div><i class="fas fa-check-circle" style="color:var(--success);"></i> Submitted</div><div class="form-pending-badge"><i class="fas fa-exclamation-triangle"></i> Form Pending</div></div>';
-  }
-    }
-     else if (isLocked) {
-      metaHtml = '<div class="position-meta"><i class="fas fa-lock"></i> Submission closed</div>';
-    } else {
-      metaHtml = '<div class="position-meta"><i class="fas fa-pen" style="color:var(--warning);"></i> Tap to enter results</div>';
+    if (submitted) {
+      var formOk = hasForm(code, pos);
+      var meta = hit.pending ? 'Saved on phone · waiting to sync' : (formOk ? 'Submitted · form attached' : 'Submitted · form missing');
+      if (formOk) {
+        return '<div class="pos-row is-done">' +
+          '<button type="button" class="pos-main" onclick="goToReadonly(' + c + ',' + p + ')">' + icon +
+          '<span class="pos-info">' + name + '<span class="pos-meta">' + meta + '</span></span>' +
+          '<span class="pos-end"><i class="fas fa-check"></i></span></button></div>';
+      }
+      return '<div class="pos-row is-form">' +
+        '<button type="button" class="pos-main" onclick="goToReadonly(' + c + ',' + p + ')">' + icon +
+        '<span class="pos-info">' + name + '<span class="pos-meta">' + meta + '</span></span></button>' +
+        '<button type="button" class="pos-attach" onclick="openUploadModal(' + c + ',' + p + ')"><i class="fas fa-camera"></i> Attach</button></div>';
     }
 
-    // NEW LOGIC: Prevent clicking if it is locked
-    var onclick = isSubmitted 
-        ? 'goToReadonly(\'' + currentStream.code + '\',\'' + pos + '\')' 
-        : (isLocked 
-            ? 'toast(\'Submission is currently closed.\', \'error\')' 
-            : 'goToEntry(\'' + currentStream.code + '\',\'' + pos + '\')');
-    
-    return '<div class="position-card ' + cls + '" onclick="' + onclick + '">' +
-      '<div class="position-icon"><i class="fas ' + (POSITION_ICONS[pos] || 'fa-user') + '"></i></div>' +
-      '<div class="position-info"><div class="position-name">' + esc(pos) + '</div>' + metaHtml + '</div>' +
-      '<i class="fas fa-chevron-right position-chevron"></i></div>';
+    if (!SUBMISSION_OPEN) {
+      return '<div class="pos-row is-locked">' +
+        '<button type="button" class="pos-main" onclick="toast(\'Submission is closed.\', \'error\')">' + icon +
+        '<span class="pos-info">' + name + '<span class="pos-meta">Submission closed</span></span>' +
+        '<span class="pos-end"><i class="fas fa-lock"></i></span></button></div>';
+    }
+
+    if (pos === nextPos) {
+      return '<div class="pos-row is-next">' +
+        '<button type="button" class="pos-main" onclick="goToEntry(' + c + ',' + p + ')">' + icon +
+        '<span class="pos-info">' + name + '<span class="pos-meta">Next up</span></span>' +
+        '<span class="pos-enter">Enter</span></button></div>';
+    }
+
+    return '<div class="pos-row is-todo">' +
+      '<button type="button" class="pos-main" onclick="goToEntry(' + c + ',' + p + ')">' + icon +
+      '<span class="pos-info">' + name + '<span class="pos-meta">Not entered yet</span></span>' +
+      '<span class="pos-end"><i class="fas fa-chevron-right"></i></span></button></div>';
   }).join('');
 
   showScreen('screenPositions');
@@ -1328,110 +1459,103 @@ function goToPositions(streamCode) {
 //  ENTRY FORM
 // ================================================================
 async function goToEntry(streamCode, position) {
-  // --- GUARD CLAUSE: Prevent editing if already submitted ---
   if (STATUSES[streamCode] && STATUSES[streamCode][position]?.status === 'submitted') {
     goToReadonly(streamCode, position);
     return;
   }
 
   currentStream = STREAMS.find(s => s.code === streamCode);
+  if (!currentStream) { goToStreams(); return; }
   currentPosition = position;
-  var num = currentStream.streamNumber < 10 ? '0' + currentStream.streamNumber : String(currentStream.streamNumber);
-  
+  var num = pad2(currentStream.streamNumber);
+
   document.getElementById('entryTitle').textContent = position;
-  document.getElementById('entrySub').textContent = currentStream.centreName + ' · STR ' + num;
+  document.getElementById('entrySub').textContent = 'Stream ' + num + ' · ' + currentStream.code;
   document.getElementById('candidateEntryList').innerHTML = '<div class="loading"><i class="fas fa-spinner"></i>Loading candidates…</div>';
+  document.getElementById('draftPill').style.display = 'none';
   showScreen('screenEntry');
 
-  // Clear previous turnout inputs
   document.getElementById('entryTotalCast').value = '';
   document.getElementById('entryRejected').value = '';
   document.getElementById('entryValidVotes').textContent = '0';
+  calculateTurnout();
 
-  // ================================================================
-  // 1. FETCH REGISTERED VOTERS (Try Network -> Fallback to Cache)
-  // ================================================================
-let regVoters = 0;
-try {
-  if (!navigator.onLine) throw new Error('offline');
-  const { data: streamData, error: regErr } = await db.from('streams')
-    .select('registered_voters').eq('code', streamCode).single();
-  if (regErr || !streamData) throw regErr || new Error('no data');
-  regVoters = streamData.registered_voters || 0;
-  await offlineStore.setItem('cached_reg_' + streamCode, regVoters);
-} catch (e) {
-  const cachedReg = await offlineStore.getItem('cached_reg_' + streamCode);
-  regVoters = cachedReg || 0;
-}
-document.getElementById('entryRegVoters').textContent = 'Reg: ' + regVoters;
-
-  // ================================================================
-  // 2. FETCH CANDIDATES (Try Network -> Fallback to Cache)
-  // ================================================================
-  const cacheKey = 'cached_cands_' + streamCode + '_' + position;
-
+  // 1. Registered voters (network → cache)
+  let regVoters = 0;
   try {
-      // Attempt to get from the V3 RPC
-      const { data: cands, error } = await db.rpc('get_candidates_for_stream', {
-          p_stream_code: streamCode,
-          p_position: position
-      });
-
-      if (error) throw error;
-
-      currentCandidates = (cands || []).map(c => ({ 
-          ...c, 
-          photo_url: normalizeImageUrl(c.photo_url) 
-      }));
-      
-      // Save successful network response to the phone's memory
-      await offlineStore.setItem(cacheKey, currentCandidates);
-      renderEntryForm();
-      
+    if (!navigator.onLine) throw new Error('offline');
+    const { data: streamData, error: regErr } = await db.from('streams')
+      .select('registered_voters').eq('code', streamCode).single();
+    if (regErr || !streamData) throw regErr || new Error('no data');
+    regVoters = streamData.registered_voters || 0;
+    await offlineStore.setItem('cached_reg_' + streamCode, regVoters);
   } catch (e) {
-      // Network failed (offline). Get from cache.
-      console.warn("Network failed for candidates. Loading from cache.", e.message);
-      const cachedCands = await offlineStore.getItem(cacheKey);
-      
-      if (cachedCands) {
-          currentCandidates = cachedCands;
-          renderEntryForm();
-      } else {
-          document.getElementById('candidateEntryList').innerHTML = '<div class="empty-state"><div class="title">No candidates found</div><div class="sub">You are offline and this position was not previously cached. Please connect to the internet to load it for the first time.</div></div>';
-      }
+    const cachedReg = await offlineStore.getItem('cached_reg_' + streamCode);
+    regVoters = cachedReg || 0;
+  }
+  document.getElementById('entryRegVoters').textContent = 'Reg: ' + regVoters;
+
+  // 2. Candidates (network → cache)
+  const cacheKey = 'cached_cands_' + streamCode + '_' + position;
+  try {
+    const { data: cands, error } = await db.rpc('get_candidates_for_stream', {
+      p_stream_code: streamCode,
+      p_position: position
+    });
+    if (error) throw error;
+    currentCandidates = (cands || []).map(c => ({ ...c, photo_url: normalizeImageUrl(c.photo_url) }));
+    await offlineStore.setItem(cacheKey, currentCandidates);
+    renderEntryForm();
+  } catch (e) {
+    console.warn("Network failed for candidates. Loading from cache.", e.message);
+    const cachedCands = await offlineStore.getItem(cacheKey);
+    if (cachedCands) {
+      currentCandidates = cachedCands;
+      renderEntryForm();
+    } else {
+      document.getElementById('candidateEntryList').innerHTML = '<div class="empty-state"><div class="icon-wrap"><i class="fas fa-wifi"></i></div><div class="title">Candidates not downloaded</div><div class="sub">Connect to the internet once to load this position. After that it works offline.</div></div>';
+    }
   }
 }
+
 function renderEntryForm() {
   if (!currentCandidates.length) {
-    document.getElementById('candidateEntryList').innerHTML = '<div class="empty-state"><div class="title">No candidates</div></div>';
+    document.getElementById('candidateEntryList').innerHTML = '<div class="empty-state"><div class="title">No candidates for this position</div><div class="sub">Contact your coordinator.</div></div>';
     return;
   }
 
   var draft = loadDraft(currentStream.code, currentPosition);
-  
-  // Correctly closing the .map() and adding .join('')
+  // Supports both the new draft shape {v, cast, rej} and the old flat {code: votes}
+  var draftVotes = draft ? (draft.v || draft) : null;
+
   var html = currentCandidates.map(c => {
-    var val = (draft && draft[c.code]) ? String(draft[c.code]) : '';
+    var hasVal = draftVotes && draftVotes[c.code] !== undefined && draftVotes[c.code] !== null;
+    var val = hasVal ? String(draftVotes[c.code]) : '';
     var cls = val !== '' ? ' has-vote' : ' missing';
     var initial = c.name ? c.name.charAt(0).toUpperCase() : '?';
-    var photoHtml = c.photo_url ? '<img src="' + c.photo_url + '" onerror="this.style.display=\'none\'">' : initial;
+    var photoHtml = c.photo_url ? '<img src="' + escAttr(c.photo_url) + '" alt="" onerror="this.remove()">' + esc(initial) : esc(initial);
 
-    return '<div class="candidate-entry' + cls + '" data-code="' + c.code + '">' +
+    return '<div class="candidate-entry' + cls + '" data-code="' + escAttr(c.code) + '">' +
       '<div class="entry-avatar">' + photoHtml + '</div>' +
       '<div class="candidate-entry-info"><div class="candidate-entry-name">' + esc(c.name) + '</div><div class="candidate-entry-party">' + esc(c.party) + '</div></div>' +
-      '<input type="number" inputmode="numeric" min="0" max="700" class="vote-input" placeholder="—" value="' + val + '" oninput="onVoteInput(this)" onfocus="this.select()"></div>';
-  }).join(''); // <--- THIS WAS MISSING
+      '<input type="number" inputmode="numeric" min="0" max="700" class="vote-input" placeholder="—" aria-label="Votes for ' + escAttr(c.name) + '" value="' + escAttr(val) + '" oninput="onVoteInput(this)" onfocus="this.select()"></div>';
+  }).join('');
 
   document.getElementById('candidateEntryList').innerHTML = html;
-  
-  // This needs to be called AFTER the inputs are put on the screen
-  updateEntryTotal(); 
+
+  if (draft && draft.v) {
+    if (draft.cast != null && draft.cast !== '') document.getElementById('entryTotalCast').value = draft.cast;
+    if (draft.rej != null && draft.rej !== '') document.getElementById('entryRejected').value = draft.rej;
+  }
+  document.getElementById('draftPill').style.display = draft ? '' : 'none';
+
+  calculateTurnout(); // also refreshes totals
 }
 
 function onVoteInput(input) {
   var v = parseInt(input.value.replace(/[^0-9]/g, ''), 10);
   if (isNaN(v)) v = null;
-  if (v !== null && v > 700) v = 700;
+  if (v !== null && v > STREAM_MAX) v = STREAM_MAX;
   input.value = v === null ? '' : String(v);
 
   var row = input.closest('.candidate-entry');
@@ -1439,28 +1563,30 @@ function onVoteInput(input) {
   else { row.classList.remove('has-vote'); row.classList.add('missing'); }
 
   updateEntryTotal();
-  if (draftSaveTimer) clearTimeout(draftSaveTimer);
-  draftSaveTimer = setTimeout(saveDraftFromForm, 400);
+  scheduleDraftSave();
 }
 
 function calculateTurnout() {
-  var totalCast = parseInt(document.getElementById('entryTotalCast').value) || 0;
-  var rejected = parseInt(document.getElementById('entryRejected').value) || 0;
-  var registered = parseInt(document.getElementById('entryRegVoters').textContent.replace('Reg: ', '')) || 0;
-
   var castInput = document.getElementById('entryTotalCast');
-  
-  // Flag if votes cast exceeds registered
-  if (totalCast > registered && registered > 0) {
-    castInput.classList.add('error');
-  } else {
-    castInput.classList.remove('error');
-  }
+  var rejInput = document.getElementById('entryRejected');
+  var totalCast = parseInt(castInput.value) || 0;
+  var rejected = parseInt(rejInput.value) || 0;
+  var registered = parseInt(document.getElementById('entryRegVoters').textContent.replace('Reg: ', '')) || 0;
+  var note = document.getElementById('turnoutNote');
+
+  var overReg = totalCast > registered && registered > 0;
+  var overCast = rejected > totalCast && rejInput.value !== '';
+  castInput.classList.toggle('error', overReg);
+  rejInput.classList.toggle('error', overCast);
+
+  if (overReg) { note.textContent = 'Total cast is higher than the ' + registered + ' registered voters.'; note.classList.add('show'); }
+  else if (overCast) { note.textContent = 'Rejected votes can’t be more than total cast.'; note.classList.add('show'); }
+  else { note.textContent = ''; note.classList.remove('show'); }
 
   var valid = totalCast - rejected;
   if (valid < 0) valid = 0;
   document.getElementById('entryValidVotes').textContent = valid;
-  
+
   updateEntryTotal();
 }
 
@@ -1468,67 +1594,76 @@ function updateEntryTotal() {
   var inputs = document.querySelectorAll('#candidateEntryList .vote-input');
   var candidateSum = 0;
   var filled = 0;
-  
-  inputs.forEach(inp => { 
-    if (inp.value.trim() !== '') { 
-      filled++; 
-      candidateSum += parseInt(inp.value, 10) || 0; 
-    } 
+  inputs.forEach(inp => {
+    if (inp.value.trim() !== '') { filled++; candidateSum += parseInt(inp.value, 10) || 0; }
   });
-  
+
   var totalCast = parseInt(document.getElementById('entryTotalCast').value) || 0;
   var rejected = parseInt(document.getElementById('entryRejected').value) || 0;
-  var validVotes = totalCast - rejected;
-  if (validVotes < 0) validVotes = 0;
+  var validVotes = Math.max(0, totalCast - rejected);
 
   var totalEl = document.getElementById('entryTotal');
-  totalEl.textContent = candidateSum; 
-  
+  var refEl = document.getElementById('entryTotalRef');
+  var checkEl = document.getElementById('entryCheck');
   var submitBtn = document.getElementById('submitBtn');
+
+  totalEl.textContent = candidateSum;
+  refEl.textContent = totalCast > 0 ? '/ ' + validVotes + ' valid' : '';
+  totalEl.classList.remove('ok', 'bad');
+  submitBtn.classList.remove('is-anomaly');
+
   var mathMatches = (candidateSum === validVotes);
-  var allFieldsFilled = (filled === inputs.length);
-  
-  // Allow submit IF:
-  // 1. The math matches perfectly AND all candidate fields are filled
-  // OR
-  // 2. The math DOES NOT match (anomaly) but all candidate fields are filled (Force Submit)
+  var allFieldsFilled = inputs.length > 0 && (filled === inputs.length);
+
   if (allFieldsFilled && totalCast > 0) {
     submitBtn.disabled = false;
-    
     if (mathMatches) {
-      submitBtn.innerHTML = '<i class="fas fa-lock"></i> Submit & Lock';
-      submitBtn.style.background = 'linear-gradient(135deg, #1591DC 0%, #0F7BC0 100%)';
-      totalEl.style.color = '#4A7C3A';
+      submitBtn.innerHTML = '<i class="fas fa-lock"></i> Submit &amp; lock';
+      totalEl.classList.add('ok');
+      checkEl.classList.remove('show');
     } else {
-      // Anomaly Detected - Turn button Red
-      submitBtn.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Submit as Anomaly';
-      submitBtn.style.background = '#C4453A';
-      totalEl.style.color = '#C4453A';
+      // Anomaly: totals don't match, still allowed (flagged)
+      submitBtn.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Submit as anomaly';
+      submitBtn.classList.add('is-anomaly');
+      totalEl.classList.add('bad');
+      checkEl.textContent = 'Candidate total is ' + (candidateSum > validVotes ? (candidateSum - validVotes) + ' more' : (validVotes - candidateSum) + ' less') + ' than valid votes. It will be flagged as an anomaly.';
+      checkEl.classList.add('show');
     }
   } else {
     submitBtn.disabled = true;
-    submitBtn.innerHTML = '<i class="fas fa-lock"></i> Submit & Lock';
-    submitBtn.style.background = '#CBD5E1';
-    totalEl.style.color = '#0F172A';
+    submitBtn.innerHTML = '<i class="fas fa-lock"></i> Submit &amp; lock';
+    checkEl.classList.remove('show');
   }
 }
 
 // ================================================================
-//  DRAFT SAVING
+//  DRAFT SAVING (now keeps zeros and turnout)
 // ================================================================
 function draftKey(code, pos) { return 'draft_' + code + '_' + pos; }
+function scheduleDraftSave() {
+  if (draftSaveTimer) clearTimeout(draftSaveTimer);
+  draftSaveTimer = setTimeout(saveDraftFromForm, 400);
+}
 function saveDraftFromForm() {
   if (!currentStream || !currentPosition) return;
-  var obj = {};
+  if (!document.getElementById('screenEntry').classList.contains('active')) return;
+  var votes = {};
+  var any = false;
   document.querySelectorAll('#candidateEntryList .vote-input').forEach(inp => {
     var code = inp.closest('.candidate-entry').getAttribute('data-code');
+    if (inp.value.trim() === '') return;
     var n = parseInt(inp.value, 10);
-    if (!isNaN(n) && n > 0) obj[code] = n;
+    if (!isNaN(n)) { votes[code] = n; any = true; }
   });
-  if (Object.keys(obj).length) localStorage.setItem(draftKey(currentStream.code, currentPosition), JSON.stringify(obj));
-  else localStorage.removeItem(draftKey(currentStream.code, currentPosition));
+  var cast = document.getElementById('entryTotalCast').value.trim();
+  var rej = document.getElementById('entryRejected').value.trim();
+  if (any || cast !== '' || rej !== '') {
+    localStorage.setItem(draftKey(currentStream.code, currentPosition), JSON.stringify({ v: votes, cast: cast, rej: rej }));
+  } else {
+    localStorage.removeItem(draftKey(currentStream.code, currentPosition));
+  }
 }
-function loadDraft(code, pos) { try { return JSON.parse(localStorage.getItem(draftKey(code, pos))); } catch(e) { return null; } }
+function loadDraft(code, pos) { try { return JSON.parse(localStorage.getItem(draftKey(code, pos))); } catch (e) { return null; } }
 function clearDraft(code, pos) { localStorage.removeItem(draftKey(code, pos)); }
 
 // ================================================================
@@ -1537,31 +1672,29 @@ function clearDraft(code, pos) { localStorage.removeItem(draftKey(code, pos)); }
 function confirmSubmit() {
   var votes = collectVotes();
   var total = votes.reduce((s, v) => s + v.votes, 0);
-  
-  // Format the stream number with leading zeros
-  var num = currentStream.streamNumber < 10 ? '0' + currentStream.streamNumber : currentStream.streamNumber;
-  var streamLabel = currentStream.centreName + ' · STR ' + num;
+  var num = pad2(currentStream.streamNumber);
+  var anomaly = document.getElementById('submitBtn').classList.contains('is-anomaly');
 
-  document.getElementById('confirmTitle').textContent = 'Lock ' + currentPosition + '?';
-  
-  // Update the HTML to match the GAS version exactly
-  document.getElementById('confirmBody').innerHTML = 
-    'Stream: <strong>' + esc(streamLabel) + '</strong><br>' +
+  document.getElementById('confirmTitle').textContent = 'Lock ' + currentPosition + ' results?';
+  document.getElementById('confirmIcon').className = 'modal-icon' + (anomaly ? ' danger' : '');
+  document.getElementById('confirmIcon').innerHTML = anomaly ? '<i class="fas fa-exclamation-triangle"></i>' : '<i class="fas fa-lock"></i>';
+  document.getElementById('confirmBody').innerHTML =
+    'Stream <strong>' + esc(num) + '</strong> · ' + esc(currentStream.centreName) + '<br>' +
     'Total votes: <strong>' + total + '</strong>' +
-    '<div class="warn-line"><i class="fas fa-lock"></i> This cannot be changed after submitting.</div>';
-    
+    (anomaly ? '<br>This will be flagged as an anomaly.' : '') +
+    '<div class="warn-line"><i class="fas fa-lock"></i> You can’t change these results after locking.</div>';
+
   document.getElementById('confirmModal').classList.add('active');
 }
 function closeConfirm() { document.getElementById('confirmModal').classList.remove('active'); }
 
 function collectVotes() {
   return [].map.call(document.querySelectorAll('#candidateEntryList .vote-input'), inp => ({
-    candidate_code: inp.closest('.candidate-entry').getAttribute('data-code'), // FIXED
+    candidate_code: inp.closest('.candidate-entry').getAttribute('data-code'),
     votes: parseInt(inp.value, 10) || 0
   }));
 }
 
-  
 async function submitNow() {
   closeConfirm();
   var btn = document.getElementById('submitBtn');
@@ -1575,9 +1708,9 @@ async function submitNow() {
 
   // ---------- OFFLINE ----------
   if (!navigator.onLine) {
-    btn.innerHTML = '<i class="fas fa-save"></i> Saving Offline...';
+    btn.innerHTML = '<i class="fas fa-save"></i> Saving on phone…';
     await queueVote(streamCode, position, payload, totalCast, rejected);
-    showQueuedSuccess(streamCode, position, btn, 'Saved Offline!', 'Will auto-sync when network returns.');
+    showQueuedSuccess(streamCode, position, btn, 'Saved on this phone', 'It will sync automatically when you’re back online.');
     return;
   }
 
@@ -1589,7 +1722,7 @@ async function submitNow() {
   while (attempt < maxRetries && !success) {
     attempt++;
     btn.innerHTML = attempt === 1
-      ? '<i class="fas fa-spinner fa-spin"></i> Securing votes…'
+      ? '<i class="fas fa-spinner fa-spin"></i> Locking results…'
       : `<i class="fas fa-sync-alt fa-spin"></i> Retrying (${attempt}/${maxRetries})…`;
 
     try {
@@ -1600,42 +1733,38 @@ async function submitNow() {
         p_total_cast: totalCast,
         p_rejected: rejected
       });
-
       if (error) throw error;
 
       if (!data.success) {
         if (/already submitted/i.test(data.message || '')) {
           STATUSES[streamCode][position] = { status: 'submitted' };
-          toast('These votes are already locked.', 'info');
+          toast('These results are already locked.', 'info');
           goToPositions(streamCode);
           return;
         }
         const se = new Error(data.message);
-        se.isServer = true;          // a real rejection, not a network problem
+        se.isServer = true;
         throw se;
       }
-
       success = true;
     } catch (err) {
       console.warn(`Attempt ${attempt} failed:`, err.message);
 
-      // Server said no: retrying won't help, show the reason
       if (err.isServer) {
         btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-lock"></i> Submit & Lock';
+        updateEntryTotal();
         toast(err.message, 'error');
         return;
       }
 
-      // Network problem on the last attempt: keep the data on the device
       if (attempt >= maxRetries) {
         await queueVote(streamCode, position, payload, totalCast, rejected);
-        toast('Weak network. Saved on this device, will sync automatically.', 'info');
-        showQueuedSuccess(streamCode, position, btn, 'Saved on Device!', 'Will auto-sync when network returns.');
+        toast('Weak network. Saved on this phone, will sync automatically.', 'info');
+        showQueuedSuccess(streamCode, position, btn, 'Saved on this phone', 'It will sync automatically when the network improves.');
         return;
       }
 
-      toast('Network unstable. Retrying securely...', 'info');
+      toast('Network unstable. Retrying…', 'info');
       await new Promise(r => setTimeout(r, 3000));
     }
   }
@@ -1646,30 +1775,19 @@ async function submitNow() {
     STATUSES[streamCode][position] = { status: 'submitted' };
     await offlineStore.setItem('cached_statuses', STATUSES);
 
-    btn.innerHTML = '<i class="fas fa-check-circle"></i> Votes Locked';
-    btn.style.background = 'var(--primary)';
-    btn.style.color = 'var(--text)';
+    btn.innerHTML = '<i class="fas fa-check-circle"></i> Results locked';
+    btn.classList.add('is-locked');
 
-    document.getElementById('successTitle').textContent = position + ' Secured!';
-    document.getElementById('successSub').textContent = 'Data securely locked. Please upload the form.';
+    document.getElementById('successTitle').textContent = position + ' results locked';
+    document.getElementById('successSub').textContent = 'Next, attach a photo of the signed form.';
     document.getElementById('successOverlay').classList.add('active');
 
     setTimeout(() => {
       document.getElementById('successOverlay').classList.remove('active');
-      btn.style.background = '';
-      btn.style.color = '';
+      btn.classList.remove('is-locked');
       setTimeout(() => openUploadModal(streamCode, position), 300);
     }, 2000);
   }
-}
-function advanceAfterSubmit(streamCode, position) {
-  var statuses = STATUSES[streamCode] || {};
-  var next = POSITIONS.find(p => p !== position && statuses[p]?.status !== 'submitted');
-  var allDone = POSITIONS.every(p => statuses[p]?.status === 'submitted');
-  
-  if (allDone) { toast('🎉 All 6 positions complete!', 'success'); setTimeout(goToStreams, 900); }
-  else if (next) { toast('Next: ' + next, 'info'); setTimeout(() => goToEntry(streamCode, next), 700); }
-  else { goToStreams(); }
 }
 
 // ================================================================
@@ -1680,51 +1798,49 @@ async function goToReadonly(streamCode, position) {
   currentStream = stream;
   currentPosition = position;
 
-  var hasForm = FORMS[streamCode] && FORMS[streamCode][position];
+  var formOk = hasForm(streamCode, position);
   var localPreview = localStorage.getItem('form_preview_' + streamCode + '_' + position);
+  var c = jsArg(streamCode), p = jsArg(position);
+  var thumbId = 'formThumb_' + streamCode + '_' + position.replace(/\s+/g, '');
 
   var formHtml = '';
-  if (hasForm || localPreview) {
-    var imgSrc = localPreview || '';
-    formHtml = `<div class="form-thumbnail-wrap" onclick="viewAgentForm('${streamCode}', '${position}')">
-      <img id="formThumb_${streamCode}_${position}" src="${imgSrc}" alt="Form" onerror="this.style.display='none'">
-      <div class="form-thumbnail-overlay"><i class="fas fa-search-plus"></i> View Form</div>
-    </div>
-    <button class="btn" style="width: 100%; margin-top: 8px; font-size: 13px; padding: 10px; background: var(--primary) !important; color: var(--text) !important; font-weight: 800; border: none; box-shadow: 0 4px 12px rgba(165, 207, 131, 0.3);" onclick="openUploadModal('${streamCode}', '${position}')">
-    <i class="fas fa-sync-alt"></i> Replace Photo
-  </button>`;
+  if (formOk || localPreview) {
+    formHtml =
+      '<h2 class="section-title" style="padding: 8px 4px 0;">Statutory form</h2>' +
+      '<button type="button" class="form-thumb" onclick="viewAgentForm(' + c + ',' + p + ')">' +
+        '<img id="' + escAttr(thumbId) + '" src="' + escAttr(localPreview || '') + '" alt="Form photo" onerror="this.style.visibility=\'hidden\'">' +
+        '<span class="form-thumb-overlay"><i class="fas fa-search-plus"></i> View form</span>' +
+      '</button>' +
+      '<button type="button" class="btn btn-ghost" style="width:100%;" onclick="openUploadModal(' + c + ',' + p + ')"><i class="fas fa-sync-alt"></i> Replace photo</button>';
 
-    if (!localPreview && hasForm && navigator.onLine) {
+    if (!localPreview && formOk && navigator.onLine) {
       db.storage.from('form-photos').createSignedUrl(streamCode + '_' + position.replace(/\s+/g, '') + '.jpg', 600).then(({ data }) => {
         if (data) {
-          var el = document.getElementById('formThumb_' + streamCode + '_' + position);
+          var el = document.getElementById(thumbId);
           if (el) el.src = data.signedUrl;
         }
       });
     }
   } else {
-    formHtml = `<button class="form-attach-btn" onclick="openUploadModal('${streamCode}', '${position}')">
-      <i class="fas fa-camera" style="font-size: 24px;"></i>
-      Attach Statutory Form
-    </button>`;
+    formHtml = '<button type="button" class="form-attach-btn" onclick="openUploadModal(' + c + ',' + p + ')">' +
+      '<i class="fas fa-camera"></i>Attach statutory form</button>';
   }
 
+  var num = stream ? pad2(stream.streamNumber) : '';
   document.getElementById('roTitle').textContent = position;
-  document.getElementById('roSub').textContent = stream ? stream.centreName : '';
+  document.getElementById('roSub').textContent = stream ? 'Stream ' + num + ' · ' + stream.code : '';
   document.getElementById('readonlyBody').innerHTML = '<div class="loading"><i class="fas fa-spinner"></i>Loading…</div>';
   showScreen('screenReadonly');
 
   try {
     var rows = [], meta = {};
 
-    // 1. A vote still waiting in the offline queue? Show it from the device.
     const queued = await offlineStore.getItem('vote_' + streamCode + '_' + position);
     if (queued && queued.type === 'vote') {
-      rows = queued.payload.map(p => ({ candidate_code: p.candidate_code, votes: p.votes }));
+      rows = queued.payload.map(x => ({ candidate_code: x.candidate_code, votes: x.votes }));
       meta = { by: USER.name, at: null, totalCast: queued.totalCast, rejected: queued.rejected, pending: true };
     } else {
-      // 2. Otherwise read from the server
-      if (!navigator.onLine) throw new Error('This result is not available offline yet. Reconnect to view it.');
+      if (!navigator.onLine) throw new Error('This result isn’t saved on this phone yet. Reconnect to view it.');
 
       const { data: results, error: resError } = await db.from('results')
         .select('votes, submitted_by, created_at, candidate_code, total_votes_cast, rejected_votes')
@@ -1732,7 +1848,6 @@ async function goToReadonly(streamCode, position) {
       if (resError) throw resError;
 
       if (!results || !results.length) {
-        // Status was stale: server has nothing and nothing is queued. Reset and open entry (no loop).
         if (STATUSES[streamCode]) STATUSES[streamCode][position] = { status: 'pending' };
         await offlineStore.setItem('cached_statuses', STATUSES);
         goToEntry(streamCode, position);
@@ -1746,55 +1861,51 @@ async function goToReadonly(streamCode, position) {
       };
     }
 
-    // 3. Candidate names: cache first (works offline), network as fallback
     var candMap = {};
     const cachedCands = await offlineStore.getItem('cached_cands_' + streamCode + '_' + position);
-    if (cachedCands) cachedCands.forEach(c => { candMap[c.code] = c; });
+    if (cachedCands) cachedCands.forEach(cd => { candMap[cd.code] = cd; });
     if (!cachedCands && navigator.onLine) {
       const { data: allCands } = await db.from('candidates')
         .select('code, name, party, photo_url').eq('position', position);
-      (allCands || []).forEach(c => { candMap[c.code] = c; });
+      (allCands || []).forEach(cd => { candMap[cd.code] = cd; });
     }
 
     var totalCast = meta.totalCast || 0;
     var rejected = meta.rejected || 0;
     var validVotes = Math.max(0, totalCast - rejected);
 
-    var html = '<div class="readonly-info">' +
-      '<div class="readonly-info-row"><i class="fas fa-user-check"></i> Submitted by <strong>' + esc(meta.by) + '</strong></div>' +
+    var html = '<div class="ro-info">' +
+      '<div class="ro-info-row"><i class="fas fa-user-check"></i> Submitted by <strong>' + esc(meta.by) + '</strong></div>' +
       (meta.pending
-        ? '<div class="readonly-info-row"><i class="fas fa-clock"></i> Saved on this device. Waiting to sync</div>'
-        : '<div class="readonly-info-row"><i class="fas fa-clock"></i> ' + new Date(meta.at).toLocaleString() + '</div>') +
-      '<div class="readonly-info-row"><i class="fas fa-lock"></i> Locked</div>' +
+        ? '<div class="ro-info-row pending"><i class="fas fa-clock"></i> Saved on this phone · waiting to sync</div>'
+        : '<div class="ro-info-row"><i class="fas fa-clock"></i> ' + esc(new Date(meta.at).toLocaleString()) + '</div>') +
+      '<div class="ro-info-row"><i class="fas fa-lock"></i> Locked</div>' +
     '</div>';
 
     if (totalCast > 0) {
-      html += '<div class="turnout-card" style="margin-bottom: 16px; background: #F8FAFC; border: 1px solid #E2E8F0;">' +
-        '<div class="turnout-header" style="color: #6B7C93;"><span><i class="fas fa-users"></i> TURNOUT DATA</span></div>' +
+      html += '<div class="turnout-card">' +
+        '<div class="turnout-head"><span class="turnout-title">Turnout</span></div>' +
         '<div class="turnout-grid">' +
-          '<div class="turnout-item"><label>Total Cast</label><div class="turnout-valid-num" style="color:#0F172A;">' + totalCast + '</div></div>' +
-          '<div class="turnout-item"><label>Rejected</label><div class="turnout-valid-num" style="color:#C4453A;">' + rejected + '</div></div>' +
-          '<div class="turnout-item valid-box"><label>Valid Votes</label><div class="turnout-valid-num">' + validVotes + '</div></div>' +
-        '</div>' +
-      '</div>';
+          '<div class="turnout-item"><span class="t-label">Total cast</span><div class="turnout-valid-num" style="background:var(--panel-2);color:#fff;">' + totalCast + '</div></div>' +
+          '<div class="turnout-item"><span class="t-label">Rejected</span><div class="turnout-valid-num" style="background:var(--panel-2);color:#FFB4AA;">' + rejected + '</div></div>' +
+          '<div class="turnout-item valid-box"><span class="t-label">Valid votes</span><div class="turnout-valid-num">' + validVotes + '</div></div>' +
+        '</div></div>';
     }
 
+    html += '<h2 class="section-title" style="padding: 4px 4px 0;">Results</h2>';
+
     rows.slice().sort((a, b) => b.votes - a.votes).forEach((r, idx) => {
-      var rank = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : (idx + 1);
       var candInfo = candMap[r.candidate_code] || {};
-      var candName = candInfo.name || 'Unknown';
-      var candParty = candInfo.party || '';
+      var candName = candInfo.name || 'Unknown candidate';
       var initial = candName.charAt(0).toUpperCase();
       var photoUrl = normalizeImageUrl(candInfo.photo_url || '');
-
       var photoHtml = photoUrl
-        ? '<img src="' + escAttr(photoUrl) + '" alt="" loading="lazy" onerror="this.style.display=\'none\';this.parentElement.textContent=\'' + escAttr(initial) + '\'">'
-        : initial;
+        ? '<img src="' + escAttr(photoUrl) + '" alt="" loading="lazy" onerror="this.remove()">'
+        : esc(initial);
 
-      html += '<div class="readonly-row ' + (idx === 0 ? 'leader' : '') + '">' +
-        '<div class="avatar-wrap small' + (photoUrl ? '' : ' no-photo') + '">' + photoHtml +
-          '<span class="avatar-rank">' + rank + '</span></div>' +
-        '<div class="readonly-name"><div class="n">' + esc(candName) + '</div><div class="p">' + esc(candParty) + '</div></div>' +
+      html += '<div class="readonly-row' + (idx === 0 ? ' leader' : '') + '">' +
+        '<div class="avatar-wrap">' + photoHtml + '<span class="avatar-rank">' + (idx + 1) + '</span></div>' +
+        '<div class="readonly-name"><div class="n">' + esc(candName) + '</div><div class="p">' + esc(candInfo.party || '') + '</div></div>' +
         '<div class="readonly-votes">' + (r.votes || 0).toLocaleString() + '</div></div>';
     });
 
@@ -1803,17 +1914,16 @@ async function goToReadonly(streamCode, position) {
   } catch (err) {
     console.error('Readonly Error:', err);
     document.getElementById('readonlyBody').innerHTML =
-      '<div class="empty-state"><div class="title">Cannot load results</div><div class="sub">' + esc(err.message) + '</div></div>' + formHtml;
+      '<div class="empty-state"><div class="icon-wrap"><i class="fas fa-wifi"></i></div><div class="title">Can’t load these results</div><div class="sub">' + esc(err.message) + '</div></div>' + formHtml;
   }
 }
+
 // ================================================================
 //  UTILS & UI HELPERS
 // ================================================================
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id === id));
   window.scrollTo(0, 0);
-  
-  // Push a new state to the browser history so the back button works
   if (!isPoppingState) {
     history.pushState({ screen: id }, '', '#' + id);
   }
@@ -1826,20 +1936,31 @@ function startAutoRefresh() {
     if (document.getElementById('screenStreams').classList.contains('active')) loadStreams(true);
   }, 15000);
 }
+
 function manualRefresh() {
-  document.getElementById('topRefreshIcon').classList.add('spin');
+  var pill = document.getElementById('syncPill');
+  pill.className = 'sync-pill is-syncing';
+  document.getElementById('syncText').textContent = 'Syncing…';
   loadStreams(true);
+  loadCountingStatus();
   prefetchOfflineData(true);
-  setTimeout(() => document.getElementById('topRefreshIcon').classList.remove('spin'), 900);
+  syncOfflineData();
+  setTimeout(updateSyncPill, 1200);
 }
+
+function openAccount() { document.getElementById('accountModal').classList.add('active'); }
+function closeAccount() { document.getElementById('accountModal').classList.remove('active'); }
+
 function toast(msg, type) {
   var el = document.createElement('div');
   el.className = 'toast ' + (type || 'info');
-  el.innerHTML = '<i class="fas fa-info-circle"></i><span></span>';
+  var icon = type === 'error' ? 'fa-exclamation-circle' : type === 'success' ? 'fa-check-circle' : 'fa-info-circle';
+  el.innerHTML = '<i class="fas ' + icon + '"></i><span></span>';
   el.querySelector('span').textContent = msg;
   document.getElementById('toasts').appendChild(el);
   setTimeout(() => el.remove(), 4000);
 }
+
 function thConfirm(opts) {
   return new Promise(function (resolve) {
     opts = opts || {};
@@ -1857,7 +1978,7 @@ function thConfirm(opts) {
     var wrap = document.createElement('div');
     wrap.className = 'th-modal-bg';
     wrap.innerHTML =
-      '<div class="th-modal">' +
+      '<div class="th-modal" role="dialog" aria-modal="true">' +
         '<div class="th-modal-icon ' + tone + '"><i class="fas ' + icon + '"></i></div>' +
         '<div class="th-modal-title">' + esc(opts.title || 'Confirm') + '</div>' +
         (opts.message ? '<div class="th-modal-msg">' + opts.message + '</div>' : '') +
@@ -1890,8 +2011,8 @@ function thConfirm(opts) {
     setTimeout(function () { var ok = wrap.querySelector('[data-act="ok"]'); if (ok) ok.focus(); }, 60);
   });
 }
-  
-  // ================================================================
+
+// ================================================================
 //  FORM UPLOAD ENGINE
 // ================================================================
 var currentFormFile = null;
@@ -1901,22 +2022,15 @@ var currentFormPos = '';
 function openUploadModal(streamCode, position) {
   currentFormStream = streamCode;
   currentFormPos = position;
-  document.getElementById('uploadModalTitle').textContent = 'Attach ' + position + ' Form';
-  
-  // Reset the gallery input
+  document.getElementById('uploadModalTitle').textContent = 'Attach ' + position + ' form';
   document.getElementById('galleryInput').value = '';
-  
   document.getElementById('uploadOptionsModal').classList.add('active');
 }
 
 function closeUploadModal() {
   document.getElementById('uploadOptionsModal').classList.remove('active');
-  
-  // If they cancel the upload, gracefully take them back to the Position List
-  // because the votes are already securely locked in the database.
-  if (currentFormStream) {
-    goToPositions(currentFormStream);
-  }
+  // Votes are already locked, so return to the position list
+  if (currentFormStream) goToPositions(currentFormStream);
 }
 
 var previewObjectUrl = null;
@@ -1924,14 +2038,12 @@ var previewObjectUrl = null;
 async function shrinkImage(file, maxSize, quality) {
   let bmp;
   try {
-    // Decodes directly at reduced size (full-size bitmap never exists)
     bmp = await createImageBitmap(file, {
       resizeWidth: maxSize,
       resizeQuality: 'medium',
       imageOrientation: 'from-image'
     });
   } catch (e) {
-    // Fallback for older browsers
     bmp = await new Promise((resolve, reject) => {
       const url = URL.createObjectURL(file);
       const img = new Image();
@@ -1951,7 +2063,7 @@ async function shrinkImage(file, maxSize, quality) {
   if (bmp.close) bmp.close();
 
   const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', quality));
-  canvas.width = canvas.height = 0; // free canvas memory
+  canvas.width = canvas.height = 0;
   if (!blob) throw new Error('Canvas failed');
 
   return { file: new File([blob], 'form.jpg', { type: 'image/jpeg' }), width: w, height: h };
@@ -1960,37 +2072,40 @@ async function shrinkImage(file, maxSize, quality) {
 async function handleFormUpload(event) {
   var file = event.target.files[0];
   if (!file) return;
-  closeUploadModal();
+  document.getElementById('uploadOptionsModal').classList.remove('active');
 
   if (!file.type.startsWith('image/')) {
-    toast('Invalid file. Please upload an image.', 'error');
+    toast('That file isn’t an image. Choose a photo of the form.', 'error');
+    goToPositions(currentFormStream);
     return;
   }
 
-  // Compress FIRST, before anything else touches the photo
-  document.getElementById('appLoaderText').textContent = 'Preparing photo...';
+  document.getElementById('appLoaderText').textContent = 'Preparing photo…';
   document.getElementById('appLoader').classList.add('active');
 
   try {
     const result = await shrinkImage(file, 1600, 0.85);
 
     if (result.width > result.height) {
-      toast('Invalid format. Please take a portrait (vertical) photo.', 'error');
+      toast('Hold the phone upright and take a portrait photo of the form.', 'error');
+      openUploadModal(currentFormStream, currentFormPos);
       return;
     }
 
-    currentFormFile = result.file; // already small (~200-400 KB)
+    currentFormFile = result.file;
 
     if (previewObjectUrl) URL.revokeObjectURL(previewObjectUrl);
     previewObjectUrl = URL.createObjectURL(result.file);
     document.getElementById('previewImage').src = previewObjectUrl;
     document.getElementById('uploadStatusText').innerHTML =
-      '<span style="color:var(--success);"><i class="fas fa-check-circle"></i> Image looks good. Ready to upload.</span>';
+      '<span style="color:var(--green-strong);font-weight:700;"><i class="fas fa-check-circle"></i> Looks good. Ready to upload.</span>';
     document.getElementById('confirmUploadBtn').disabled = false;
+    document.getElementById('confirmUploadBtn').innerHTML = '<i class="fas fa-cloud-upload-alt"></i> Upload';
     document.getElementById('formPreviewModal').classList.add('active');
   } catch (err) {
     console.error(err);
-    toast('Could not process photo. Try again or choose from gallery.', 'error');
+    toast('Couldn’t read that photo. Try again.', 'error');
+    openUploadModal(currentFormStream, currentFormPos);
   } finally {
     document.getElementById('appLoader').classList.remove('active');
   }
@@ -2001,74 +2116,69 @@ function retakePhoto() {
   openUploadModal(currentFormStream, currentFormPos);
 }
 
+async function saveFormThumb(stream, pos, file) {
+  try {
+    const thumb = await shrinkImage(file, 400, 0.7);
+    const dataUrl = await new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = () => res(r.result);
+      r.onerror = rej;
+      r.readAsDataURL(thumb.file);
+    });
+    localStorage.setItem('form_preview_' + stream + '_' + pos, dataUrl);
+  } catch (e) { console.warn('Thumbnail skipped', e); }
+}
+
+function finishFormUpload() {
+  document.getElementById('formPreviewModal').classList.remove('active');
+  if (previewObjectUrl) { URL.revokeObjectURL(previewObjectUrl); previewObjectUrl = null; }
+  document.getElementById('previewImage').src = '';
+  currentFormFile = null;
+  if (!FORMS[currentFormStream]) FORMS[currentFormStream] = {};
+  FORMS[currentFormStream][currentFormPos] = true;
+  offlineStore.setItem('cached_forms', FORMS);
+  goToPositions(currentFormStream);
+}
+
 async function executeFormUpload() {
   if (!currentFormFile) return;
 
   var btn = document.getElementById('confirmUploadBtn');
   btn.disabled = true;
-  
-  // ==========================================
-  // 🚨 OFFLINE INTERCEPTOR 🚨
-  // ==========================================
+
+  // ---------- OFFLINE ----------
   if (!navigator.onLine) {
-      btn.innerHTML = '<i class="fas fa-save"></i> Saving Offline...';
-      
-      // Save the physical file and metadata to IndexedDB
-      await offlineStore.setItem('form_' + currentFormStream + '_' + currentFormPos, {
-          streamCode: currentFormStream, 
-          position: currentFormPos, 
-          file: currentFormFile, 
-          type: 'form'
-      });
-      
-      // Tiny thumbnail cache for immediate UI feedback
-      try {
-        const thumb = await shrinkImage(currentFormFile, 400, 0.7);
-        const dataUrl = await new Promise((res, rej) => {
-          const r = new FileReader();
-          r.onload = () => res(r.result);
-          r.onerror = rej;
-          r.readAsDataURL(thumb.file);
-        });
-        localStorage.setItem('form_preview_' + currentFormStream + '_' + currentFormPos, dataUrl);
-      } catch (e) { console.warn('Thumbnail skipped', e); }
-
-      toast('Form saved offline!', 'success');
-      document.getElementById('formPreviewModal').classList.remove('active');
-      
-      if (previewObjectUrl) { URL.revokeObjectURL(previewObjectUrl); previewObjectUrl = null; }
-      document.getElementById('previewImage').src = '';
-      currentFormFile = null;
-
-      if (!FORMS[currentFormStream]) FORMS[currentFormStream] = {};
-      FORMS[currentFormStream][currentFormPos] = true;
-      goToPositions(currentFormStream);
-      return; // Stop execution here!
+    btn.innerHTML = '<i class="fas fa-save"></i> Saving on phone…';
+    await offlineStore.setItem('form_' + currentFormStream + '_' + currentFormPos, {
+      streamCode: currentFormStream,
+      position: currentFormPos,
+      file: currentFormFile,
+      type: 'form'
+    });
+    await saveFormThumb(currentFormStream, currentFormPos, currentFormFile);
+    toast('Form saved on this phone. It will upload when you’re online.', 'success');
+    updateSyncPill();
+    finishFormUpload();
+    return;
   }
-  // ==========================================
-  // 🌐 ONLINE UPLOAD (Your Original Logic)
-  // ==========================================
 
-  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uploading...';
+  // ---------- ONLINE ----------
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uploading…';
 
   try {
     var fileName = currentFormStream + '_' + currentFormPos.replace(/\s+/g, '') + '.jpg';
-    
-    // 1. Upload the physical image to the Storage Bucket
+
     const { error: uploadError } = await db.storage
       .from('form-photos')
       .upload(fileName, currentFormFile, { upsert: true, contentType: 'image/jpeg' });
     if (uploadError) throw new Error(uploadError.message);
 
-    // 2. V3 FIX: Fetch the Geographic IDs for this stream
     const { data: streamData, error: streamErr } = await db.from('streams')
       .select('county_id, constituency_id, ward_id')
       .eq('code', currentFormStream)
       .single();
-      
     if (streamErr) throw new Error('Failed to fetch stream geography: ' + streamErr.message);
 
-    // 3. Save the record with the IDs stamped in
     const { error: dbError } = await db.from('form_photos').upsert({
       stream_code: currentFormStream,
       position: currentFormPos,
@@ -2078,112 +2188,64 @@ async function executeFormUpload() {
       constituency_id: streamData?.constituency_id,
       ward_id: streamData?.ward_id
     }, { onConflict: 'stream_code,position' });
-    
     if (dbError) throw new Error(dbError.message);
 
-    // Tiny thumbnail cache; never allowed to break the upload
-    try {
-      const thumb = await shrinkImage(currentFormFile, 400, 0.7);
-      const dataUrl = await new Promise((res, rej) => {
-        const r = new FileReader();
-        r.onload = () => res(r.result);
-        r.onerror = rej;
-        r.readAsDataURL(thumb.file);
-      });
-      localStorage.setItem('form_preview_' + currentFormStream + '_' + currentFormPos, dataUrl);
-    } catch (e) { console.warn('Thumbnail skipped', e); }
-
-    toast('Form uploaded securely!', 'success');
-    document.getElementById('formPreviewModal').classList.remove('active');
-    
-    // Cleanup
-    if (previewObjectUrl) { URL.revokeObjectURL(previewObjectUrl); previewObjectUrl = null; }
-    document.getElementById('previewImage').src = '';
-    currentFormFile = null;
+    await saveFormThumb(currentFormStream, currentFormPos, currentFormFile);
+    toast('Form uploaded.', 'success');
     sessionStorage.removeItem('pending_upload');
-
-    if (!FORMS[currentFormStream]) FORMS[currentFormStream] = {};
-    FORMS[currentFormStream][currentFormPos] = true;
-    goToPositions(currentFormStream);
+    finishFormUpload();
 
   } catch (err) {
     console.error(err);
     toast('Upload failed: ' + err.message, 'error');
     btn.disabled = false;
-    btn.innerHTML = '<i class="fas fa-cloud-upload-alt"></i> Retry Upload';
+    btn.innerHTML = '<i class="fas fa-cloud-upload-alt"></i> Retry upload';
   }
 }
-  async function viewAgentForm(streamCode, position) {
+
+async function viewAgentForm(streamCode, position) {
   var fileName = streamCode + '_' + position.replace(/\s+/g, '') + '.jpg';
-  
-  // Show loading state
-  document.getElementById('imageViewerImg').src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" stroke="%23A5CF83" stroke-width="5" fill="none" stroke-dasharray="1, 10"/></svg>'; // tiny loading circle
+  var img = document.getElementById('imageViewerImg');
+  var localPreview = localStorage.getItem('form_preview_' + streamCode + '_' + position);
+  img.src = localPreview || '';
   document.getElementById('imageViewerModal').classList.add('active');
 
   try {
-    // 1. TRY TO GET THE HIGH-RES IMAGE FROM SUPABASE
+    if (!navigator.onLine) throw new Error('offline');
     const { data, error } = await db.storage.from('form-photos').createSignedUrl(fileName, 600);
-    
-    if (error || !data) {
-      throw new Error("Could not load high-res image.");
-    }
-    
-    // Set the high-res image
-    document.getElementById('imageViewerImg').src = data.signedUrl;
-    
+    if (error || !data) throw new Error("Could not load high-res image.");
+    img.src = data.signedUrl;
   } catch (err) {
     console.warn("Falling back to local thumbnail", err);
-    // 2. FALLBACK TO LOCAL THUMBNAIL ONLY IF OFFLINE/ERROR
-    var localPreview = localStorage.getItem('form_preview_' + streamCode + '_' + position);
-    if (localPreview) {
-      document.getElementById('imageViewerImg').src = localPreview;
-    } else {
-      toast('Could not load form. Check your internet connection.', 'error');
+    if (!localPreview) {
+      toast('Couldn’t load the form. Check your connection.', 'error');
       document.getElementById('imageViewerModal').classList.remove('active');
     }
   }
 }
-function doLogout() {
-  thConfirm({
-    title: 'Sign out?',
-    message: 'Any unsaved entries will be kept as drafts on this device.',
-    confirmText: 'Sign Out',
-    cancelText: 'Stay',
-    tone: 'danger',
-    icon: 'fa-sign-out-alt'
-  }).then(function (ok) {
-    if (ok) {
-      db.auth.signOut().then(() => window.location.href = 'index.html');
-    }
-  });
-}
 
-function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-  
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+function escAttr(s) { return esc(s); }
+
 function normalizeImageUrl(raw) {
   if (!raw) return '';
   raw = String(raw).trim();
   if (!raw) return '';
 
-  // 1. V3 FIX: If it's a Supabase file (doesn't start with http), build the full URL
+  // Supabase storage file name → full public URL
   if (!raw.startsWith('http://') && !raw.startsWith('https://')) {
-      // Remove the bucket name if it accidentally got saved in the string
-      const cleanFileName = raw.replace('candidate-photos/', '');
-      return `https://mqafninsctppbkpwwmxx.supabase.co/storage/v1/object/public/candidate-photos/${cleanFileName}`;
+    const cleanFileName = raw.replace('candidate-photos/', '');
+    return `${supabaseUrl}/storage/v1/object/public/candidate-photos/${cleanFileName}`;
   }
 
-  // 2. Already a CDN URL
   if (raw.includes('cdn.jsdelivr.net/gh/') || raw.includes('lh3.googleusercontent.com/d/')) return raw;
 
-  // 3. GitHub blob URL → jsDelivr CDN
   var m = raw.match(/github\.com\/([^\/]+)\/([^\/]+)\/blob\/([^\/]+)\/(.+)$/);
   if (m) return 'https://cdn.jsdelivr.net/gh/' + m[1] + '/' + m[2] + '@' + m[3] + '/' + m[4];
 
-  // 4. Raw GitHub URL → jsDelivr CDN
   m = raw.match(/raw\.githubusercontent\.com\/([^\/]+)\/([^\/]+)\/([^\/]+)\/(.+)$/);
   if (m) return 'https://cdn.jsdelivr.net/gh/' + m[1] + '/' + m[2] + '@' + m[3] + '/' + m[4];
 
-  // 5. Google Drive Links
   m = raw.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
   if (m) return 'https://lh3.googleusercontent.com/d/' + m[1];
   m = raw.match(/[?&]id=([a-zA-Z0-9_-]+)/);
@@ -2191,22 +2253,17 @@ function normalizeImageUrl(raw) {
   m = raw.match(/\/d\/([a-zA-Z0-9_-]+)/);
   if (m) return 'https://lh3.googleusercontent.com/d/' + m[1];
 
-  // 6. Any other direct http/https URL (already handled in step 1, but kept for safety)
-  if (raw.startsWith('http://') || raw.startsWith('https://')) return raw;
-
-  // 7. Fallback for bare Google Drive IDs
-  if (/^[a-zA-Z0-9_-]{20,}$/.test(raw)) return 'https://lh3.googleusercontent.com/d/' + raw;
-
-  return '';
+  return raw;
 }
-  function escAttr(s) { return esc(s); }
+
 // ================================================================
-//  HANDLE PHONE BACK BUTTON (History API)
+//  PHONE BACK BUTTON (History API)
 // ================================================================
-window.addEventListener('popstate', function(event) {
+window.addEventListener('popstate', function (event) {
+  // Close any open sheet first
+  document.querySelectorAll('.modal-bg.active').forEach(m => m.classList.remove('active'));
   if (event.state && event.state.screen) {
-    isPoppingState = true; // Tell showScreen NOT to push another history state
-    
+    isPoppingState = true;
     if (event.state.screen === 'screenStreams') {
       goToStreams();
     } else if (event.state.screen === 'screenPositions') {
@@ -2216,15 +2273,15 @@ window.addEventListener('popstate', function(event) {
     } else if (event.state.screen === 'screenReadonly') {
       goToReadonly(currentStream ? currentStream.code : null, currentPosition);
     }
-    
-    isPoppingState = false; // Reset the flag
+    isPoppingState = false;
   }
 });
-  // ================================================================
+
+// ================================================================
 //  SECURITY: AUTO-LOGOUT AFTER 20 MINUTES OF INACTIVITY
 // ================================================================
 var idleTimer;
-var IDLE_TIMEOUT_MS = 20 * 60 * 1000; // 20 minutes
+var IDLE_TIMEOUT_MS = 20 * 60 * 1000;
 
 function resetIdleTimer() {
   clearTimeout(idleTimer);
@@ -2232,16 +2289,12 @@ function resetIdleTimer() {
 }
 
 async function forceLogout() {
-  // Never sign out if offline or if there is unsynced work: it would destroy the session
+  // Never sign out if offline or with unsynced work
   if (!navigator.onLine || await hasPending()) {
     resetIdleTimer();
     return;
   }
-
-  if (typeof toast === 'function') {
-    toast('Session expired due to inactivity. Logging out...', 'error');
-  }
-
+  toast('Signed out after 20 minutes of inactivity.', 'error');
   setTimeout(async () => {
     await db.auth.signOut();
     window.location.href = 'index.html';
@@ -2251,8 +2304,8 @@ async function forceLogout() {
 async function doLogout() {
   if (!navigator.onLine) {
     await thConfirm({
-      title: 'You are offline',
-      message: 'Signing out now would stop you from logging back in until you have internet. Please connect first.',
+      title: 'You’re offline',
+      message: 'If you sign out now you won’t be able to sign back in until you have internet. Connect first.',
       confirmText: 'OK',
       tone: 'warn',
       alertOnly: true
@@ -2262,8 +2315,8 @@ async function doLogout() {
 
   if (await hasPending()) {
     await thConfirm({
-      title: 'Unsynced results',
-      message: 'You have results or forms that have not synced yet. Please wait for them to sync before signing out.',
+      title: 'Results still syncing',
+      message: 'Some results or forms haven’t synced yet. Wait for them to finish before signing out.',
       confirmText: 'OK',
       tone: 'warn',
       alertOnly: true
@@ -2274,8 +2327,8 @@ async function doLogout() {
 
   const ok = await thConfirm({
     title: 'Sign out?',
-    message: 'Any unsaved entries will be kept as drafts on this device.',
-    confirmText: 'Sign Out',
+    message: 'Unfinished entries stay saved as drafts on this phone.',
+    confirmText: 'Sign out',
     cancelText: 'Stay',
     tone: 'danger',
     icon: 'fa-sign-out-alt'
@@ -2286,28 +2339,25 @@ async function doLogout() {
   }
 }
 
-// These events detect if the user is actively using the phone/computer
 window.addEventListener('mousemove', resetIdleTimer, true);
 window.addEventListener('keydown', resetIdleTimer, true);
 window.addEventListener('scroll', resetIdleTimer, true);
-window.addEventListener('touchstart', resetIdleTimer, true); // For mobile phones
+window.addEventListener('touchstart', resetIdleTimer, true);
 window.addEventListener('click', resetIdleTimer, true);
-
-// Start the timer immediately when the page loads
 resetIdleTimer();
-  
- let syncing = false;   // FIX #5: prevents two syncs running at once
 
+// ================================================================
+//  OFFLINE SYNC
+// ================================================================
 async function syncOfflineData() {
   if (syncing || !navigator.onLine || !USER) return;
   syncing = true;
+  updateSyncPill();
 
   try {
-    // Sync needs a valid logged-in session
     const { data: { session } } = await db.auth.getSession();
     if (!session) return;
 
-    // FIX #6: skip cached_* entries and null items safely
     const keys = await offlineStore.keys();
     const votes = [], forms = [];
     for (const key of keys) {
@@ -2331,15 +2381,12 @@ async function syncOfflineData() {
         p_rejected: rejected
       });
 
-      if (error) continue;   // network/transport issue: keep it queued, retry later
+      if (error) continue; // network issue: keep queued
 
-      // FIX #1: the RPC reports failure inside data, not error
       if (data && (data.success || /already submitted/i.test(data.message || ''))) {
         await offlineStore.removeItem(v.key);
         votesDone++;
       } else {
-        // Server rejected it. Move it out of the active queue so it doesn't retry forever,
-        // but keep the data so it is never silently lost.
         console.error('Server rejected queued vote', v.key, data && data.message);
         await offlineStore.setItem('failed_' + v.key, {
           ...v.item, type: 'failed_vote', reason: data && data.message
@@ -2347,7 +2394,7 @@ async function syncOfflineData() {
         await offlineStore.removeItem(v.key);
         if (STATUSES[streamCode]) STATUSES[streamCode][position] = { status: 'pending' };
         await offlineStore.setItem('cached_statuses', STATUSES);
-        toast('Queued ' + position + ' result was rejected: ' + (data && data.message), 'error');
+        toast('Saved ' + position + ' result was rejected: ' + (data && data.message), 'error');
       }
     }
 
@@ -2380,22 +2427,25 @@ async function syncOfflineData() {
     }
 
     if (votesDone || formsDone) {
-      toast(`Synced ${votesDone} results and ${formsDone} forms.`, 'success');
+      var parts = [];
+      if (votesDone) parts.push(votesDone + (votesDone === 1 ? ' result' : ' results'));
+      if (formsDone) parts.push(formsDone + (formsDone === 1 ? ' form' : ' forms'));
+      toast('Synced ' + parts.join(' and ') + '.', 'success');
       loadStreams(true);
     }
   } catch (err) {
     console.error('Sync failed:', err);
   } finally {
     syncing = false;
+    updateSyncPill();
   }
 }
 
-// Don't rely only on the 'online' event (it is unreliable on weak networks)
 window.addEventListener('load', syncOfflineData);
 setInterval(syncOfflineData, 30000);
-  // Start
+
+// Start
 init();
-  
 </script>
 </body>
 </html>
