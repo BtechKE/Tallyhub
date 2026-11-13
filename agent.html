@@ -962,7 +962,12 @@ function showQueuedSuccess(streamCode, position, btn, title, sub) {
     setTimeout(() => openUploadModal(streamCode, position), 300);
   }, 2000);
 }
-
+async function updateHeartbeat() {
+  const { data: { user } } = await db.auth.getUser();
+  if (user) {
+      await db.from('agents').update({ last_seen: new Date().toISOString() }).eq('auth_user_id', user.id);
+  }
+}
 // ================================================================
 //  AUTH & INIT
 // ================================================================
@@ -1038,8 +1043,14 @@ async function init() {
   // 4. Load data
   await loadStreams();
   loadCountingStatus();
+  updateHeartbeat();
   startAutoRefresh();
   syncOfflineData();
+}
+function silentRefresh() { 
+    setPulse('loading'); 
+    updateHeartbeat();
+    loadOverview(true); 
 }
 // ================================================================
 //  DATA LOADING (SUPABASE)
