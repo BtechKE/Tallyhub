@@ -42,6 +42,10 @@
   --panel-line: #3A3E42;
   --panel-muted: #9EA5A0;
 
+  /* Action blue (from the original app) */
+  --blue-action: #1591DC;
+  --blue-action-dark: #0F7BC0;
+
   /* Gauge */
   --gauge: #F5C518;
   --gauge-next: #5C5124;
@@ -405,16 +409,19 @@ button { cursor: pointer; }
 .btn:disabled { cursor: not-allowed; }
 .btn-ghost { background: var(--surface); color: var(--ink); border: 1.5px solid var(--green-line); }
 .btn-ghost:active { background: var(--green-tint); }
-.btn-primary { background: var(--panel); color: #FFFFFF; }
-.btn-primary i { color: var(--green); }
-.btn-primary:disabled { background: #D5DAD3; color: #7D857F; }
+.btn-primary { background: var(--blue-action); color: #FFFFFF; box-shadow: 0 6px 16px rgba(21, 145, 220, 0.28); }
+.btn-primary:active { background: var(--blue-action-dark); }
+.btn-primary i { color: #FFFFFF; }
+.btn-primary:disabled { background: #D5DAD3; color: #7D857F; box-shadow: none; }
 .btn-primary:disabled i { color: inherit; }
-.btn-primary.is-anomaly { background: var(--danger); }
+.btn-primary.is-anomaly { background: var(--danger); box-shadow: 0 6px 16px rgba(196, 69, 58, 0.25); }
 .btn-primary.is-anomaly i { color: #FFFFFF; }
-.btn-primary.is-queued { background: #D99A1E; color: var(--ink); }
-.btn-primary.is-locked { background: var(--green); color: var(--ink); }
+.btn-primary.is-queued { background: #D99A1E; color: var(--ink); box-shadow: none; }
+.btn-primary.is-locked { background: var(--green); color: var(--ink); box-shadow: none; }
 .btn-primary.is-locked i, .btn-primary.is-queued i { color: inherit; }
 .btn-green { background: var(--green); color: var(--ink); font-weight: 800; }
+.btn-cancel { background: var(--danger-bg); color: var(--danger); border: 1.5px solid rgba(196, 69, 58, 0.18); }
+.btn-cancel:active { background: #F6D9D5; }
 .btn-danger-soft { background: var(--danger-bg); color: var(--danger); font-weight: 800; }
 .btn.is-loading { opacity: 0.75; pointer-events: none; }
 
@@ -507,6 +514,7 @@ button { cursor: pointer; }
   display: flex; align-items: center; justify-content: center; font-size: 22px;
   background: var(--green-soft); color: var(--green-deep);
 }
+#confirmIcon:not(.danger) { background: rgba(21, 145, 220, 0.12); color: var(--blue-action); }
 .modal-icon.danger, .th-modal-icon.danger { background: var(--danger-bg); color: var(--danger); }
 .th-modal-icon.warn { background: var(--amber-bg); color: var(--amber); }
 .th-modal-icon.info { background: var(--green-soft); color: var(--green-deep); }
@@ -525,7 +533,7 @@ button { cursor: pointer; }
   display: flex; align-items: center; justify-content: center; gap: 6px;
 }
 .th-btn-ghost { background: var(--surface); color: var(--ink); border: 1.5px solid var(--green-line); }
-.th-btn-primary { background: var(--panel); color: #FFFFFF; }
+.th-btn-primary { background: var(--blue-action); color: #FFFFFF; }
 .th-btn-danger { background: var(--danger); color: #FFFFFF; }
 
 .action-sheet-option {
@@ -742,7 +750,7 @@ button { cursor: pointer; }
       </div>
       <div class="entry-check" id="entryCheck"></div>
       <div class="entry-buttons">
-        <button class="btn btn-ghost" onclick="goToPositions()">Cancel</button>
+        <button class="btn btn-cancel" onclick="goToPositions()">Cancel</button>
         <button class="btn btn-primary" id="submitBtn" onclick="confirmSubmit()" disabled>
           <i class="fas fa-lock"></i> Submit &amp; lock
         </button>
@@ -783,7 +791,7 @@ button { cursor: pointer; }
     <div class="modal-title" id="confirmTitle">Lock this submission?</div>
     <div class="modal-body" id="confirmBody"></div>
     <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="closeConfirm()">Go back</button>
+      <button class="btn btn-cancel" onclick="closeConfirm()">Go back</button>
       <button class="btn btn-primary" id="confirmBtn" onclick="submitNow()"><i class="fas fa-check"></i> Lock results</button>
     </div>
   </div>
