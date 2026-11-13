@@ -899,6 +899,12 @@ var POSITION_SHORT = { 'President': 'P', 'Governor': 'G', 'Senator': 'S', 'MP': 
 // ================================================================
 //  INIT & AUTO REFRESH
 // ================================================================
+  async function updateHeartbeat() {
+  const { data: { user } } = await db.auth.getUser();
+  if (user) {
+      await db.from('aspirants').update({ last_seen: new Date().toISOString() }).eq('auth_user_id', user.id);
+  }
+}
 async function init() {
   const { data: { user } } = await db.auth.getUser();
   if (!user) { window.location.href = 'index.html'; return; }
@@ -1019,7 +1025,11 @@ function startAutoRefresh() {
   }, 30000);
 }
 
-function silentRefresh() { setPulse('loading'); loadOverview(true); }
+function silentRefresh() { 
+    setPulse('loading'); 
+    updateHeartbeat();
+    loadOverview(true); 
+}
 
 function manualRefresh() {
   var icon = document.getElementById('topRefreshIcon');
