@@ -5479,18 +5479,15 @@ function buildHierarchy(allCounties, allConsts, allWards, votesByWard, votesByCe
     return hierarchy;
 }
   
-async function getBase64ImageFromUrl(imageUrl) {
+async function getBase64ImageFromUrl(imageUrl, retries = 2) {
   if (!imageUrl) return null;
   return new Promise((resolve) => {
     var img = new Image();
-    img.crossOrigin = 'Anonymous'; // Request CORS permission
+    img.crossOrigin = 'Anonymous'; 
     
     img.onload = function() {
-      // Create a canvas to safely resize and convert the image
       var canvas = document.createElement('canvas');
       var ctx = canvas.getContext('2d');
-      
-      // Resize to max 200x200 to save memory and prevent jsPDF crashes
       var MAX_SIZE = 200;
       var width = img.width;
       var height = img.height;
@@ -5506,25 +5503,27 @@ async function getBase64ImageFromUrl(imageUrl) {
       ctx.drawImage(img, 0, 0, width, height);
       
       try {
-        // Convert to JPEG base64 (faster and smaller than PNG)
         var dataURL = canvas.toDataURL('image/jpeg', 0.8);
         resolve(dataURL);
       } catch (e) {
-        console.warn("Canvas tainted by CORS, image will be skipped.", imageUrl);
         resolve(null);
       }
     };
     
     img.onerror = function() {
-      console.warn("Image failed to load entirely:", imageUrl);
-      resolve(null);
+      if (retries > 0) {
+        // If it fails (slow network/CORS), wait 1 second and try again
+        setTimeout(() => {
+          resolve(getBase64ImageFromUrl(imageUrl, retries - 1));
+        }, 1000);
+      } else {
+        resolve(null); // Give up after 2 retries
+      }
     };
     
-    // Add a timestamp to bypass aggressive caching if needed
     img.src = imageUrl;
   });
 }
-  
 async function buildPositionPDF(data) {
   var jsPDF = window.jspdf.jsPDF;
   var doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
@@ -5545,9 +5544,8 @@ async function buildPositionPDF(data) {
       await Promise.all(photoPromises);
   }
 
-  // Helper for drawing tables consistently and safely
   function drawOverallTable(candidates, currentY, withPhotos) {
-      if (!candidates || candidates.length === 0) return currentY; // Safe exit
+      if (!candidates || candidates.length === 0) return currentY; 
 
       var totalVotes = candidates.reduce((sum, cand) => sum + cand.votes, 0);
 
@@ -5577,7 +5575,6 @@ async function buildPositionPDF(data) {
           },
           didDrawCell: function(cellData) {
               if (withPhotos && cellData.section === 'body' && cellData.column.index === 0) {
-                  // SAFE FIX: Pull the name directly from the row data instead of array indexing
                   var candName = cellData.row.raw[1]; 
                   var imgData = photoMap[candName];
                   
@@ -5587,7 +5584,6 @@ async function buildPositionPDF(data) {
                       var y = cellData.cell.y + (cellData.cell.height - imgSize) / 2;
                       doc.addImage(imgData, 'JPEG', x, y, imgSize, imgSize);
                   } else {
-                      // Fallback to rank number
                       var rowIdx = cellData.row.index;
                       doc.setFontSize(9); doc.setTextColor(INK[0], INK[1], INK[2]);
                       doc.text(String(rowIdx + 1), cellData.cell.x + cellData.cell.width / 2, cellData.cell.y + cellData.cell.height / 2 + 2, { align: 'center' });
@@ -5705,37 +5701,50 @@ async function buildPositionPDF(data) {
   }
 
   // ==========================================
-  // HIERARCHICAL RESULTS (The exact flow you requested)
+  // HIERARCHICAL RESULTS
   // ==========================================
-  data.hierarchy.forEach(level1 => { // level1 is County
+  data.hierarchy.forEach((level1, countyIndex) => { // level1 is County
       
-      // 1. Draw County Level (Only for President, since Page 2 for President is National)
-      if (data.posContext === 'President') {
-          if (currentY > pageH - 50) { doc.addPage(); currentY = 25; }
-          doc.setFillColor(INK[0], INK[1], INK[2]);
-          doc.rect(marginL, currentY - 6, pageW - marginL - marginR, 8, 'F');
-          doc.setTextColor(255, 255, 255); doc.setFontSize(11); doc.setFont('helvetica', 'bold');
-          doc.text(String(level1.countyName).toUpperCase(), marginL + 3, currentY);
-          currentY += 10;
-          
-          if (level1.candidates && level1.candidates.length > 0) {
-              currentY = drawOverallTable(level1.candidates, currentY, true);
-          } else {
-              doc.setFontSize(8); doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]); doc.setFont('helvetica', 'italic');
-              doc.text('No votes recorded in this county yet.', marginL + 6, currentY + 2);
-              currentY += 8;
-          }
+      // FORCE PAGE BREAK FOR NEW COUNTIES
+      if (countyIndex > 0 || currentY > pageH - 60) { 
+          doc.addPage(); 
+          currentY = 25; 
+      }
+
+      // 1. Draw County Level
+      doc.setFillColor(INK[0], INK[1], INK[2]);
+      doc.rect(marginL, currentY - 6, pageW - marginL - marginR, 8, 'F');
+      doc.setTextColor(255, 255, 255); doc.setFontSize(11); doc.setFont('helvetica', 'bold');
+      
+      var countyLabel = String(level1.countyName || 'Unknown').toUpperCase();
+      if (!countyLabel.includes('COUNTY')) countyLabel += ' COUNTY';
+      
+      doc.text(countyLabel, marginL + 3, currentY);
+      currentY += 10;
+      
+      if (level1.candidates && level1.candidates.length > 0) {
+          currentY = drawOverallTable(level1.candidates, currentY, true);
+      } else {
+          doc.setFontSize(8); doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]); doc.setFont('helvetica', 'italic');
+          doc.text('No votes recorded in this county yet.', marginL + 6, currentY + 2);
+          currentY += 8;
       }
 
       level1.subAreas.forEach(level2 => { // level2 is Constituency
           
-          // 2. Draw Constituency Level (For everyone EXCEPT MCA and MP, because their Page 2 is already the Constituency/Ward)
+          // 2. Draw Constituency Level (For everyone EXCEPT MCA and MP)
           if (data.posContext !== 'MCA' && data.posContext !== 'MP') {
-              if (currentY > pageH - 50) { doc.addPage(); currentY = 25; }
+              // FORCE PAGE BREAK FOR NEW CONSTITUENCY
+              if (currentY > 25) { doc.addPage(); currentY = 25; }
+
               doc.setFillColor(INK[0], INK[1], INK[2]);
               doc.rect(marginL, currentY - 6, pageW - marginL - marginR, 8, 'F');
               doc.setTextColor(255, 255, 255); doc.setFontSize(11); doc.setFont('helvetica', 'bold');
-              doc.text(String(level2.constituencyName).toUpperCase(), marginL + 3, currentY);
+              
+              var constLabel = String(level2.constituencyName || 'Unknown').toUpperCase();
+              if (!constLabel.includes('CONSTITUENCY')) constLabel += ' CONSTITUENCY';
+              
+              doc.text(constLabel, marginL + 3, currentY);
               currentY += 10;
               
               if (level2.candidates && level2.candidates.length > 0) {
@@ -5749,14 +5758,17 @@ async function buildPositionPDF(data) {
 
           level2.subAreas.forEach(level3 => { // level3 is Ward
               
-              // 3. Draw Ward Level (For everyone EXCEPT MCA, because MCA's Page 2 is already the Ward)
+              // 3. Draw Ward Level (For everyone EXCEPT MCA)
               if (data.posContext !== 'MCA') {
                   if (currentY > pageH - 50) { doc.addPage(); currentY = 25; }
                   
                   doc.setFontSize(11); doc.setTextColor(INK[0], INK[1], INK[2]); doc.setFont('helvetica', 'bold');
-                  doc.text(String(level3.wardName).toUpperCase() + ' WARD', marginL + 3, currentY);
                   
-                  // FIXED ALIGNMENT: Perfectly right-aligned
+                  var wardLabel = String(level3.wardName || 'Unknown').toUpperCase();
+                  if (!wardLabel.includes('WARD')) wardLabel += ' WARD';
+                  
+                  doc.text(wardLabel, marginL + 3, currentY);
+                  
                   doc.setFontSize(8); doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]); doc.setFont('helvetica', 'normal');
                   doc.text('Forms: ' + level3.formsCount + '/' + level3.totalStreams + '  |  Total Votes: ' + level3.totalVotes.toLocaleString(), pageW - marginR, currentY, { align: 'right' });
                   currentY += 6;
@@ -5772,7 +5784,7 @@ async function buildPositionPDF(data) {
 
               level3.centres.forEach(level4 => { // level4 is Centre
                   
-                  // 4. Draw Centre Level (For everyone)
+                  // 4. Draw Centre Level
                   if (currentY > pageH - 50) { doc.addPage(); currentY = 25; }
                   doc.setFontSize(12); doc.setTextColor(INK[0], INK[1], INK[2]); doc.setFont('helvetica', 'bold');
                   doc.text('Centre: ' + String(level4.centreName), marginL + 6, currentY);
@@ -5790,7 +5802,7 @@ async function buildPositionPDF(data) {
 
                   level4.streams.forEach(level5 => { // level5 is Stream
                       
-                      // 5. Draw Stream Level (For everyone)
+                      // 5. Draw Stream Level
                       if (currentY > pageH - 50) { doc.addPage(); currentY = 25; }
                       doc.setFontSize(9); doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]); doc.setFont('helvetica', 'bold');
                       doc.text('Stream: ' + String(level5.streamName) + ' (' + level5.streamCode + ')', marginL + 12, currentY);
