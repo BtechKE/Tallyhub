@@ -338,6 +338,30 @@
     #togglePasswordBtn:focus {
       color: var(--primary);
     }
+
+    /* ===== LOGIN CARD ONLY ===== */
+.login-panel {
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(22px) saturate(140%);
+  -webkit-backdrop-filter: blur(22px) saturate(140%);
+  border: 1.5px solid rgba(255, 255, 255, 0.18);
+  border-radius: 28px;
+  box-shadow: 0 30px 70px -20px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+.field input {
+  height: 54px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1.5px solid rgba(255, 255, 255, 0.16);
+  font-size: 16px;
+}
+.field input::placeholder { color: rgba(255, 255, 255, 0.4); }
+.field input:focus {
+  border-color: var(--primary);
+  background: rgba(255, 255, 255, 0.1);
+}
+#togglePasswordBtn { width: 44px; height: 44px; right: 4px !important; }
+.btn-primary { height: 56px; border-radius: 16px; }
   </style>
 </head>
 <body>
@@ -412,7 +436,7 @@
           <div style="position: relative; width: 100%;">
             <input type="password" id="loginPassword" autocomplete="current-password" style="padding-right: 40px;">
             <!-- Note: This stays type="button" so clicking the eye doesn't submit the form -->
-            <button type="button" id="togglePasswordBtn" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center; outline: none;">
+            <button type="button" id="togglePasswordBtn" aria-label="Show password" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center; outline: none;">
               <i class="fas fa-eye" id="togglePasswordIcon"></i>
             </button>
           </div>
@@ -651,6 +675,17 @@ function startLockoutTimer(errText, errBox) {
     }
   }, 1000);
 }
+// Show / hide password
+document.getElementById('togglePasswordBtn').addEventListener('click', function () {
+  const input = document.getElementById('loginPassword');
+  const icon = document.getElementById('togglePasswordIcon');
+  const show = input.type === 'password';
+  input.type = show ? 'text' : 'password';
+  icon.className = show ? 'fas fa-eye-slash' : 'fas fa-eye';
+  this.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+  input.focus();
+});
+  
 </script>
 </body>
 </html>
