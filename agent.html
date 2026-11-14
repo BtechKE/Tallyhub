@@ -48,7 +48,7 @@
 
   /* Gauge */
   --gauge: #F5C518;
-  --gauge-next: #5C5124;
+  --gauge-next: #4ADE80; 
 
   /* Status */
   --amber-bg: #FBF1DA;
@@ -213,7 +213,10 @@ button { cursor: pointer; }
 .gauge { width: 230px; max-width: 100%; height: auto; }
 .gauge .seg { fill: none; stroke-width: 13; stroke-linecap: round; }
 .gauge .seg-done { stroke: var(--gauge); }
-.gauge .seg-next { stroke: var(--gauge-next); }
+.gauge .seg-next { 
+  stroke: var(--gauge-next); 
+  filter: drop-shadow(0 0 6px rgba(74, 222, 128, 0.6)); 
+}
 .gauge .seg-todo { stroke: #2A2E31; }
 .gauge .g-num { font-family: var(--font); font-size: 36px; font-weight: 800; fill: #F3F4F1; letter-spacing: -1px; }
 .gauge .g-lbl { font-family: var(--font); font-size: 10px; font-weight: 600; fill: var(--panel-muted); }
