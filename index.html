@@ -738,9 +738,8 @@ document.getElementById('togglePasswordBtn').addEventListener('click', function 
   input.focus();
 });
 function showGateLockScreen(targetTimeMs) {
-  // Hide the landing page entirely
-  document.getElementById('landing').style.display = 'none';
-  document.getElementById('loginGateOverlay').classList.add('active');
+  document.getElementById('landing').style.display = 'none'; // Hide main UI
+  document.getElementById('loginGateOverlay').classList.add('active'); // Show lock screen
   
   const timerEl = document.getElementById('gateTimer');
   
@@ -764,10 +763,11 @@ function showGateLockScreen(targetTimeMs) {
   }, 1000);
 }
 
-// NEW: Check if the system is closed immediately when the page loads
 async function checkGateOnLoad() {
   try {
-    const { data: configData } = await db.from('config').select('*').in('key', ['LoginGate', 'LoginGateOpensAt']);
+    // We don't need to filter by .in('key', ...) anymore, just grab everything
+    const { data: configData } = await db.from('config').select('*');
+    
     const gateClosed = configData?.find(r => r.key === 'LoginGate')?.value === 'TRUE';
     const opensAt = configData?.find(r => r.key === 'LoginGateOpensAt')?.value;
 
