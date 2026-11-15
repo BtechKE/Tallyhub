@@ -851,7 +851,7 @@ button { cursor: pointer; }
     <div class="modal-body" style="margin-bottom: 18px;">Take a clear, upright (portrait) photo of the signed statutory form.</div>
     <input type="file" id="galleryInput" accept="image/*" style="display:none;" onchange="handleFormUpload(event)">
     <button class="action-sheet-option" onclick="document.getElementById('galleryInput').click()">
-      <i class="fas fa-camera"></i>choose a photo
+      <i class="fas fa-camera"></i>Choose Form
     </button>
     <button class="btn btn-ghost" style="width:100%;" onclick="closeUploadModal()">Later</button>
   </div>
@@ -860,7 +860,7 @@ button { cursor: pointer; }
 <!-- UPLOAD PREVIEW -->
 <div class="modal-bg" id="formPreviewModal" style="z-index: 10006;">
   <div class="modal" role="dialog" aria-modal="true" aria-label="Confirm upload">
-    <div class="modal-title">Check the photo</div>
+    <div class="modal-title">Check the Form</div>
     <div class="preview-wrap"><img id="previewImage" alt="Form preview"></div>
     <div class="upload-status" id="uploadStatusText">Checking image…</div>
     <div class="modal-actions">
@@ -1861,7 +1861,7 @@ async function goToReadonly(streamCode, position) {
         '<img id="' + escAttr(thumbId) + '" src="' + escAttr(localPreview || '') + '" alt="Form photo" onerror="this.style.visibility=\'hidden\'">' +
         '<span class="form-thumb-overlay"><i class="fas fa-search-plus"></i> View form</span>' +
       '</button>' +
-      '<button type="button" class="btn btn-ghost" style="width:100%;" onclick="openUploadModal(' + c + ',' + p + ')"><i class="fas fa-sync-alt"></i> Replace photo</button>';
+      '<button type="button" class="btn btn-ghost" style="width:100%;" onclick="openUploadModal(' + c + ',' + p + ')"><i class="fas fa-sync-alt"></i> Replace Form</button>';
 
     if (!localPreview && formOk && navigator.onLine) {
       db.storage.from('form-photos').createSignedUrl(streamCode + '_' + position.replace(/\s+/g, '') + '.jpg', 600).then(({ data }) => {
