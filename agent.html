@@ -1853,6 +1853,25 @@ async function goToReadonly(streamCode, position) {
   var c = jsArg(streamCode), p = jsArg(position);
   var thumbId = 'formThumb_' + streamCode + '_' + position.replace(/\s+/g, '');
 
+  // Fetch the form record to check owner and count
+  let formMeta = null;
+  if (navigator.onLine && formOk) {
+      try {
+          const { data } = await db.from('form_photos').select('uploaded_by, upload_count').eq('stream_code', streamCode).eq('position', position).maybeSingle();
+          formMeta = data;
+      } catch(e) { console.warn("Could not fetch form meta", e); }
+  }
+
+  // Determine if the current user can replace the form
+  let canReplace = false;
+  if (formMeta) {
+      const isOwner = (formMeta.uploaded_by === USER.name);
+      const count = formMeta.upload_count || 1;
+      if (isOwner && count < 2) {
+          canReplace = true;
+      }
+  }
+
   var formHtml = '';
   if (formOk || localPreview) {
     formHtml =
@@ -1860,8 +1879,14 @@ async function goToReadonly(streamCode, position) {
       '<button type="button" class="form-thumb" onclick="viewAgentForm(' + c + ',' + p + ')">' +
         '<img id="' + escAttr(thumbId) + '" src="' + escAttr(localPreview || '') + '" alt="Form photo" onerror="this.style.visibility=\'hidden\'">' +
         '<span class="form-thumb-overlay"><i class="fas fa-search-plus"></i> View form</span>' +
-      '</button>' +
-      '<button type="button" class="btn btn-ghost" style="width:100%;" onclick="openUploadModal(' + c + ',' + p + ')"><i class="fas fa-sync-alt"></i> Replace Form</button>';
+      '</button>';
+
+    // ONLY show the replace button if they are the owner and haven't used their 1 chance
+    if (canReplace) {
+        formHtml += '<button type="button" class="btn btn-ghost" style="width:100%;" onclick="openUploadModal(' + c + ',' + p + ')"><i class="fas fa-sync-alt"></i> Replace photo (1 attempt left)</button>';
+    } else {
+        formHtml += '<div class="ro-info" style="margin-top: 10px; justify-content: center;"><div class="ro-info-row" style="justify-content: center; color: var(--muted);"><i class="fas fa-lock"></i> Form locked. Only the submitting agent can replace it once.</div></div>';
+    }
 
     if (!localPreview && formOk && navigator.onLine) {
       db.storage.from('form-photos').createSignedUrl(streamCode + '_' + position.replace(/\s+/g, '') + '.jpg', 600).then(({ data }) => {
@@ -1967,7 +1992,6 @@ async function goToReadonly(streamCode, position) {
       '<div class="empty-state"><div class="icon-wrap"><i class="fas fa-wifi"></i></div><div class="title">Can’t load these results</div><div class="sub">' + esc(err.message) + '</div></div>' + formHtml;
   }
 }
-
 // ================================================================
 //  UTILS & UI HELPERS
 // ================================================================
@@ -2216,19 +2240,40 @@ async function executeFormUpload() {
   btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uploading…';
 
   try {
-    var fileName = currentFormStream + '_' + currentFormPos.replace(/\s+/g, '') + '.jpg';
+    // 1. Check the current upload count in the database
+    const { data: existingForm } = await db.from('form_photos')
+      .select('uploaded_by, upload_count')
+      .eq('stream_code', currentFormStream)
+      .eq('position', currentFormPos)
+      .maybeSingle();
 
+    let newCount = 1;
+
+    if (existingForm) {
+        if (existingForm.upload_count >= 2) {
+            throw new Error('This form has already been replaced once. Only the Admin can reset it.');
+        }
+        if (existingForm.uploaded_by !== USER.name) {
+            throw new Error('Only the agent who submitted the results can replace the form.');
+        }
+        newCount = (existingForm.upload_count || 1) + 1;
+    }
+
+    // 2. Upload the image to Storage (overwrite existing)
+    var fileName = currentFormStream + '_' + currentFormPos.replace(/\s+/g, '') + '.jpg';
     const { error: uploadError } = await db.storage
       .from('form-photos')
       .upload(fileName, currentFormFile, { upsert: true, contentType: 'image/jpeg' });
     if (uploadError) throw new Error(uploadError.message);
 
+    // 3. Get Geography
     const { data: streamData, error: streamErr } = await db.from('streams')
       .select('county_id, constituency_id, ward_id')
       .eq('code', currentFormStream)
       .single();
     if (streamErr) throw new Error('Failed to fetch stream geography: ' + streamErr.message);
 
+    // 4. Upsert the record with the new count
     const { error: dbError } = await db.from('form_photos').upsert({
       stream_code: currentFormStream,
       position: currentFormPos,
@@ -2236,18 +2281,20 @@ async function executeFormUpload() {
       uploaded_by: USER.name,
       county_id: streamData?.county_id,
       constituency_id: streamData?.constituency_id,
-      ward_id: streamData?.ward_id
+      ward_id: streamData?.ward_id,
+      upload_count: newCount
     }, { onConflict: 'stream_code,position' });
+    
     if (dbError) throw new Error(dbError.message);
 
     await saveFormThumb(currentFormStream, currentFormPos, currentFormFile);
-    toast('Form uploaded.', 'success');
+    toast('Form uploaded successfully.', 'success');
     sessionStorage.removeItem('pending_upload');
     finishFormUpload();
 
   } catch (err) {
     console.error(err);
-    toast('Upload failed: ' + err.message, 'error');
+    toast(err.message, 'error');
     btn.disabled = false;
     btn.innerHTML = '<i class="fas fa-cloud-upload-alt"></i> Retry upload';
   }
