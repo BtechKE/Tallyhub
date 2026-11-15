@@ -924,6 +924,27 @@ async function init() {
     county: profile.county_id, loginCode: profile.login_code, isSpectator: profile.is_spectator
   };
 
+  // --- LOGIN GATE CHECK (Anti-Backdoor) ---
+  try {
+    if (navigator.onLine) {
+      const { data: configData } = await db.from('config').select('*').in('key', ['LoginGate', 'LoginGateOpensAt']);
+      const gateClosed = configData?.find(r => r.key === 'LoginGate')?.value === 'TRUE';
+      const opensAt = configData?.find(r => r.key === 'LoginGateOpensAt')?.value;
+
+      if (gateClosed && opensAt) {
+        const openTime = new Date(opensAt).getTime();
+        // If the current time is before the set open time, kick them out
+        if (Date.now() < openTime) {
+          await db.auth.signOut();
+          window.location.href = 'index.html';
+          return;
+        }
+      }
+    }
+  } catch(e) { 
+    console.warn("Gate check skipped due to network issue", e); 
+  }
+
   document.getElementById('topName').textContent = USER.name || 'Viewer';
   if (!USER.isSpectator && USER.position && POSITIONS.indexOf(USER.position) !== -1) { VIEW_POS = USER.position; }
 
