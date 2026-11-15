@@ -563,6 +563,7 @@ const supabaseKey = 'sb_publishable_ooW3EE91PVdXoXM7tdxwKw_r51RrZ2z';
 const db = window.supabase.createClient(supabaseUrl, supabaseKey);
 
   let currentRole = null;
+  let gateTargetTime = null; 
   const ROLE_META = {
     admin: { label: 'Administrator', icon: 'fa-sliders-h', idLabel: 'Admin ID', idPlaceholder: 'e.g. admin', title: 'Administrator Login', sub: 'Manage the election system' },
     agent: { label: 'Presiding Agent', icon: 'fa-clipboard-list', idLabel: 'Agent ID', idPlaceholder: 'e.g. AGT001', title: 'Agent Login', sub: 'Submit your stream tallies' },
@@ -598,12 +599,20 @@ function getDeviceId() {
     setTimeout(() => document.getElementById('loginId').focus(), 180);
   }
 
-  function backToRoles() {
-    currentRole = null;
+ function backToRoles() {
+  // If the gate is still locked, go back to the countdown screen
+  if (gateTargetTime && Date.now() < gateTargetTime) {
     document.getElementById('loginPanel').classList.remove('active');
-    document.getElementById('roleGrid').style.display = '';
-    document.getElementById('heroWrap').style.display = '';
+    showGateLockScreen(gateTargetTime);
+    return;
   }
+
+  // Normal behavior (if gate is open)
+  currentRole = null;
+  document.getElementById('loginPanel').classList.remove('active');
+  document.getElementById('roleGrid').style.display = '';
+  document.getElementById('heroWrap').style.display = '';
+}
 
 async function doLogin() {
   if (!currentRole) return;
@@ -646,7 +655,18 @@ async function doLogin() {
     return;
   }
 
-  // --- 2. VERIFY ROLE & FETCH DEVICE ARRAY ---
+  // --- 2. THE LOCK GATE TRAP (ANTI-BACKDOOR) ---
+  // If the system is locked, ONLY the admin can pass this point.
+  if (typeof gateTargetTime !== 'undefined' && gateTargetTime && Date.now() < gateTargetTime) {
+    if (currentRole !== 'admin') {
+      await db.auth.signOut();
+      handleFailedLogin(errText, errBox, btn, "System is currently locked. Access denied.");
+      if (typeof showGateLockScreen === 'function') showGateLockScreen(gateTargetTime); 
+      return;
+    }
+  }
+
+  // --- 3. VERIFY ROLE & FETCH DEVICE ARRAY ---
   let isAuthorized = false;
   let dbDeviceIds = null;
   let maxDevices = 3;
@@ -672,7 +692,7 @@ async function doLogin() {
   } else if (currentRole === 'admin') {
       const { data: adminProfile } = await db.from('aspirants').select('is_spectator, position, device_ids, max_devices').eq('auth_user_id', authData.user.id).maybeSingle();
       if (!adminProfile) {
-          isAuthorized = true; // Standalone Auth Admin (no device lock for hardcoded admins)
+          isAuthorized = true; // Standalone Auth Admin
       } else {
           const isSpec = checkBool(adminProfile.is_spectator);
           const isPres = String(adminProfile.position || '').toLowerCase() === 'president';
@@ -690,11 +710,11 @@ async function doLogin() {
       handleFailedLogin(errText, errBox, btn, "Access Denied: You do not have permission for this role.");
       return;
   }
-  // --- 3. ENFORCE DEVICE LOCK & LIMIT ---
+
+  // --- 4. ENFORCE DEVICE LOCK & LIMIT ---
   if (targetTable) {
       const currentDeviceId = getDeviceId();
       
-      // Safely parse the array (handles both strings "[]" and real JSON arrays)
       let devices = [];
       try {
           devices = typeof dbDeviceIds === 'string' ? JSON.parse(dbDeviceIds) : (dbDeviceIds || []);
@@ -703,30 +723,23 @@ async function doLogin() {
           devices = [];
       }
 
-      // Check if this device is ALREADY logged in
       if (!devices.includes(currentDeviceId)) {
-          
-          // If it's a NEW device, check if they have hit their limit
           if (devices.length >= maxDevices) {
               await db.auth.signOut();
               handleFailedLogin(errText, errBox, btn, `Security Alert: Maximum devices (${maxDevices}) reached for this account. Please contact the Admin to reset your devices.`);
               return;
           }
           
-          // If they have space, add this new device to the array
           devices.push(currentDeviceId);
           
-          // Save the updated array back to the database
           const { error: updateErr } = await db.from(targetTable).update({ device_ids: devices }).eq('auth_user_id', authData.user.id);
           if (updateErr) {
               console.error("Failed to save device ID:", updateErr);
-              // We don't block login here just because the device ID didn't save, 
-              // but you could choose to block it if strictness is required.
           }
       }
   }
 
-  // --- 4. SUCCESSFUL LOGIN ---
+  // --- 5. SUCCESSFUL LOGIN ---
   localStorage.removeItem('login_fails');
   localStorage.removeItem('login_lockout');
   
@@ -756,6 +769,7 @@ function handleFailedLogin(errText, errBox, btn, customMessage = null) {
       errBox.classList.add('active');
     }
 }
+
 // --- HELPER FUNCTION FOR COUNTDOWN UI ---
 function startLockoutTimer(errText, errBox) {
   const btn = document.getElementById('loginBtn');
@@ -787,17 +801,18 @@ document.getElementById('togglePasswordBtn').addEventListener('click', function 
   this.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
   input.focus();
 });
+
+  
 let gateInterval = null; // Keep track of the interval so we can cancel it if admin bypasses
 
 function showGateLockScreen(targetTimeMs) {
+  gateTargetTime = targetTimeMs; // <--- SAVE THE TIME
+  
   document.getElementById('landing').style.display = 'none';
   document.getElementById('loginGateOverlay').classList.add('active');
   
   const timerEl = document.getElementById('gateTimer');
   const ringEl = document.getElementById('gateRingProgress');
-  
-  // Calculate total duration (we'll assume a 12-hour window for the ring visual)
-  // If the countdown is less than 12 hours, the ring starts partially empty.
   const totalDurationMs = 12 * 60 * 60 * 1000; 
   
   if (gateInterval) clearInterval(gateInterval);
@@ -809,31 +824,26 @@ function showGateLockScreen(targetTimeMs) {
     if (diff <= 0) {
       clearInterval(gateInterval);
       timerEl.textContent = '00:00:00';
-      ringEl.style.strokeDashoffset = '0'; // Empty ring
+      ringEl.style.strokeDashoffset = '0'; 
       document.getElementById('gateSubtitle').innerHTML = '<strong style="color:var(--primary);">The gate is now open!</strong> Reloading...';
       setTimeout(() => location.reload(), 2000);
       return;
     }
     
-    // 1. Update Text & Trigger Glow
     const h = Math.floor(diff / 3600000);
     const m = Math.floor((diff % 3600000) / 60000);
     const s = Math.floor((diff % 60000) / 1000);
     timerEl.textContent = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
     
-    // Add tick animation class and remove it quickly
     timerEl.classList.add('tick');
     setTimeout(() => timerEl.classList.remove('tick'), 300);
 
-    // 2. Update Circular Ring
-    // The ring fills up as time decreases (stroke-dashoffset goes from 283 to 0)
     const percentage = Math.min(diff / totalDurationMs, 1); 
     const dashoffset = 283 - (283 * percentage);
     ringEl.style.strokeDashoffset = dashOffset;
     
   }, 1000);
 }
-
 // SECRET ADMIN BYPASS: 3 Taps on the Logo
 let tapCount = 0;
 let tapTimer = null;
@@ -848,11 +858,15 @@ document.addEventListener('DOMContentLoaded', () => {
       // Reset taps if they pause for more than 1.5 seconds
       tapTimer = setTimeout(() => { tapCount = 0; }, 1500);
       
-      if (tapCount >= 3) {
+          if (tapCount >= 4) {
         // BYPASS ACTIVATED
         if (gateInterval) clearInterval(gateInterval);
         document.getElementById('loginGateOverlay').classList.remove('active');
-        document.getElementById('landing').style.display = 'flex'; // Restore landing page
+        document.getElementById('landing').style.display = 'flex'; 
+        
+        // THE FIX: Force the system directly into the Admin Login panel
+        selectRole('admin'); 
+        
         tapCount = 0;
       }
     });
