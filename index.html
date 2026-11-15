@@ -408,7 +408,6 @@
   </style>
 </head>
 <body>
-
 <!-- Background Elements -->
 <div class="bg-grid"></div>
 <div class="bg-glow glow-green"></div>
@@ -430,18 +429,7 @@
       <h1 class="hero-title">Welcome to <span class="accent">TallyHub</span></h1>
       <p class="hero-sub">Choose your role to continue to your dashboard.</p>
     </div>
-<!-- PREMIUM LOGIN GATE OVERLAY -->
-<div id="loginGateOverlay">
-  <div class="gate-card">
-    <div class="gate-icon-wrap"><i class="fas fa-lock"></i></div>
-    <div class="gate-title">System is Locked</div>
-    <div class="gate-sub" id="gateSubtitle">Access is currently restricted. The portal will open shortly.</div>
-    <div class="gate-timer" id="gateTimer">00:00:00</div>
-    <button class="gate-back-btn" onclick="location.reload()">
-      <i class="fas fa-arrow-left"></i> Back to Login
-    </button>
-  </div>
-</div>
+
     <!-- Role Cards -->
     <div class="role-grid" id="roleGrid">
       <div class="role-card role-admin" onclick="selectRole('admin')">
@@ -470,7 +458,7 @@
       </div>
     </div>
 
-        <!-- Login Panel -->
+    <!-- Login Panel -->
     <div class="login-panel" id="loginPanel">
       <button class="login-back" onclick="backToRoles()"><i class="fas fa-arrow-left"></i> Back to roles</button>
       <div class="login-role-badge" id="roleBadge"><i class="fas fa-user"></i> <span id="roleBadgeText">Role</span></div>
@@ -489,24 +477,36 @@
           <label for="loginPassword">Password</label>
           <div style="position: relative; width: 100%;">
             <input type="password" id="loginPassword" autocomplete="current-password" style="padding-right: 40px;">
-            <!-- Note: This stays type="button" so clicking the eye doesn't submit the form -->
             <button type="button" id="togglePasswordBtn" aria-label="Show password" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center; outline: none;">
               <i class="fas fa-eye" id="togglePasswordIcon"></i>
             </button>
           </div>
         </div>
         
-        <!-- THE BUTTON IS NOW A SUBMIT BUTTON -->
         <button type="submit" class="btn-primary" id="loginBtn">
           <i class="fas fa-sign-in-alt"></i> <span>Sign In</span>
         </button>
       </form>
-      <!-- THE FORM WRAPPER ENDS HERE -->
-
     </div>
+  </div>
+  
   <div class="landing-footer">© <span id="year">2027</span> TallyHub — Secure Election Tally System</div>
-</div>
+</div> <!-- CLOSE LANDING HERE -->
 
+<!-- ============================================================ -->
+<!-- PREMIUM LOGIN GATE OVERLAY (MOVED OUTSIDE OF LANDING) -->
+<!-- ============================================================ -->
+<div id="loginGateOverlay">
+  <div class="gate-card">
+    <div class="gate-icon-wrap"><i class="fas fa-lock"></i></div>
+    <div class="gate-title">System is Locked</div>
+    <div class="gate-sub" id="gateSubtitle">Access is currently restricted. The portal will open shortly.</div>
+    <div class="gate-timer" id="gateTimer">00:00:00</div>
+    <button class="gate-back-btn" onclick="location.reload()">
+      <i class="fas fa-arrow-left"></i> Back to Login
+    </button>
+  </div>
+</div>
 <script>
   // 1. Initialize Supabase
 const supabaseUrl = 'https://mqafninsctppbkpwwmxx.supabase.co';
