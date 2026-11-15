@@ -1048,6 +1048,7 @@ async function updateHeartbeat() {
 // ================================================================
 //  AUTH & INIT
 // ================================================================
+
 async function init() {
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
 
@@ -1103,7 +1104,28 @@ async function init() {
 
   USER = profile;
 
-  // 3. Setup UI
+  // --- 3. LOGIN GATE CHECK (Anti-Backdoor) ---
+  try {
+    if (navigator.onLine) {
+      const { data: configData } = await db.from('config').select('*').in('key', ['LoginGate', 'LoginGateOpensAt']);
+      const gateClosed = configData?.find(r => r.key === 'LoginGate')?.value === 'TRUE';
+      const opensAt = configData?.find(r => r.key === 'LoginGateOpensAt')?.value;
+
+      if (gateClosed && opensAt) {
+        const openTime = new Date(opensAt).getTime();
+        // If the current time is before the set open time, kick them out
+        if (Date.now() < openTime) {
+          await db.auth.signOut();
+          window.location.href = 'index.html';
+          return;
+        }
+      }
+    }
+  } catch(e) { 
+    console.warn("Gate check skipped due to network issue", e); 
+  }
+
+  // 4. Setup UI
   var fullName = USER.name || 'Agent';
   var initial = fullName.trim().charAt(0).toUpperCase();
   document.getElementById('agentInitial').textContent = initial;
@@ -1115,7 +1137,7 @@ async function init() {
   document.getElementById('pickerGreeting').textContent = h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
   document.getElementById('pickerName').textContent = fullName;
 
-  // 4. Load data
+  // 5. Load data
   await loadStreams();
   loadCountingStatus();
   updateHeartbeat();
@@ -1123,7 +1145,6 @@ async function init() {
   syncOfflineData();
   updateSyncPill();
 }
-
 // ================================================================
 //  DATA LOADING (SUPABASE)
 // ================================================================
