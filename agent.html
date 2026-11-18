@@ -619,6 +619,71 @@ button { cursor: pointer; }
 @keyframes stroke { to { stroke-dashoffset: 0; } }
 .success-title { font-size: 20px; font-weight: 800; margin-bottom: 6px; letter-spacing: -0.01em; }
 .success-sub { font-size: 14px; color: var(--muted); font-weight: 500; line-height: 1.45; }
+    /* ================================================================
+   ACTIVE CONSENT GATE (TERMS & CONDITIONS)
+================================================================ */
+#termsGate {
+  position: fixed; inset: 0; z-index: 99999;
+  background: rgba(22, 24, 26, 0.9);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  display: none; align-items: center; justify-content: center;
+  padding: 16px; opacity: 0; transition: opacity 0.3s ease;
+}
+#termsGate.active { display: flex; opacity: 1; }
+
+.terms-card {
+  background: var(--surface); border-radius: 24px; width: 100%; max-width: 500px;
+  display: flex; flex-direction: column; max-height: 85vh;
+  box-shadow: 0 32px 80px rgba(0,0,0,0.5); overflow: hidden;
+  transform: translateY(20px); transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+#termsGate.active .terms-card { transform: translateY(0); }
+
+.terms-header {
+  padding: 20px 24px 12px; border-bottom: 1px solid var(--line); position: relative;
+}
+.terms-title { font-size: 20px; font-weight: 800; color: var(--ink); }
+.terms-sub { font-size: 13px; color: var(--muted); margin-top: 4px; font-weight: 500; }
+
+/* The Scroll Progress Bar */
+.terms-progress-track {
+  height: 4px; background: var(--green-tint); width: 100%; border-radius: 0 0 4px 4px;
+  position: absolute; bottom: 0; left: 0; overflow: hidden;
+}
+.terms-progress-bar {
+  height: 100%; background: var(--green-strong); width: 0%;
+  transition: width 0.1s linear;
+}
+
+.terms-content {
+  padding: 24px; overflow-y: auto; font-size: 13.5px; line-height: 1.6;
+  color: var(--muted); background: #FAFBFA;
+  flex: 1; /* Takes up remaining space */
+}
+.terms-content h3 { color: var(--ink); font-size: 15px; margin: 16px 0 8px; font-weight: 800; }
+.terms-content h3:first-child { margin-top: 0; }
+.terms-content p { margin-bottom: 12px; }
+.terms-content ul { margin-bottom: 12px; padding-left: 20px; }
+
+.terms-footer {
+  padding: 16px 24px; background: var(--surface); border-top: 1px solid var(--line);
+}
+.terms-btn {
+  width: 100%; height: 52px; border-radius: 14px; border: none;
+  font-size: 15px; font-weight: 800; font-family: inherit;
+  transition: all 0.2s ease;
+}
+.terms-btn:disabled {
+  background: var(--green-tint); color: var(--faint); cursor: not-allowed;
+  box-shadow: none;
+}
+.terms-btn:not(:disabled) {
+  background: var(--green-strong); color: #FFFFFF; cursor: pointer;
+  box-shadow: 0 8px 24px rgba(47, 125, 63, 0.3); transform: translateY(0);
+}
+.terms-btn:not(:disabled):hover {
+  background: #256B33; transform: translateY(-1px);
+}
   </style>
 </head>
 <body>
@@ -829,7 +894,42 @@ button { cursor: pointer; }
     </div>
   </div>
 </div>
+<!-- ============================================================ -->
+<!-- ACTIVE CONSENT GATE (TERMS & CONDITIONS) -->
+<!-- ============================================================ -->
+<div id="termsGate">
+  <div class="terms-card">
+    <div class="terms-header">
+      <div class="terms-title">Terms of Service</div>
+      <div class="terms-sub">Scroll to the bottom to accept</div>
+      <div class="terms-progress-track"><div class="terms-progress-bar" id="termsProgress"></div></div>
+    </div>
+    
+    <div class="terms-content" id="termsContent">
+      <h3>1. Data Integrity & Accuracy</h3>
+      <p>By using TallyHub, you agree to submit only accurate data as reflected on the official IEBC statutory forms (Form 34A). Falsifying data, uploading fraudulent forms, or intentionally entering incorrect figures will result in immediate account termination and potential legal action.</p>
+      
+      <h3>2. Device Locking & Security</h3>
+      <p>Your account is strictly bound to this device. Sharing your login credentials with unauthorized persons, or attempting to bypass the device lock, is a violation of these terms. The system monitors IP addresses and device fingerprints.</p>
+      
+      <h3>3. Form Submissions</h3>
+      <p>You are permitted to upload a statutory form once. You will be given exactly <strong>one replacement chance</strong> if the initial photo is rejected. Further replacements require explicit Admin authorization.</p>
+      
+      <h3>4. Data Protection (KDPA)</h3>
+      <p>Your personal data (name, phone number, and device ID) is processed in accordance with the Kenya Data Protection Act 2019. Your data will only be used for election tallying and will not be shared with third parties without your consent.</p>
+      
+      <h3>5. Legal Disclaimer</h3>
+      <p>TallyHub is an independent parallel tallying and transparency tool. The data generated herein does not replace the official declarations made by the IEBC Returning Officer.</p>
+      
+      <br>
+      <p style="text-align: center; font-weight: 700; color: var(--ink);">You must scroll to the very bottom of this text to accept the terms.</p>
+    </div>
 
+    <div class="terms-footer">
+      <button class="terms-btn" id="acceptTermsBtn" onclick="acceptTerms()" disabled>I Agree & Accept the Terms</button>
+    </div>
+  </div>
+</div>
 <!-- TOASTS -->
 <div class="toasts" id="toasts" aria-live="polite"></div>
 
@@ -2548,7 +2648,48 @@ async function syncOfflineData() {
 
 window.addEventListener('load', syncOfflineData);
 setInterval(syncOfflineData, 30000);
+// ================================================================
+//  ACTIVE CONSENT GATE (TERMS & CONDITIONS)
+// ================================================================
+function checkTermsAcceptance() {
+  const accepted = localStorage.getItem('tallyhub_terms_v1');
+  if (!accepted) {
+    document.getElementById('termsGate').classList.add('active');
+    setupScrollListener();
+  }
+}
 
+function setupScrollListener() {
+  const content = document.getElementById('termsContent');
+  const progress = document.getElementById('termsProgress');
+  const btn = document.getElementById('acceptTermsBtn');
+
+  content.addEventListener('scroll', () => {
+    const totalScroll = content.scrollHeight - content.clientHeight;
+    // Calculate percentage (avoiding division by zero)
+    const percentage = totalScroll > 0 ? (content.scrollTop / totalScroll) * 100 : 100;
+    
+    progress.style.width = percentage + '%';
+
+    // Enable button if scrolled to bottom (99% to handle rounding errors on different screens)
+    if (percentage >= 99) {
+      btn.disabled = false;
+    }
+  });
+}
+
+function acceptTerms() {
+  // Save acceptance to the browser's local storage
+  localStorage.setItem('tallyhub_terms_v1', 'accepted');
+  
+  // Hide the modal
+  document.getElementById('termsGate').classList.remove('active');
+  toast('Terms accepted. Welcome to TallyHub.', 'success');
+}
+
+// Call this inside your init() function right after USER = profile;
+// OR call it at the very end of your script before init();
+checkTermsAcceptance();
 // Start
 init();
 </script>
