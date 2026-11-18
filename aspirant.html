@@ -1265,11 +1265,12 @@ async function loadOverview(silent) {
     if (centreIds.length) centreVotes = await fetchIn('centre_votes', '*', 'centre_id', centreIds, 'centre_id');
     if (streamCodes.length) streamVotes = await fetchIn('stream_votes', '*', 'stream_code', streamCodes, 'stream_code');
     // Fetch overall board for the current scope
-    let boardQuery = db.from('county_leaderboard').select('*').eq('position', VIEW_POS);
-    if (SCOPE_MODE === 'county' && USER.county) boardQuery = boardQuery.eq('county_id', USER.county);
-    else if (SCOPE_MODE === 'national' && DRILL_COUNTY_ID) boardQuery = boardQuery.eq('county_id', DRILL_COUNTY_ID);
-    const { data: rawLeaderboard } = await boardQuery;
-
+       const rawLeaderboard = await fetchAll(() => {
+      let q = db.from('county_leaderboard').select('*').eq('position', VIEW_POS);
+      if (SCOPE_MODE === 'county' && USER.county) q = q.eq('county_id', USER.county);
+      else if (SCOPE_MODE === 'national' && DRILL_COUNTY_ID) q = q.eq('county_id', DRILL_COUNTY_ID);
+      return q.order('county_id');
+    });
     // --- 4. BUILD THE MAPS ---
     const votesByConst = {}, votesByWard = {}, votesByCentre = {}, votesByStream = {}, votesByCounty = {};
         constVotes.forEach(r => { 
@@ -1300,9 +1301,10 @@ async function loadOverview(silent) {
     // --- 5. BUILD LEADERBOARD ---
     let leaderboard = (cands || []).map(c => {
         let v = 0;
-        if (rawLeaderboard) {
-            const match = rawLeaderboard.find(r => r.candidate_code === c.code);
-            if (match) v = Number(match.total_votes);
+        if (rawLeaderboard && rawLeaderboard.length) {
+            v = rawLeaderboard
+              .filter(r => r.candidate_code === c.code)
+              .reduce((s, r) => s + Number(r.total_votes || 0), 0);
         } else if (SCOPE_MODE === 'constituency' && votesByConst[USER.constituency]) {
             v = votesByConst[USER.constituency][c.code] || 0;
         } else if (SCOPE_MODE === 'ward' && votesByWard[USER.ward]) {
@@ -1826,6 +1828,13 @@ function renderDrillGrid() {
   }
 }
 function drillDown(level, id, name) {
+  if (level === 'constituency' && SCOPE_MODE === 'national') {
+    const sel = document.getElementById('aspCountySelector');
+    if (sel) sel.value = id;
+    switchAspCounty(id);
+    window.scrollTo({ top: document.getElementById('drillGrid').offsetTop - 100, behavior: 'smooth' });
+    return;
+  }
   if (level === 'constituency') {
     DRILL_COUNTY_ID = id; DRILL_COUNTY_NAME = name; DRILL_LEVEL = 'constituency';
     DRILL_CONST_ID = ''; DRILL_CONST_NAME = '';
@@ -2033,7 +2042,11 @@ function getVotesForCurrentDrill() {
 
   // 4. Constituency level (Governor View)
   if (DRILL_LEVEL === 'constituency') {
-      if (SCOPE_MODE === 'national' && DRILL_COUNTY_ID) return OVERVIEW.votesByCounty[DRILL_COUNTY_ID] || {};
+      if (SCOPE_MODE === 'national' && DRILL_COUNTY_ID) {
+          const totals = {};
+          (OVERVIEW.leaderboard || []).forEach(c => totals[c.code] = c.votes);
+          return totals;
+      }
       
       // FIX FOR GOVERNOR: If logged in as county, return the overall leaderboard totals!
       if (SCOPE_MODE === 'county' && USER.county) {
