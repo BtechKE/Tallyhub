@@ -1150,30 +1150,37 @@ async function init() {
   startAutoRefresh();
 }
 
-  function switchAspCounty(countyId) {
+ function switchAspCounty(countyId) {
   CURRENT_COUNTY = countyId;
-  
+
   if (!countyId) {
-    // User selected "All Counties"
+    // "All Counties"
     DRILL_LEVEL = 'county';
     DRILL_COUNTY_ID = '';
     DRILL_COUNTY_NAME = '';
   } else {
-    // User selected a specific county from the dropdown
+    // A specific county
     DRILL_LEVEL = 'constituency';
     DRILL_COUNTY_ID = countyId;
-    
     var countyObj = OVERVIEW && OVERVIEW.counties ? OVERVIEW.counties.find(c => c.id === countyId) : null;
     DRILL_COUNTY_NAME = countyObj ? countyObj.name : 'County';
   }
 
-  // Clear deeper drill states
+  // Clear deeper Results drill states
   DRILL_CONST_ID = ''; DRILL_CONST_NAME = '';
   DRILL_WARD = ''; DRILL_WARD_NAME = '';
   DRILL_CENTRE = ''; DRILL_CENTRE_NAME = '';
-  
+
+  // Reset the Live Tracker to match the new county
   TRACKER_DATA = null;
-  loadOverview();
+  TRACKER_CONST_ID = ''; TRACKER_CONST_NAME = '';
+  TRACKER_WARD = ''; TRACKER_WARD_NAME = '';
+  TRACKER_CENTRE = ''; TRACKER_CENTRE_NAME = '';
+  TRACKER_LEVEL = countyId ? 'constituency' : 'county';
+
+  loadOverview().then(function () {
+    if (CURRENT_VIEW === 'tracker') loadTracker();
+  });
 }
 
 function startAutoRefresh() {
@@ -2262,20 +2269,74 @@ function renderTracker() {
 function renderTrackerGrid() {
   if (!TRACKER_DATA) return;
 
-  var gridEl = document.getElementById('trackerGrid'); 
-  var title = document.getElementById('trackerTitle'); 
-  var sub = document.getElementById('trackerSub'); 
+  var gridEl = document.getElementById('trackerGrid');
+  var title = document.getElementById('trackerTitle');
+  var sub = document.getElementById('trackerSub');
   var count = document.getElementById('trackerCount');
+
+  // NATIONAL ONLY: start at counties until one is picked
+  if (SCOPE_MODE === 'national') {
+    if (!DRILL_COUNTY_ID && TRACKER_LEVEL === 'constituency') TRACKER_LEVEL = 'county';
+    if (DRILL_COUNTY_ID && TRACKER_LEVEL === 'county') TRACKER_LEVEL = 'constituency';
+  }
+
+  // --- LEVEL 0: COUNTIES (national, "All Counties") ---
+  if (TRACKER_LEVEL === 'county') {
+    title.textContent = 'County Status';
+    sub.textContent = 'Submission progress by county';
+
+    // stream code -> county, straight from streams.county_id
+    var streamCounty = {};
+    (OVERVIEW.streams || []).forEach(s => { streamCounty[s.code] = s.county_id; });
+
+    var countyGroups = {};
+    (OVERVIEW.counties || []).forEach(c => {
+      countyGroups[c.id] = { id: c.id, name: c.name, streamsTotal: 0, streamsComplete: 0, cellsDone: 0, cellsTotal: 0 };
+    });
+
+    (TRACKER_DATA.wards || []).forEach(w => {
+      (w.centres || []).forEach(cen => {
+        (cen.streams || []).forEach(s => {
+          var g = countyGroups[streamCounty[s.code]];
+          if (!g) return;
+          g.streamsTotal++;
+          if (s.isComplete) g.streamsComplete++;
+          g.cellsDone += s.done;
+          g.cellsTotal += s.total;
+        });
+      });
+    });
+
+    var countyArr = Object.values(countyGroups).filter(g => g.streamsTotal > 0);
+    count.textContent = countyArr.length + ' counties';
+    if (!countyArr.length) { gridEl.innerHTML = '<div class="empty">No counties with streams yet.</div>'; return; }
+
+    gridEl.innerHTML = countyArr.map(c => {
+      var cellPct = c.cellsTotal > 0 ? (c.cellsDone / c.cellsTotal * 100) : 0;
+      var isComplete = c.streamsTotal > 0 && c.streamsComplete === c.streamsTotal;
+      var isPending = c.streamsComplete === 0;
+      var cls = 'card' + (isComplete ? ' leading' : (isPending ? ' empty' : ' trailing'));
+      var chip = trackerChip(c.streamsComplete, c.streamsTotal);
+      return `<div class="${cls}" onclick="trackerPickCounty('${escAttr(c.id)}')">
+        <div class="card-head"><div><div class="card-name">${esc(c.name)}</div><div class="card-sub">County</div></div><span class="card-status ${chip.cls}">${chip.label}</span></div>
+        <div><div class="card-numbers"><span class="card-votes">${c.streamsComplete} / ${c.streamsTotal}</span><span class="card-pct">${cellPct.toFixed(1)}%</span></div><div class="card-votes-lbl">Streams complete</div></div>
+        <div class="card-bar"><div class="card-bar-fill" style="width:${cellPct}%"></div></div>
+      </div>`;
+    }).join('');
+    return;
+  }
 
   // --- LEVEL 1: CONSTITUENCIES ---
   if (TRACKER_LEVEL === 'constituency') {
     title.textContent = 'Constituency Status';
     sub.textContent = 'Submission progress by constituency';
-    
-    // Group wards by constituency
+
+    // Group wards by constituency (national: only the picked county)
     var constGroups = {};
-    (TRACKER_DATA.consts || []).forEach(c => { constGroups[c.id] = { id: c.id, name: c.name, streamsTotal: 0, streamsComplete: 0, cellsDone: 0, cellsTotal: 0 }; });
-    
+    (TRACKER_DATA.consts || [])
+      .filter(c => SCOPE_MODE !== 'national' || c.county_id === DRILL_COUNTY_ID)
+      .forEach(c => { constGroups[c.id] = { id: c.id, name: c.name, streamsTotal: 0, streamsComplete: 0, cellsDone: 0, cellsTotal: 0 }; });
+
     (TRACKER_DATA.wards || []).forEach(w => {
       if (constGroups[w.constituency_id]) {
         constGroups[w.constituency_id].streamsTotal += w.streamsTotal;
@@ -2290,12 +2351,12 @@ function renderTrackerGrid() {
     if (!groupsArr.length) { gridEl.innerHTML = '<div class="empty">No constituencies.</div>'; return; }
 
     gridEl.innerHTML = groupsArr.map(c => {
-      var cellPct = c.cellsTotal > 0 ? (c.cellsDone / c.cellsTotal * 100) : 0; 
-      var isComplete = c.streamsTotal > 0 && c.streamsComplete === c.streamsTotal; 
+      var cellPct = c.cellsTotal > 0 ? (c.cellsDone / c.cellsTotal * 100) : 0;
+      var isComplete = c.streamsTotal > 0 && c.streamsComplete === c.streamsTotal;
       var isPending = c.streamsComplete === 0;
-      var cls = 'card' + (isComplete ? ' leading' : (isPending ? ' empty' : ' trailing')); 
+      var cls = 'card' + (isComplete ? ' leading' : (isPending ? ' empty' : ' trailing'));
       var chip = trackerChip(c.streamsComplete, c.streamsTotal);
-      
+
       return `<div class="${cls}" onclick="trackerDrill('ward', '${c.id}', '${esc(c.name)}')">
         <div class="card-head"><div><div class="card-name">${esc(c.name)}</div><div class="card-sub">Constituency</div></div><span class="card-status ${chip.cls}">${chip.label}</span></div>
         <div><div class="card-numbers"><span class="card-votes">${c.streamsComplete} / ${c.streamsTotal}</span><span class="card-pct">${cellPct.toFixed(1)}%</span></div><div class="card-votes-lbl">Streams complete</div></div>
@@ -2306,11 +2367,10 @@ function renderTrackerGrid() {
   }
 
   // --- LEVEL 2: WARDS ---
-    if (TRACKER_LEVEL === 'ward') {
-    // FIX: Fallback to USER.constituency if logged in as an MP
+  if (TRACKER_LEVEL === 'ward') {
     var targetConstId = TRACKER_CONST_ID || (SCOPE_MODE === 'constituency' ? USER.constituency : '');
     var myWards = TRACKER_DATA.wards.filter(w => w.constituency_id === targetConstId);
-    title.textContent = TRACKER_CONST_NAME + ' Wards'; 
+    title.textContent = TRACKER_CONST_NAME + ' Wards';
     sub.textContent = 'Submission progress by ward';
     count.textContent = myWards.length + ' wards';
 
@@ -2320,37 +2380,35 @@ function renderTrackerGrid() {
 
   // --- LEVEL 3: CENTRES ---
   if (TRACKER_LEVEL === 'centre') {
-    // THE FIX: Fallback to USER.ward if TRACKER_WARD is empty (for MCA)
     var targetTrackerWard = TRACKER_WARD || (SCOPE_MODE === 'ward' ? USER.ward : '');
     var ward = TRACKER_DATA.wards.find(w => w.wardId === targetTrackerWard);
-    
+
     if (!ward) { gridEl.innerHTML = '<div class="empty">No centres found for this ward.</div>'; return; }
 
-    title.textContent = ward.wardName + ' Centres'; 
-    sub.textContent = ward.streamsComplete + ' of ' + ward.streamsTotal + ' streams complete'; 
+    title.textContent = ward.wardName + ' Centres';
+    sub.textContent = ward.streamsComplete + ' of ' + ward.streamsTotal + ' streams complete';
     count.textContent = ward.centres.length + ' centres';
-    
-    gridEl.innerHTML = ward.centres.map(renderTrackerCentreCard).join(''); 
+
+    gridEl.innerHTML = ward.centres.map(renderTrackerCentreCard).join('');
     return;
   }
 
   // --- LEVEL 4: STREAMS ---
   if (TRACKER_LEVEL === 'stream') {
-    // THE FIX: Fallback to USER.ward if TRACKER_WARD is empty (for MCA)
     var targetTrackerWard = TRACKER_WARD || (SCOPE_MODE === 'ward' ? USER.ward : '');
     var ward = TRACKER_DATA.wards.find(w => w.wardId === targetTrackerWard);
-    
+
     var centre = ward ? ward.centres.find(c => c.centreId === TRACKER_CENTRE) : null;
     if (!centre) { gridEl.innerHTML = '<div class="empty">No streams found for this centre.</div>'; return; }
-    
-    title.textContent = centre.centreName + ' Streams'; 
-    sub.textContent = centre.streamsComplete + ' of ' + centre.streamsTotal + ' streams complete · all positions'; 
+
+    title.textContent = centre.centreName + ' Streams';
+    sub.textContent = centre.streamsComplete + ' of ' + centre.streamsTotal + ' streams complete · all positions';
     count.textContent = centre.streams.length + ' streams';
-    
+
     gridEl.innerHTML = centre.streams.map(renderTrackerStreamCard).join('');
     return;
   }
- }
+}
 
 function renderTrackerWardCard(w) {
   var cellPct = w.cellsTotal > 0 ? (w.cellsDone / w.cellsTotal * 100) : 0; 
@@ -2540,7 +2598,8 @@ function trackerResetDrill() {
   TRACKER_WARD = ''; TRACKER_WARD_NAME = '';
   TRACKER_CENTRE = ''; TRACKER_CENTRE_NAME = '';
 
-  if (SCOPE_MODE === 'national' || SCOPE_MODE === 'county') TRACKER_LEVEL = 'constituency';
+  if (SCOPE_MODE === 'national') TRACKER_LEVEL = DRILL_COUNTY_ID ? 'constituency' : 'county';
+  else if (SCOPE_MODE === 'county') TRACKER_LEVEL = 'constituency';
   else if (SCOPE_MODE === 'constituency') TRACKER_LEVEL = 'ward';
   else if (SCOPE_MODE === 'ward') TRACKER_LEVEL = 'centre';
 
@@ -2554,13 +2613,23 @@ function trackerDrill(level, id, name) {
   renderTrackerBreadcrumb(); renderTrackerGrid();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
+
+// NEW: pick a county from the tracker (national only) — keeps Results, dropdown and tracker in sync
+function trackerPickCounty(id) {
+  const sel = document.getElementById('aspCountySelector');
+  if (sel) sel.value = id;
+  switchAspCounty(id);
+}
 function renderTrackerBreadcrumb() {
   var el = document.getElementById('trackerBreadcrumb');
   if (!el) return;
   var parts = [];
 
-  // 1. Root Level
-  if (SCOPE_MODE === 'national' || SCOPE_MODE === 'county') {
+  // 1. Root level
+  if (SCOPE_MODE === 'national') {
+      parts.push({ label: 'All Counties', active: TRACKER_LEVEL === 'county', onclick: "trackerPickCounty('')" });
+      if (DRILL_COUNTY_ID) parts.push({ label: DRILL_COUNTY_NAME || 'County', active: TRACKER_LEVEL === 'constituency', onclick: 'trackerResetDrill()' });
+  } else if (SCOPE_MODE === 'county') {
       parts.push({ label: 'All Constituencies', active: TRACKER_LEVEL === 'constituency', onclick: 'trackerResetDrill()' });
   } else if (SCOPE_MODE === 'constituency') {
       parts.push({ label: 'All Wards', active: TRACKER_LEVEL === 'ward', onclick: 'trackerResetDrill()' });
@@ -2568,26 +2637,24 @@ function renderTrackerBreadcrumb() {
       parts.push({ label: 'All Centres', active: TRACKER_LEVEL === 'centre', onclick: 'trackerResetDrill()' });
   }
 
-  // 2. THE FIX: Fallback for MP logged in
+  // 2. Constituency (with fallback for MP logins)
   var currentConst = TRACKER_CONST_ID || (SCOPE_MODE === 'constituency' ? USER.constituency : '');
   var currentConstName = TRACKER_CONST_NAME;
-  
-  // If we have an ID but no name, look it up in the loaded data
+
   if (!currentConstName && currentConst && TRACKER_DATA && TRACKER_DATA.consts) {
       var foundConst = TRACKER_DATA.consts.find(c => c.id === currentConst);
       if (foundConst) currentConstName = foundConst.name;
   }
 
-  // Add the Constituency to the breadcrumb if it exists
   if (currentConst) {
-      parts.push({ 
-          label: currentConstName || 'Constituency', 
-          active: TRACKER_LEVEL === 'ward', 
-          onclick: `trackerDrill('ward', '${currentConst}', '${currentConstName || 'Constituency'}')` 
+      parts.push({
+          label: currentConstName || 'Constituency',
+          active: TRACKER_LEVEL === 'ward',
+          onclick: `trackerDrill('ward', '${currentConst}', '${currentConstName || 'Constituency'}')`
       });
   }
 
-  // 3. Deeper Levels
+  // 3. Deeper levels
   if (TRACKER_WARD) parts.push({ label: TRACKER_WARD_NAME, active: TRACKER_LEVEL === 'centre', onclick: `trackerDrill('centre', '${TRACKER_WARD}', '${TRACKER_WARD_NAME}')` });
   if (TRACKER_CENTRE) parts.push({ label: TRACKER_CENTRE_NAME, active: TRACKER_LEVEL === 'stream', onclick: `trackerDrill('stream', '${TRACKER_CENTRE}', '${TRACKER_CENTRE_NAME}')` });
 
@@ -2596,7 +2663,7 @@ function renderTrackerBreadcrumb() {
       var cls = 'bc-seg' + (p.active ? ' current' : '');
       var attr = p.active ? '' : `onclick="${p.onclick}"`;
       return (i > 0 ? '<i class="fas fa-chevron-right bc-sep"></i>' : '') +
-            `<button class="${cls}" ${attr}>${i===0 ? '<i class="fas fa-layer-group"></i> ' : ''}${esc(p.label)}</button>`;
+            `<button class="${cls}" ${attr}>${i === 0 ? '<i class="fas fa-layer-group"></i> ' : ''}${esc(p.label)}</button>`;
   }).join('');
 }
 // ================================================================
