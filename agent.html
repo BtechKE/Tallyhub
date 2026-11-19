@@ -701,6 +701,10 @@ button { cursor: pointer; }
 .c-chip.done    { background: var(--green); color: var(--ink-logo); }
 .c-chip.queued  { background: var(--amber-bg); color: var(--amber); border: 1px solid #E8C979; }
 .c-chip.todo    { background: transparent; color: var(--faint); border: 1px dashed #C9D3CD; }
+    /* Replace-form button — brand green */
+.btn-green { background: var(--green); color: var(--ink-logo); border: none; box-shadow: 0 6px 16px rgba(165, 207, 131, 0.45); }
+.btn-green:active { background: #93C06E; }
+.btn-green i { color: var(--ink-logo); }
   </style>
 </head>
 <body>
@@ -2092,7 +2096,7 @@ async function goToReadonly(streamCode, position) {
 
     // ONLY show the replace button if they are the owner and haven't used their 1 chance
     if (canReplace) {
-        formHtml += '<button type="button" class="btn btn-ghost" style="width:100%;" onclick="openUploadModal(' + c + ',' + p + ')"><i class="fas fa-sync-alt"></i> Replace photo (1 attempt left)</button>';
+        formHtml += '<button type="button" class="btn btn-green" style="width:100%;" onclick="openUploadModal(' + c + ',' + p + ')"><i class="fas fa-sync-alt"></i> Replace photo (1 attempt left)</button>';
     } else {
         formHtml += '<div class="ro-info" style="margin-top: 10px; justify-content: center;"><div class="ro-info-row" style="justify-content: center; color: var(--muted);"><i class="fas fa-lock"></i> Form locked. Only the submitting agent can replace it once.</div></div>';
     }
