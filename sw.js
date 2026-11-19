@@ -36,17 +36,22 @@ self.addEventListener('fetch', (e) => {
 
   // Page loads: network first, fall back to the cached page
   if (req.mode === 'navigate') {
-    const key = url.pathname.endsWith('index.html') ? './index.html' : './agent.html';
+    const p = url.pathname;
+    let key = null;
+    if (p.endsWith('/agent.html') || p.endsWith('/agent')) key = './agent.html';
+    else if (p === '/' || p.endsWith('/index.html') || p.endsWith('/index')) key = './index.html';
+
     e.respondWith(
       fetch(req)
         .then((res) => {
-          if (res.ok) {
+          // Only save clean, non-redirected copies of the agent and login pages
+          if (key && res.ok && !res.redirected) {
             const copy = res.clone();
             caches.open(CACHE_NAME).then((c) => c.put(key, copy));
           }
           return res;
         })
-        .catch(() => caches.match(key))
+        .catch(() => (key ? caches.match(key) : caches.match(req)))
     );
     return;
   }
