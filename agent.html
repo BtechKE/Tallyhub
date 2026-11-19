@@ -1340,14 +1340,15 @@ async function loadStreams(silent) {
       .in('code', USER.assigned_streams || []);
     if (streamErr) throw streamErr;
 
-        const existingResults = await fetchAll(() => db.from('results')
-      .select('stream_code, position')
+    // CHANGED: also download the vote numbers so results can be viewed offline
+    const existingResults = await fetchAll(() => db.from('results')
+      .select('stream_code, position, candidate_code, votes, submitted_by, created_at, total_votes_cast, rejected_votes')
       .in('stream_code', USER.assigned_streams || [])
       .order('id'));
 
     let existingForms = [];
     try {
-     existingForms = await fetchAll(() => db.from('form_photos')
+      existingForms = await fetchAll(() => db.from('form_photos')
         .select('stream_code, position')
         .in('stream_code', USER.assigned_streams || [])
         .order('stream_code').order('position'));
@@ -1376,6 +1377,14 @@ async function loadStreams(silent) {
       FORMS[f.stream_code][f.position] = true;
     });
 
+    // NEW: save every submitted result on the phone so it can be viewed offline
+    const resultsByKey = {};
+    existingResults.forEach(r => {
+      const k = r.stream_code + '_' + r.position;
+      (resultsByKey[k] = resultsByKey[k] || []).push(r);
+    });
+    for (const k in resultsByKey) await offlineStore.setItem('cached_result_' + k, resultsByKey[k]);
+
     await applyPendingQueue();
     await offlineStore.setItem('cached_streams', STREAMS);
     await offlineStore.setItem('cached_statuses', STATUSES);
@@ -1393,7 +1402,6 @@ async function loadStreams(silent) {
     if (!silent) document.getElementById('appLoader').classList.remove('active');
   }
 }
-
 let prefetching = false;
 
 async function prefetchOfflineData(force) {
@@ -2079,12 +2087,27 @@ async function goToReadonly(streamCode, position) {
       rows = queued.payload.map(x => ({ candidate_code: x.candidate_code, votes: x.votes }));
       meta = { by: USER.name, at: null, totalCast: queued.totalCast, rejected: queued.rejected, pending: true };
     } else {
-      if (!navigator.onLine) throw new Error('This result isn’t saved on this phone yet. Reconnect to view it.');
+      // CHANGED: use the internet when available, otherwise the copy saved on the phone
+      const resultKey = 'cached_result_' + streamCode + '_' + position;
+      let results = null;
 
-      const { data: results, error: resError } = await db.from('results')
-        .select('votes, submitted_by, created_at, candidate_code, total_votes_cast, rejected_votes')
-        .eq('stream_code', streamCode).eq('position', position);
-      if (resError) throw resError;
+      if (navigator.onLine) {
+        try {
+          const { data, error: resError } = await db.from('results')
+            .select('votes, submitted_by, created_at, candidate_code, total_votes_cast, rejected_votes')
+            .eq('stream_code', streamCode).eq('position', position);
+          if (resError) throw resError;
+          results = data || [];
+          if (results.length) await offlineStore.setItem(resultKey, results);
+        } catch (err) {
+          // Weak network: fall back to the saved copy
+          results = await offlineStore.getItem(resultKey);
+          if (!results) throw err;
+        }
+      } else {
+        results = await offlineStore.getItem(resultKey);
+        if (!results) throw new Error('This result isn’t saved on this phone yet. Reconnect to view it.');
+      }
 
       if (!results || !results.length) {
         if (STATUSES[streamCode]) STATUSES[streamCode][position] = { status: 'pending' };
@@ -2104,7 +2127,7 @@ async function goToReadonly(streamCode, position) {
     const cachedCands = await offlineStore.getItem('cached_cands_' + streamCode + '_' + position);
     if (cachedCands) cachedCands.forEach(cd => { candMap[cd.code] = cd; });
     if (!cachedCands && navigator.onLine) {
-           const codes = [...new Set((rows || []).map(r => r.candidate_code))];
+      const codes = [...new Set((rows || []).map(r => r.candidate_code))];
       if (codes.length) {
         const { data: allCands } = await db.from('candidates')
           .select('code, name, party, photo_url').in('code', codes);
