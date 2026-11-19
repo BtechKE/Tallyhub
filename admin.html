@@ -3134,8 +3134,8 @@ async function loadActiveUsers() {
     const twoMinsAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString();
     
     const [agentsRes, aspRes] = await Promise.all([
-      db.from('agents').select('name, phone, last_seen').gte('last_seen', twoMinsAgo).order('last_seen', { ascending: false }),
-      db.from('aspirants').select('name, position, last_seen').gte('last_seen', twoMinsAgo).order('last_seen', { ascending: false })
+      fetchAll(() => db.from('agents').select('name, phone, last_seen').gte('last_seen', twoMinsAgo).order('last_seen', { ascending: false }).order('id')).then(data => ({ data })),
+      fetchAll(() => db.from('aspirants').select('name, position, last_seen').gte('last_seen', twoMinsAgo).order('last_seen', { ascending: false }).order('id')).then(data => ({ data }))
     ]);
 
     var html = '<div class="user-list">';
@@ -3339,9 +3339,7 @@ async function loadCandidates() {
 
 async function loadAgents() {
   // ONLY load agents for the active county
-  const { data } = await db.from('agents').select('*').eq('county_id', CURRENT_COUNTY).order('name');
-  AGENTS = data || []; 
-  
+  AGENTS = await fetchAll(() => db.from('agents').select('*').eq('county_id', CURRENT_COUNTY).order('name').order('id'));
   renderAgents(); 
   document.getElementById('statAgents').textContent = AGENTS.length; 
   document.getElementById('badgeAgents').textContent = AGENTS.length;
@@ -3349,17 +3347,15 @@ async function loadAgents() {
 
 async function loadAspirants() {
   // Fetch aspirants for the current county, OR National candidates (President)
-  const { data, error } = await db.from('aspirants')
-    .select('*')
-    .or(`county_id.eq.${CURRENT_COUNTY},position.eq.President`)
-    .order('name');
-    
-  if (error) {
+   try {
+    ASPIRANTS = await fetchAll(() => db.from('aspirants')
+      .select('*')
+      .or(`county_id.eq.${CURRENT_COUNTY},position.eq.President`)
+      .order('name').order('id'));
+  } catch (error) {
     console.error("Error loading aspirants:", error);
     return;
   }
-
-  ASPIRANTS = data || []; 
   
   renderAspirants(); 
   document.getElementById('statAspirants').textContent = ASPIRANTS.length; 
@@ -4547,7 +4543,7 @@ var ADMIN_DRILL_CENTRE = '';
 async function loadAdminResults() {
   try {
     // 1. Fetch all Candidates
-    const { data: cands } = await db.from('candidates').select('*');
+    const cands = await fetchAll(() => db.from('candidates').select('*').order('code'));
     var candMap = {};
     var resultsByPos = {}; POSITIONS.forEach(p => resultsByPos[p] = []);
     var totalByCand = {};
@@ -4563,7 +4559,7 @@ async function loadAdminResults() {
         votesByConst[p] = {}; votesByWard[p] = {}; votesByCentre[p] = {}; votesByStream[p] = {};
     });
 
-    const { data: constVotes } = await db.from('constituency_votes').select('*').in('constituency_id', CONSTITUENCIES.map(c => c.id));
+    const constVotes = await fetchIn('constituency_votes', '*', 'constituency_id', CONSTITUENCIES.map(c => c.id), 'constituency_id', q => q.order('position').order('candidate_code'));
     (constVotes || []).forEach(v => {
         if (!votesByConst[v.position]) votesByConst[v.position] = {};
         if (!votesByConst[v.position][v.constituency_id]) votesByConst[v.position][v.constituency_id] = {};
@@ -4571,21 +4567,21 @@ async function loadAdminResults() {
         totalByCand[v.candidate_code] = (totalByCand[v.candidate_code] || 0) + Number(v.total_votes);
     });
 
-    const { data: wardVotes } = await db.from('ward_votes').select('*').in('ward_id', WARDS.map(w => w.id));
+    const wardVotes = await fetchIn('ward_votes', '*', 'ward_id', WARDS.map(w => w.id), 'ward_id', q => q.order('position').order('candidate_code'));
     (wardVotes || []).forEach(v => {
         if (!votesByWard[v.position]) votesByWard[v.position] = {};
         if (!votesByWard[v.position][v.ward_id]) votesByWard[v.position][v.ward_id] = {};
         votesByWard[v.position][v.ward_id][v.candidate_code] = Number(v.total_votes);
     });
 
-    const { data: centreVotes } = await db.from('centre_votes').select('*').in('centre_id', CENTRES.map(c => c.id));
+       const centreVotes = await fetchIn('centre_votes', '*', 'centre_id', CENTRES.map(c => c.id), 'centre_id', q => q.order('position').order('candidate_code'));
     (centreVotes || []).forEach(v => {
         if (!votesByCentre[v.position]) votesByCentre[v.position] = {};
         if (!votesByCentre[v.position][v.centre_id]) votesByCentre[v.position][v.centre_id] = {};
         votesByCentre[v.position][v.centre_id][v.candidate_code] = Number(v.total_votes);
     });
 
-    const { data: streamVotes } = await db.from('stream_votes').select('*').in('stream_code', STREAMS.map(s => s.code));
+      const streamVotes = await fetchIn('stream_votes', '*', 'stream_code', STREAMS.map(s => s.code), 'stream_code', q => q.order('position').order('candidate_code'));
     (streamVotes || []).forEach(v => {
         if (!votesByStream[v.position]) votesByStream[v.position] = {};
         if (!votesByStream[v.position][v.stream_code]) votesByStream[v.position][v.stream_code] = {};
@@ -4870,10 +4866,10 @@ async function loadSubmissionMatrix() {
     var activeStreamCodes = STREAMS.map(s => s.code);
 
     // Fetch ONLY the stream_code and position from results (very light query)
-    const results = await fetchIn('results', 'stream_code, position', 'stream_code', activeStreamCodes, 'stream_code');
+    const results = await fetchIn('results', 'stream_code, position', 'stream_code', activeStreamCodes, 'stream_code', q => q.order('id')); // CHANGED
     
     // Fetch form photos (just the codes)
-    const formsData = await fetchIn('form_photos', 'stream_code, position, photo_url', 'stream_code', activeStreamCodes, 'stream_code');
+    const formsData = await fetchIn('form_photos', 'stream_code, position, photo_url', 'stream_code', activeStreamCodes, 'stream_code', q => q.order('position')); // CHANGED
 
     TRACKER_FORMS = {};
     (formsData || []).forEach(f => { TRACKER_FORMS[f.stream_code + '_' + f.position] = f.photo_url; });
@@ -4886,7 +4882,7 @@ async function loadSubmissionMatrix() {
     });
 
     let totalCompleteStreams = 0;
-    let totalCellsDone = 0; // NEW: Track total unique positions submitted
+    let totalCellsDone = 0; // Track total unique positions submitted
     
     // Build the tracker tree using the STREAMS we already have
     const trackerWards = WARDS.map(w => {
@@ -4914,7 +4910,7 @@ async function loadSubmissionMatrix() {
         });
 
         totalCompleteStreams += wStreamsComplete;
-        totalCellsDone += wCellsDone; // NEW: Sum up the unique position submissions
+        totalCellsDone += wCellsDone; // Sum up the unique position submissions
         
         return { 
             wardId: w.id, 
@@ -4932,7 +4928,6 @@ async function loadSubmissionMatrix() {
       positions: POSITIONS, 
       consts: CONSTITUENCIES,
       wards: trackerWards,
-      // FIXED: Changed cellsDone to totalCellsDone
       summary: { totalStreams: STREAMS.length, completeStreams: totalCompleteStreams, pendingStreams: STREAMS.length - totalCompleteStreams, cellsDone: totalCellsDone, cellsTotal: STREAMS.length * POSITIONS.length }
     };
 
@@ -5298,7 +5293,7 @@ async function generatePDF() {
       const [ c, r, f, s, w, co, ct ] = await Promise.all([
         fetchAll(() => db.from('candidates').select('*').eq('position', pos).order('code')),
         // Added is_anomaly here
-        fetchAll(() => db.from('results').select('stream_code, candidate_code, votes, is_anomaly').eq('position', pos).order('stream_code')),
+        fetchAll(() => db.from('results').select('stream_code, candidate_code, votes, is_anomaly').eq('position', pos).order('stream_code').order('id')),
         fetchAll(() => db.from('form_photos').select('stream_code').eq('position', pos).order('stream_code')),
         fetchAll(() => db.from('streams').select('*').order('code')),
         fetchAll(() => db.from('wards').select('*').order('id')),
@@ -5320,7 +5315,7 @@ async function generatePDF() {
       const [ c, r, f ] = await Promise.all([
         fetchAll(() => db.from('candidates').select('*').eq('position', pos).order('code')),
         // Added is_anomaly here
-        fetchIn('results', 'stream_code, candidate_code, votes, is_anomaly', 'stream_code', streamCodes, 'stream_code', q => q.eq('position', pos)),
+        fetchIn('results', 'stream_code, candidate_code, votes, is_anomaly', 'stream_code', streamCodes, 'stream_code', q => q.eq('position', pos).order('id')),
         fetchIn('form_photos', 'stream_code', 'stream_code', streamCodes, 'stream_code', q => q.eq('position', pos))
       ]);
       
@@ -6404,10 +6399,8 @@ async function loadAdminWarRoom(silent) {
     }
 
     // 1. Fetch turnout (V3 View) and forms for this county's streams
-    const { data: turnout, error } = await db.from('stream_turnout').select('*').in('stream_code', streamCodes);
-    if (error) throw error;
-
-    const { data: forms } = await db.from('form_photos').select('stream_code, position').in('stream_code', streamCodes);
+    const turnout = await fetchIn('stream_turnout', '*', 'stream_code', streamCodes, 'stream_code', q => q.order('position'));
+    const forms = await fetchIn('form_photos', 'stream_code, position', 'stream_code', streamCodes, 'stream_code', q => q.order('position'));
     
     var turnoutMap = {};
     (turnout || []).forEach(t => { turnoutMap[t.stream_code + '_' + t.position] = t; });
@@ -6771,7 +6764,8 @@ async function openAdminPositionDetail(streamCode, position) {
         if (resErr) throw resErr;
 
         // 2. Fetch the candidates for this position to get names/photos
-        const { data: allCands } = await db.from('candidates').select('code, name, party, photo_url').eq('position', position);
+        const candCodes = [...new Set((results || []).map(r => r.candidate_code))];
+        const allCands = await fetchIn('candidates', 'code, name, party, photo_url', 'code', candCodes, 'code');
         var candMap = {};
         (allCands || []).forEach(c => { candMap[c.code] = c; });
 
