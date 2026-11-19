@@ -1036,7 +1036,20 @@ button { cursor: pointer; }
 const supabaseUrl = 'https://mqafninsctppbkpwwmxx.supabase.co';
 const supabaseKey = 'sb_publishable_ooW3EE91PVdXoXM7tdxwKw_r51RrZ2z';
 const db = window.supabase.createClient(supabaseUrl, supabaseKey);
+const PAGE = 1000;
 
+// Pull EVERY row of a query by paging with range()
+async function fetchAll(makeQuery) {
+  let all = [], from = 0;
+  while (true) {
+    const { data, error } = await makeQuery().range(from, from + PAGE - 1);
+    if (error) throw error;
+    all = all.concat(data || []);
+    if (!data || data.length < PAGE) break;
+    from += PAGE;
+  }
+  return all;
+}
 // 1. Register Service Worker
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js').then(() => {
@@ -1327,17 +1340,17 @@ async function loadStreams(silent) {
       .in('code', USER.assigned_streams || []);
     if (streamErr) throw streamErr;
 
-    const { data: existingResults, error: resErr } = await db.from('results')
+        const existingResults = await fetchAll(() => db.from('results')
       .select('stream_code, position')
-      .in('stream_code', USER.assigned_streams || []);
-    if (resErr) throw resErr;
+      .in('stream_code', USER.assigned_streams || [])
+      .order('id'));
 
     let existingForms = [];
     try {
-      const { data } = await db.from('form_photos')
+     existingForms = await fetchAll(() => db.from('form_photos')
         .select('stream_code, position')
-        .in('stream_code', USER.assigned_streams || []);
-      existingForms = data || [];
+        .in('stream_code', USER.assigned_streams || [])
+        .order('stream_code').order('position'));
     } catch (e) { console.warn("Could not load forms:", e); }
 
     STREAMS = (streamsData || []).map(s => ({
@@ -2091,9 +2104,12 @@ async function goToReadonly(streamCode, position) {
     const cachedCands = await offlineStore.getItem('cached_cands_' + streamCode + '_' + position);
     if (cachedCands) cachedCands.forEach(cd => { candMap[cd.code] = cd; });
     if (!cachedCands && navigator.onLine) {
-      const { data: allCands } = await db.from('candidates')
-        .select('code, name, party, photo_url').eq('position', position);
-      (allCands || []).forEach(cd => { candMap[cd.code] = cd; });
+           const codes = [...new Set((rows || []).map(r => r.candidate_code))];
+      if (codes.length) {
+        const { data: allCands } = await db.from('candidates')
+          .select('code, name, party, photo_url').in('code', codes);
+        (allCands || []).forEach(cd => { candMap[cd.code] = cd; });
+      }
     }
 
     var totalCast = meta.totalCast || 0;
