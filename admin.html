@@ -2666,25 +2666,26 @@ body::after {
   </div>
 </div>
 
-  <!-- CSV IMPORT MODAL -->
+ <!-- CSV IMPORT MODAL -->
 <div class="modal-bg" id="csvImportModal" onclick="if(event.target===this) closeCsvImportModal()">
-  <div class="modal" style="max-width:420px;">
+  <div class="modal" style="max-width:440px;">
     <div class="modal-head">
       <div>
         <div class="modal-title">Bulk Import IEBC Data</div>
-        <div class="modal-sub">Upload a CSV to build the entire geographic tree.</div>
+        <div class="modal-sub">Upload the IEBC polling station register to build the full tree.</div>
       </div>
       <button class="modal-close" onclick="closeCsvImportModal()"><i class="fas fa-times"></i></button>
     </div>
 
-    <div style="background: var(--primary-tint); padding: 12px; border-radius: 10px; margin-bottom: 16px; border: 1px dashed var(--primary-dark); font-size: 12px; color: var(--text-muted);">
-      <strong>Format required:</strong><br>
-      County, Constituency, Ward, Centre, Stream Number, Registered Voters
+    <div style="background: var(--primary-tint); padding: 12px; border-radius: 10px; margin-bottom: 16px; border: 1px dashed var(--primary-dark); font-size: 12px; color: var(--text-muted); line-height:1.5;">
+      <strong>IEBC register format</strong> (CSV or tab-separated), with these headers:<br>
+      COUNTY NAME · CONSTITUENCY NAME · CAW_NAME · REGISTRATION CENTRE CODE · REGISTRATION CENTRE NAME · VOTERS PER POLLING STATION<br>
+      Blank centre names are filled from the row above. Streams are numbered in order within each centre, so <strong>always import whole centres</strong>.
     </div>
 
     <div class="form-group">
-      <label>Select CSV File</label>
-      <input type="file" id="csvFileInput" accept=".csv" style="padding:10px; background:var(--bg); border:1px solid var(--border); border-radius:8px; width:100%;" onchange="handleCsvUpload(event)">
+      <label>Select file</label>
+      <input type="file" id="csvFileInput" accept=".csv,.tsv,.txt" style="padding:10px; background:var(--bg); border:1px solid var(--border); border-radius:8px; width:100%;" onchange="handleCsvUpload(event)">
     </div>
 
     <div id="csvProgressWrap" style="display:none; margin-top: 16px;">
@@ -2695,10 +2696,12 @@ body::after {
       <div class="progress-track" style="height:8px; background:var(--border); border-radius:20px; overflow:hidden;">
         <div id="csvProgressBar" class="progress-fill" style="width:0%; height:100%; background:var(--primary); transition: width 0.3s ease;"></div>
       </div>
+      <div id="csvResult" style="margin-top:12px; font-size:13px;"></div>
     </div>
 
     <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="closeCsvImportModal()">Cancel</button>
+      <button class="btn btn-ghost" id="csvFailedBtn" style="display:none;" onclick="downloadCsvFailures()"><i class="fas fa-download"></i> Failed rows</button>
+      <button class="btn btn-ghost" onclick="closeCsvImportModal()">Close</button>
     </div>
   </div>
 </div>
@@ -7029,99 +7032,192 @@ function generateWarRoomPDF() {
   }
 }
 
- // ================================================================
-//  CSV BULK IMPORTER
 // ================================================================
+//  CSV BULK IMPORTER (IEBC register)
+// ================================================================
+var CSV_IMPORT_FAILED = [];
+
 function openCsvImportModal() {
   document.getElementById('csvFileInput').value = '';
+  document.getElementById('csvFileInput').disabled = false;
   document.getElementById('csvProgressWrap').style.display = 'none';
+  document.getElementById('csvResult').innerHTML = '';
+  document.getElementById('csvFailedBtn').style.display = 'none';
+  document.getElementById('csvProgressBar').style.background = 'var(--primary)';
+  CSV_IMPORT_FAILED = [];
   document.getElementById('csvImportModal').classList.add('active');
 }
 
 function closeCsvImportModal() {
   document.getElementById('csvImportModal').classList.remove('active');
 }
+
+// Proper CSV / TSV reader: quotes, commas inside quotes, empty cells, Windows line endings
+function parseDelimited(text) {
+  text = text.replace(/^\uFEFF/, '');
+  var firstLine = text.split(/\r?\n/, 1)[0] || '';
+  var delim = firstLine.split('\t').length > firstLine.split(',').length ? '\t' : ',';
+  var rows = [], row = [], field = '', inQ = false;
+
+  for (var i = 0; i < text.length; i++) {
+    var ch = text[i];
+    if (inQ) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; } else { inQ = false; }
+      } else field += ch;
+    } else if (ch === '"') {
+      inQ = true;
+    } else if (ch === delim) {
+      row.push(field); field = '';
+    } else if (ch === '\n' || ch === '\r') {
+      if (ch === '\r' && text[i + 1] === '\n') i++;
+      row.push(field); field = '';
+      if (row.some(function (c) { return c.trim() !== ''; })) rows.push(row);
+      row = [];
+    } else field += ch;
+  }
+  if (field !== '' || row.length) {
+    row.push(field);
+    if (row.some(function (c) { return c.trim() !== ''; })) rows.push(row);
+  }
+  return rows;
+}
+
+// Turn the IEBC sheet into clean rows: fill blank names down, number streams per centre
+function buildImportRows(table) {
+  var header = table[0].map(function (h) { return String(h).trim().toUpperCase().replace(/[_\s]+/g, ' '); });
+  function col() {
+    for (var a = 0; a < arguments.length; a++) { var k = header.indexOf(arguments[a]); if (k > -1) return k; }
+    return -1;
+  }
+  var C = {
+    county: col('COUNTY NAME'),
+    constituency: col('CONSTITUENCY NAME'),
+    ward: col('CAW NAME', 'WARD NAME'),
+    centreCode: col('REGISTRATION CENTRE CODE'),
+    centre: col('REGISTRATION CENTRE NAME'),
+    voters: col('VOTERS PER POLLING STATION')
+  };
+  var labels = { county: 'COUNTY NAME', constituency: 'CONSTITUENCY NAME', ward: 'CAW_NAME', centre: 'REGISTRATION CENTRE NAME', voters: 'VOTERS PER POLLING STATION' };
+  var missingCols = Object.keys(labels).filter(function (k) { return C[k] === -1; }).map(function (k) { return labels[k]; });
+  if (missingCols.length) return { rows: [], bad: [], missingCols: missingCols };
+
+  var out = [], bad = [];
+  var last = { county: '', constituency: '', ward: '', centre: '' };
+  var centreByCode = {};
+  var streamCounter = {};
+
+  for (var r = 1; r < table.length; r++) {
+    var cells = table[r];
+    var get = function (k) { return (k > -1 && cells[k] != null) ? String(cells[k]).trim() : ''; };
+    var rowNo = r + 1;   // matches the line number in Excel
+
+    var county = get(C.county) || last.county;
+    var constituency = get(C.constituency) || last.constituency;
+    var ward = get(C.ward) || last.ward;
+
+    var centreCode = get(C.centreCode);
+    var codeKey = [county, constituency, ward, centreCode].join('|').toUpperCase();
+    var centre = get(C.centre);
+    if (centre) { if (centreCode) centreByCode[codeKey] = centre; }
+    else centre = (centreCode && centreByCode[codeKey]) || last.centre;
+
+    last = { county: county, constituency: constituency, ward: ward, centre: centre };
+
+    var voters = parseInt(get(C.voters).replace(/[,\s]/g, ''), 10);
+
+    if (!county || !constituency || !ward || !centre) {
+      bad.push({ row: rowNo, error: 'Missing county, constituency, ward or centre name' }); continue;
+    }
+    if (isNaN(voters)) {
+      bad.push({ row: rowNo, error: 'Voters per polling station is not a number' }); continue;
+    }
+
+    var sKey = [county, constituency, ward, centre].join('|').toUpperCase();
+    streamCounter[sKey] = (streamCounter[sKey] || 0) + 1;
+
+    out.push({ row: rowNo, county: county, constituency: constituency, ward: ward, centre: centre, stream: streamCounter[sKey], voters: voters });
+  }
+  return { rows: out, bad: bad, missingCols: [] };
+}
+
 async function handleCsvUpload(event) {
   const file = event.target.files[0];
   if (!file) return;
 
-  const reader = new FileReader();
-  reader.onload = async function(e) {
-    const text = e.target.result;
-    const rows = text.split('\n').map(r => r.trim()).filter(r => r.length > 0);
-    
-    if (rows.length <= 1) return toast('CSV file is empty.', 'error');
-    rows.shift(); 
+  const input = document.getElementById('csvFileInput');
+  const wrap = document.getElementById('csvProgressWrap');
+  const bar = document.getElementById('csvProgressBar');
+  const pctEl = document.getElementById('csvProgressPct');
+  const label = document.getElementById('csvProgressLabel');
+  const result = document.getElementById('csvResult');
+  const failedBtn = document.getElementById('csvFailedBtn');
 
-    document.getElementById('csvProgressWrap').style.display = 'block';
-    const progressBar = document.getElementById('csvProgressBar');
-    const progressPct = document.getElementById('csvProgressPct');
-    const progressLabel = document.getElementById('csvProgressLabel');
+  result.innerHTML = '';
+  failedBtn.style.display = 'none';
 
-    let successCount = 0;
-    let failCount = 0;
+  const table = parseDelimited(await file.text());
+  if (table.length < 2) return toast('That file has no data rows.', 'error');
 
-    const BATCH_SIZE = 20; 
-    const totalBatches = Math.ceil(rows.length / BATCH_SIZE);
+  const built = buildImportRows(table);
+  if (built.missingCols.length) {
+    return toast('Missing columns: ' + built.missingCols.join(', '), 'error');
+  }
 
-    for (let b = 0; b < totalBatches; b++) {
-        const start = b * BATCH_SIZE;
-        const batchRows = rows.slice(start, start + BATCH_SIZE);
+  input.disabled = true;
+  wrap.style.display = 'block';
+  bar.style.background = 'var(--primary)';
 
-        const promises = batchRows.map(async (row) => {
-            const cols = row.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || row.split(',');
-            const cleanCols = cols.map(c => c.replace(/^"|"$/g, '').trim());
+  const BATCH = 200;
+  const total = built.rows.length;
+  let imported = 0;
+  const failed = built.bad.slice();
 
-            if (cleanCols.length >= 12) {
-                const pCounty = cleanCols[1];            // COUNTY NAME
-                const pConst = cleanCols[3];             // CONSTITUENCY NAME
-                const pWard = cleanCols[5];              // CAW_NAME
-                const pCentre = cleanCols[7];            // REGISTRATION CENTRE NAME
-                const pStationName = cleanCols[10];      // POLLING STATION NAME
-                const pVoters = parseInt(cleanCols[11], 10) || 0; // VOTERS PER POLLING STATION
-
-                // Extract stream number from the station name
-                let streamNum = 1;
-                const match = pStationName.match(/(\d+)/);
-                if (match) streamNum = parseInt(match[1], 10);
-
-                // Call the simplified V3 RPC (No official codes!)
-                const { error } = await db.rpc('import_stream_v3', {
-                    p_county_name: pCounty,
-                    p_const_name: pConst,
-                    p_ward_name: pWard,
-                    p_centre_name: pCentre,
-                    p_stream_number: streamNum,
-                    p_registered_voters: pVoters
-                });
-
-                if (error) {
-                    console.warn("Row failed:", cleanCols, error);
-                    return false;
-                }
-                return true;
-            }
-            return false;
-        });
-
-        const results = await Promise.all(promises);
-        results.forEach(r => { if (r) successCount++; else failCount++; });
-
-        const pct = Math.round(((b + 1) / totalBatches) * 100);
-        progressBar.style.width = pct + '%';
-        progressPct.textContent = pct + '%';
-        progressLabel.textContent = `Importing... ${Math.min((b + 1) * BATCH_SIZE, rows.length)} / ${rows.length}`;
+  for (let s = 0; s < total; s += BATCH) {
+    const chunk = built.rows.slice(s, s + BATCH);
+    try {
+      const { data, error } = await db.rpc('import_streams_batch', { p_rows: chunk });
+      if (error) throw error;
+      imported += (data && data.imported) || 0;
+      ((data && data.failed) || []).forEach(f => failed.push({ row: f.row, error: f.error }));
+    } catch (err) {
+      chunk.forEach(r => failed.push({ row: r.row, error: err.message || 'Network error' }));
     }
 
-    progressLabel.textContent = 'Import Complete!';
-    progressBar.style.background = 'var(--success)';
-    toast(`Imported ${successCount} streams. ${failCount} failed.`, failCount > 0 ? 'info' : 'success');
-    
-    loadAllData();
-    setTimeout(closeCsvImportModal, 2000);
-  };
-  
-  reader.readAsText(file);
+    const done = Math.min(s + BATCH, total);
+    const pct = total ? Math.round(done / total * 100) : 100;
+    bar.style.width = pct + '%';
+    pctEl.textContent = pct + '%';
+    label.textContent = 'Importing… ' + done.toLocaleString() + ' / ' + total.toLocaleString();
+  }
+
+  CSV_IMPORT_FAILED = failed.sort((a, b) => Number(a.row) - Number(b.row));
+  input.disabled = false;
+  label.textContent = 'Import finished';
+  bar.style.background = failed.length ? 'var(--warning, #F5C518)' : 'var(--success)';
+
+  result.innerHTML =
+    '<div><strong>' + imported.toLocaleString() + '</strong> streams imported or updated.</div>' +
+    (failed.length
+      ? '<div style="color:var(--danger, #C4453A); margin-top:4px;"><strong>' + failed.length.toLocaleString() + '</strong> rows failed. Download the list to see why.</div>'
+      : '<div style="color:var(--success); margin-top:4px;">No errors.</div>');
+  failedBtn.style.display = failed.length ? '' : 'none';
+
+  toast('Imported ' + imported + ' streams' + (failed.length ? ', ' + failed.length + ' failed' : ''), failed.length ? 'info' : 'success');
+  loadAllData();
+  if (!failed.length) setTimeout(closeCsvImportModal, 2000);
+}
+
+function downloadCsvFailures() {
+  if (!CSV_IMPORT_FAILED.length) return;
+  const lines = ['Row,Reason'].concat(CSV_IMPORT_FAILED.map(f =>
+    f.row + ',"' + String(f.error || '').replace(/"/g, '""') + '"'));
+  const blob = new Blob([lines.join('\r\n')], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'import_failed_rows.csv';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 // Helper: Get Morning/Afternoon/Evening greeting
 function getGreeting() {
