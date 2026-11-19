@@ -1,4 +1,4 @@
-const CACHE_NAME = 'tallyhub-v7';            // bump on every deploy
+const CACHE_NAME = 'tallyhub-v8';            // bump on every deploy
 const ASSETS = [
   './agent.html',
   './index.html',
