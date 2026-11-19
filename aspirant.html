@@ -1095,7 +1095,7 @@ async function init() {
     TRACKER_LEVEL = 'constituency';
     document.getElementById('nationalScopeWrap').style.display = 'flex';
 
-    const { data: counties } = await db.from('counties').select('id, name').order('name');
+    const counties = await fetchAll(() => db.from('counties').select('id, name').order('name'));
     if (counties && counties.length > 0) {
       CURRENT_COUNTY = '';                       
       document.getElementById('aspCountySelector').innerHTML =
@@ -1378,7 +1378,7 @@ async function loadTracker(silent) {
     let resultsData = await fetchIn('results', 'stream_code, position, created_at, submitted_by, ward_id', 'stream_code', streamCodes, 'stream_code');
     let formsData = await fetchIn('form_photos', 'stream_code, position, photo_url', 'stream_code', streamCodes, 'stream_code');
     
-    const { data: agentsData } = await db.from('aspirants').select('login_code, name');
+    const agentsData = await fetchAll(() => db.from('aspirants').select('login_code, name'));
     TRACKER_AGENTS = {};
     (agentsData || []).forEach(a => {
         if (a.login_code) TRACKER_AGENTS[a.login_code] = a.name;
@@ -3019,54 +3019,58 @@ var WAR_DRILL_LEVEL = 'constituency'; // Always starts at constituency for Gover
 var WAR_DRILL_CONST = '';
 var WAR_DRILL_WARD = '';
 var WAR_DRILL_CENTRE = '';
+  
 async function loadWarRoom() {
-  document.getElementById('warRoomGrid').innerHTML = '<div class="load" style="grid-column:1/-1;"><div class="tally-loader"></div>Scanning database…</div>';
+  const grid = document.getElementById('warRoomGrid');
+  if (grid) grid.innerHTML = '<div class="load" style="grid-column:1/-1;"><div class="tally-loader"></div>Scanning database…</div>';
   var titleEl = document.getElementById('warRoomTitle');
   if (titleEl) titleEl.textContent = VIEW_POS;
 
+  // 1. Prevent the race condition
+  if (!OVERVIEW || !OVERVIEW.streams) {
+      await loadOverview(true);
+      if (!OVERVIEW) return; 
+  }
+
   try {
-    // 1. Turnout and forms for this position — paged, no 1,000-row cap
-    const turnout = await fetchAll(() => db.from('stream_turnout').select('*').eq('position', VIEW_POS).order('stream_code'));
-    const forms = await fetchAll(() => db.from('form_photos').select('stream_code').eq('position', VIEW_POS).order('stream_code'));
-    var formSet = new Set((forms || []).map(f => f.stream_code));
+    // 2. Call the lightweight RPC
+    const { data: rpcData, error } = await db.rpc('get_war_room_data_v3', { p_position: VIEW_POS });
+    if (error) throw error;
 
     var reportedMap = {};
-    (turnout || []).forEach(t => { reportedMap[t.stream_code] = t; });
+    (rpcData || []).forEach(w => { reportedMap[w.stream_code] = w; });
 
     var anomalies = [];
     var cleanCount = 0, missingFormCount = 0, anomalyCount = 0, silentCount = 0;
 
-    // 2. Loop through OVERVIEW.streams (already scoped to the user / picked county)
     (OVERVIEW.streams || []).forEach(s => {
       var t = reportedMap[s.code];
-
-      if (!t) {
+      
+      if (!t || t.status === 'silent') {
         silentCount++;
         anomalies.push({
-          streamCode: s.code,
+          streamCode: s.code, 
           countyId: s.county_id,
-          constId: s.constituency_id,
-          wardId: s.ward_id,
-          centreId: s.centre_id,
-          status: 'silent',
+          constId: s.constituency_id, 
+          wardId: s.ward_id, 
+          centreId: s.centre_id, 
+          status: 'silent', 
           hasAnomaly: false, hasForm: false, cast: 0, rejected: 0, valid: 0, registered: s.registered_voters || 0
         });
       } else {
-        var hasForm = formSet.has(t.stream_code);
-        var isAnomaly = t.has_anomaly;
-
-        if (isAnomaly) anomalyCount++;
-        else if (!hasForm) missingFormCount++;
+        if (t.status === 'anomaly') anomalyCount++;
+        else if (t.status === 'no-form') missingFormCount++;
         else cleanCount++;
 
         anomalies.push({
-          streamCode: t.stream_code,
+          streamCode: s.code, 
           countyId: s.county_id,
           constId: s.constituency_id,
           wardId: s.ward_id,
-          centreId: s.centre_id,
-          status: isAnomaly ? 'anomaly' : (!hasForm ? 'no-form' : 'clean'),
-          hasAnomaly: isAnomaly, hasForm: hasForm,
+          centreId: s.centre_id, 
+          status: t.status, 
+          hasAnomaly: t.status === 'anomaly', 
+          hasForm: t.status !== 'no-form', 
           cast: t.total_cast, rejected: t.rejected, valid: t.valid_votes, registered: t.registered_voters
         });
       }
@@ -3078,7 +3082,7 @@ async function loadWarRoom() {
     if (document.getElementById('warGreyCount')) document.getElementById('warGreyCount').textContent = silentCount;
 
     WAR_DATA = anomalies;
-
+    
     if (SCOPE_MODE === 'national') WAR_DRILL_LEVEL = DRILL_COUNTY_ID ? 'constituency' : 'county';
     else if (SCOPE_MODE === 'county') WAR_DRILL_LEVEL = 'constituency';
     else if (SCOPE_MODE === 'constituency') WAR_DRILL_LEVEL = 'ward';
@@ -3087,7 +3091,7 @@ async function loadWarRoom() {
     renderWarRoom();
   } catch (err) {
     console.error(err);
-    document.getElementById('warRoomGrid').innerHTML = '<div class="empty">Error loading War Room data.</div>';
+    if (grid) grid.innerHTML = '<div class="empty">Error loading War Room data.</div>';
   }
 }
 
@@ -3112,7 +3116,7 @@ function renderWarRoom() {
   } else if (SCOPE_MODE === 'constituency') {
       bcHtml = `<button class="bc-seg ${WAR_DRILL_LEVEL === 'ward' ? 'current' : ''}" onclick="resetWarRoom()">My Wards</button>`;
   } else if (SCOPE_MODE === 'national') {
-      bcHtml = `<button class="bc-seg ${WAR_DRILL_LEVEL === 'county' ? 'current' : ''}" onclick="trackerPickCounty('')">All Counties</button>`;
+      bcHtml = `<button class="bc-seg ${WAR_DRILL_LEVEL === 'county' ? 'current' : ''}" onclick="switchAspCounty('')">All Counties</button>`;
       if (DRILL_COUNTY_ID) {
           bcHtml += ` <i class="fas fa-chevron-right bc-sep"></i> <button class="bc-seg ${WAR_DRILL_LEVEL === 'constituency' ? 'current' : ''}" onclick="resetWarRoom()">${esc(DRILL_COUNTY_NAME || 'County')}</button>`;
       }
@@ -3154,25 +3158,18 @@ function renderWarRoom() {
   var html = '';
   function buildStats(badCount, missCount, silentCount, cleanCount, color, icon) {
       var statsHtml = '<div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 12px;">';
-
       if (badCount > 0) statsHtml += `<div style="background: rgba(196, 69, 58, 0.1); border-radius: 8px; padding: 8px 4px; text-align: center;"><div style="font-size: 20px; font-weight: 900; color: #C4453A; line-height: 1;">${badCount}</div><div style="font-size: 9px; font-weight: 800; color: #C4453A; text-transform: uppercase; margin-top: 2px;">Anomaly</div></div>`;
-
       if (missCount > 0) statsHtml += `<div style="background: rgba(184, 134, 11, 0.1); border-radius: 8px; padding: 8px 4px; text-align: center;"><div style="font-size: 20px; font-weight: 900; color: #b8860b; line-height: 1;">${missCount}</div><div style="font-size: 9px; font-weight: 800; color: #b8860b; text-transform: uppercase; margin-top: 2px;">No Form</div></div>`;
-
       if (silentCount > 0) statsHtml += `<div style="background: rgba(107, 124, 147, 0.1); border-radius: 8px; padding: 8px 4px; text-align: center;"><div style="font-size: 20px; font-weight: 900; color: #6B7C93; line-height: 1;">${silentCount}</div><div style="font-size: 9px; font-weight: 800; color: #6B7C93; text-transform: uppercase; margin-top: 2px;">Silent</div></div>`;
-
       if (cleanCount > 0) statsHtml += `<div style="background: rgba(74, 124, 58, 0.1); border-radius: 8px; padding: 8px 4px; text-align: center;"><div style="font-size: 20px; font-weight: 900; color: #4A7C3A; line-height: 1;">${cleanCount}</div><div style="font-size: 9px; font-weight: 800; color: #4A7C3A; text-transform: uppercase; margin-top: 2px;">Clean</div></div>`;
-
       statsHtml += '</div>';
-
       if (badCount === 0 && missCount === 0 && silentCount === 0 && cleanCount === 0) {
           statsHtml = '<div style="font-size:12px; color:#4A7C3A; margin-top:12px; text-align:center;">All streams perfect</div>';
       }
-
       return statsHtml;
   }
 
-  // LEVEL 0: COUNTIES (national, "All Counties")
+  // LEVEL 0: COUNTIES
   if (WAR_DRILL_LEVEL === 'county') {
       var grouped = {};
       filtered.forEach(f => {
@@ -3190,11 +3187,10 @@ function renderWarRoom() {
           var missCount = g.items.filter(i => i.status === 'no-form').length;
           var silentCount = g.items.filter(i => i.status === 'silent').length;
           var cleanCount = g.items.filter(i => i.status === 'clean').length;
-
           var color = badCount > 0 ? '#C4453A' : (missCount > 0 ? '#b8860b' : (silentCount > 0 ? '#6B7C93' : '#4A7C3A'));
           var icon = badCount > 0 ? 'fa-triangle-exclamation' : (missCount > 0 ? 'fa-file-circle-xmark' : (silentCount > 0 ? 'fa-ghost' : 'fa-check-circle'));
 
-          html += `<div class="card" onclick="trackerPickCounty('${escAttr(id)}')" style="border-left: 4px solid ${color}; padding: 16px;">
+          html += `<div class="card" onclick="switchAspCounty('${escAttr(id)}')" style="border-left: 4px solid ${color}; padding: 16px;">
             <div class="card-head" style="margin-bottom: 4px;">
               <div><div class="card-name" style="font-size: 17px;">${esc(g.name)}</div><div class="card-sub">County</div></div>
               <div style="color:${color}; font-size:22px; background:${color}15; width:40px; height:40px; display:flex; align-items:center; justify-content:center; border-radius:50%;"><i class="fas ${icon}"></i></div>
@@ -3221,7 +3217,6 @@ function renderWarRoom() {
           var missCount = g.items.filter(i => i.status === 'no-form').length;
           var silentCount = g.items.filter(i => i.status === 'silent').length;
           var cleanCount = g.items.filter(i => i.status === 'clean').length;
-
           var color = badCount > 0 ? '#C4453A' : (missCount > 0 ? '#b8860b' : (silentCount > 0 ? '#6B7C93' : '#4A7C3A'));
           var icon = badCount > 0 ? 'fa-triangle-exclamation' : (missCount > 0 ? 'fa-file-circle-xmark' : (silentCount > 0 ? 'fa-ghost' : 'fa-check-circle'));
 
@@ -3252,7 +3247,6 @@ function renderWarRoom() {
           var missCount = g.items.filter(i => i.status === 'no-form').length;
           var silentCount = g.items.filter(i => i.status === 'silent').length;
           var cleanCount = g.items.filter(i => i.status === 'clean').length;
-
           var color = badCount > 0 ? '#C4453A' : (missCount > 0 ? '#b8860b' : (silentCount > 0 ? '#6B7C93' : '#4A7C3A'));
           var icon = badCount > 0 ? 'fa-triangle-exclamation' : (missCount > 0 ? 'fa-file-circle-xmark' : (silentCount > 0 ? 'fa-ghost' : 'fa-check-circle'));
 
@@ -3283,7 +3277,6 @@ function renderWarRoom() {
           var missCount = g.items.filter(i => i.status === 'no-form').length;
           var silentCount = g.items.filter(i => i.status === 'silent').length;
           var cleanCount = g.items.filter(i => i.status === 'clean').length;
-
           var color = badCount > 0 ? '#C4453A' : (missCount > 0 ? '#b8860b' : (silentCount > 0 ? '#6B7C93' : '#4A7C3A'));
           var icon = badCount > 0 ? 'fa-triangle-exclamation' : (missCount > 0 ? 'fa-file-circle-xmark' : (silentCount > 0 ? 'fa-ghost' : 'fa-check-circle'));
 
