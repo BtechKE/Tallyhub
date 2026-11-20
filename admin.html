@@ -2927,8 +2927,9 @@ function escAttr(s) { return esc(s); }
   const { data: { user } } = await db.auth.getUser();
   if (!user) { window.location.href = 'index.html'; return; }
   
-  // Verify admin role or hardcoded admin email
-  if (user.email !== 'admin@tallyhub.com') {
+   // Verify admin role from the admins table
+  const { data: isAdmin, error: adminErr } = await db.rpc('am_i_admin');
+  if (adminErr || isAdmin !== true) {
     toast('Unauthorized access.', 'error');
     setTimeout(() => { db.auth.signOut().then(() => window.location.href = 'index.html'); }, 2000);
     return;
