@@ -5333,8 +5333,7 @@ async function generatePDF() {
     if (isNational) {
       const [ c, r, f, s, w, co, ct ] = await Promise.all([
         fetchAll(() => db.from('candidates').select('*').eq('position', pos).order('code')),
-        // Added is_anomaly here
-        fetchAll(() => db.from('results').select('stream_code, candidate_code, votes, is_anomaly').eq('position', pos).order('stream_code').order('id')),
+        fetchAll(() => db.from('results').select('stream_code, candidate_code, votes, is_anomaly').eq('position', pos).order('stream_code')),
         fetchAll(() => db.from('form_photos').select('stream_code').eq('position', pos).order('stream_code')),
         fetchAll(() => db.from('streams').select('*').order('code')),
         fetchAll(() => db.from('wards').select('*').order('id')),
@@ -5355,8 +5354,7 @@ async function generatePDF() {
       
       const [ c, r, f ] = await Promise.all([
         fetchAll(() => db.from('candidates').select('*').eq('position', pos).order('code')),
-        // Added is_anomaly here
-        fetchIn('results', 'stream_code, candidate_code, votes, is_anomaly', 'stream_code', streamCodes, 'stream_code', q => q.eq('position', pos).order('id')),
+        fetchIn('results', 'stream_code, candidate_code, votes, is_anomaly', 'stream_code', streamCodes, 'stream_code', q => q.eq('position', pos)),
         fetchIn('form_photos', 'stream_code', 'stream_code', streamCodes, 'stream_code', q => q.eq('position', pos))
       ]);
       
@@ -5376,6 +5374,12 @@ async function generatePDF() {
       allConsts = CONSTITUENCIES; 
       allCounties = COUNTIES.filter(c=>c.id===CURRENT_COUNTY);
     }
+
+    // NEW: Fetch ALL corrections for this specific position
+    const correctionsRaw = await fetchAll(() => 
+      db.from('result_corrections').select('stream_code').eq('position', pos).order('stream_code')
+    );
+    const correctedStreams = new Set((correctionsRaw || []).map(c => c.stream_code));
 
     var candMap = {}; (cands||[]).forEach(c => candMap[c.code] = c);
     var streamMap = {}; (allStreams||[]).forEach(s => streamMap[s.code] = s);
@@ -5442,8 +5446,8 @@ async function generatePDF() {
       totalVotes: totalVotes,
       totalRegisteredVoters: totalRegisteredVoters,
       margin: margin,
-      // Passing resultsData so we can track anomalies
-      hierarchy: buildHierarchy(allCounties, allConsts, allWards, votesByWard, votesByCentre, votesByStream, formsByWard, allStreams, candMap, pos, resultsData),
+      // Passing correctedStreams as the 12th argument
+      hierarchy: buildHierarchy(allCounties, allConsts, allWards, votesByWard, votesByCentre, votesByStream, formsByWard, allStreams, candMap, pos, resultsData, correctedStreams),
       isNational: isNational,
       missingForms: missingForms,
       generatedAt: new Date().toISOString(),
@@ -5463,16 +5467,20 @@ async function generatePDF() {
     btn.innerHTML = '<i class="fas fa-file-pdf"></i> Generate PDF';
   }
 }
-function buildHierarchy(allCounties, allConsts, allWards, votesByWard, votesByCentre, votesByStream, formsByWard, allStreams, candMap, pos, rawResults) {
+  
+function buildHierarchy(allCounties, allConsts, allWards, votesByWard, votesByCentre, votesByStream, formsByWard, allStreams, candMap, pos, rawResults, correctedStreams) {
     var hierarchy = [];
     
-    // Lookup for anomalies
+    // Anomaly lookup
     var anomalyMap = {};
     if (rawResults) {
         rawResults.forEach(r => {
             if (r.is_anomaly) anomalyMap[r.stream_code] = true;
         });
     }
+
+    // Correction lookup (already scoped to this position by the caller)
+    var corrSet = correctedStreams || new Set();
 
     function sumVotes(maps) {
         var total = {};
@@ -5526,7 +5534,8 @@ function buildHierarchy(allCounties, allConsts, allWards, votesByWard, votesByCe
                             streamCode: s.code,
                             candidates: toCandArray(sv),
                             totalVotes: Object.values(sv).reduce((sum, v) => sum + v, 0),
-                            isAnomaly: anomalyMap[s.code] || false // <-- ANOMALY FLAG
+                            isAnomaly: anomalyMap[s.code] || false,
+                            isCorrected: corrSet.has(s.code)   // <-- NEW
                         });
                     });
 
@@ -5624,6 +5633,7 @@ async function buildPositionPDF(data) {
   var pageW = 210, pageH = 297, marginL = 14, marginR = 14;
   
   var GREEN = [165, 207, 131], GREEN_SOFT = [244, 249, 237], INK = [26, 26, 25], SLATE = [107, 124, 147], RED = [196, 69, 58];
+  var BLUE = [21, 145, 220];
   
   var timestamp = new Date(data.generatedAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   var hash = 'TH-' + String(data.position || 'UNK').substring(0,3).toUpperCase() + '-' + Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -5889,47 +5899,53 @@ async function buildPositionPDF(data) {
                       currentY += 8;
                   }
 
-                  level4.streams.forEach(level5 => { // level5 is Stream
-                      
-                      if (currentY > pageH - 50) { doc.addPage(); currentY = 25; }
-                      
-                      // ANOMALY CHECK FOR STREAM TITLE
-                      var streamTitleColor = level5.isAnomaly ? RED : SLATE;
-                      doc.setFontSize(9); doc.setTextColor(streamTitleColor[0], streamTitleColor[1], streamTitleColor[2]); doc.setFont('helvetica', 'bold');
-                      doc.text('Stream: ' + String(level5.streamName) + ' (' + level5.streamCode + ')', marginL + 12, currentY);
-                      currentY += 3;
+                  // Then inside the level4.streams.forEach:
+level4.streams.forEach(level5 => {
+    if (currentY > pageH - 50) { doc.addPage(); currentY = 25; }
 
-                      if (level5.candidates && level5.candidates.length > 0) {
-                          var strRows = level5.candidates.map((c, idx) => [
-                              String(idx + 1), String(c.name), String(c.party), Number(c.votes).toLocaleString(), level5.totalVotes > 0 ? ((c.votes/level5.totalVotes)*100).toFixed(1)+'%' : '0.0%'
-                          ]);
-                          
-                          // ANOMALY CHECK FOR STREAM TABLE HEADER
-                          var headBgColor = level5.isAnomaly ? RED : GREEN_SOFT;
-                          var headTextColor = level5.isAnomaly ? [255, 255, 255] : INK;
+    // 1. Stream title color (corrected → blue, anomaly → red, else slate)
+    var streamTitleColor = level5.isCorrected ? BLUE : (level5.isAnomaly ? RED : SLATE);
+    doc.setFontSize(9);
+    doc.setTextColor(streamTitleColor[0], streamTitleColor[1], streamTitleColor[2]);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Stream: ' + String(level5.streamName) + ' (' + level5.streamCode + ')', marginL + 12, currentY);
+    currentY += 3;
 
-                          doc.autoTable({
-                            startY: currentY,
-                            head: [['#', 'Candidate', 'Party', 'Votes', 'Share']], body: strRows, theme: 'grid',
-                            styles: { font: 'helvetica', fontSize: 7, cellPadding: 1.5, textColor: INK, lineColor: [245, 245, 245] },
-                            headStyles: { fillColor: headBgColor, textColor: headTextColor, fontStyle: 'bold', halign: 'center', lineWidth: { bottom: 0.5 } },
-                            alternateRowStyles: { fillColor: [250, 250, 250] },
-                            margin: { left: marginL + 14, right: marginR },
-                            columnStyles: { 
-                                0: { cellWidth: 8, halign: 'center' }, 
-                                1: { halign: 'left' },
-                                2: { halign: 'left' },
-                                3: { halign: 'right', fontStyle: 'bold' }, 
-                                4: { halign: 'right', fontStyle: 'bold' }
-                            }
-                          });
-                          currentY = doc.lastAutoTable.finalY + 4;
-                      } else {
-                          doc.setFontSize(8); doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]); doc.setFont('helvetica', 'italic');
-                          doc.text('No votes recorded in this stream yet.', marginL + 14, currentY + 2);
-                          currentY += 6;
-                      }
-                  });
+    if (level5.candidates && level5.candidates.length > 0) {
+        var strRows = level5.candidates.map((c, idx) => [
+            String(idx + 1), String(c.name), String(c.party), Number(c.votes).toLocaleString(),
+            level5.totalVotes > 0 ? ((c.votes / level5.totalVotes) * 100).toFixed(1) + '%' : '0.0%'
+        ]);
+
+        // 2. Table header color (corrected → blue, anomaly → red, else green)
+        var headBgColor  = level5.isCorrected ? BLUE : (level5.isAnomaly ? RED : GREEN_SOFT);
+        var headTextColor = (level5.isCorrected || level5.isAnomaly) ? [255, 255, 255] : INK;
+
+        doc.autoTable({
+            startY: currentY,
+            head: [['#', 'Candidate', 'Party', 'Votes', 'Share']],
+            body: strRows, theme: 'grid',
+            styles: { font: 'helvetica', fontSize: 7, cellPadding: 1.5, textColor: INK, lineColor: [245, 245, 245] },
+            headStyles: { fillColor: headBgColor, textColor: headTextColor, fontStyle: 'bold', halign: 'center', lineWidth: { bottom: 0.5 } },
+            alternateRowStyles: { fillColor: [250, 250, 250] },
+            margin: { left: marginL + 14, right: marginR },
+            columnStyles: { 
+                0: { cellWidth: 8, halign: 'center' },
+                1: { halign: 'left' },
+                2: { halign: 'left' },
+                3: { halign: 'right', fontStyle: 'bold' },
+                4: { halign: 'right', fontStyle: 'bold' }
+            }
+        });
+        currentY = doc.lastAutoTable.finalY + 4;
+    } else {
+        doc.setFontSize(8);
+        doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]);
+        doc.setFont('helvetica', 'italic');
+        doc.text('No votes recorded in this stream yet.', marginL + 14, currentY + 2);
+        currentY += 6;
+    }
+});
               });
           });
       });
