@@ -696,7 +696,7 @@ async function doLogin() {
       } else {
           const isSpec = checkBool(adminProfile.is_spectator);
           const isPres = String(adminProfile.position || '').toLowerCase() === 'president';
-          if (isSpec || isPres || email.toLowerCase().includes('admin')) {
+          if (!isSpec && (isPres || email.toLowerCase().includes('admin'))) {
               isAuthorized = true;
               dbDeviceIds = adminProfile.device_ids;
               maxDevices = adminProfile.max_devices || 3;
