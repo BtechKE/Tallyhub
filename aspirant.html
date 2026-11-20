@@ -704,6 +704,55 @@
 .terms-btn:not(:disabled):hover {
   background: #256B33; transform: translateY(-1px);
 }
+
+/* ===== POSITION TABS — OPTION 3 (icon chips) ===== */
+.postabs { gap: 8px; padding: 10px 12px; }
+
+.postabs .postab {
+  background: #FFFFFF;
+  border: 1px solid #E1E6DE;
+  color: #33403A;
+  font-size: 13px; font-weight: 700;
+  border-radius: 999px;
+  padding: 9px 16px;
+  gap: 8px;
+  justify-content: center;
+  box-shadow: none; transform: none;
+  position: relative; overflow: visible;
+}
+.postabs .postab::after { display: none; }          /* remove old gloss */
+.postabs .postab::before { content: none; }          /* remove old underline */
+
+.postabs .postab .tab-ic { font-size: 14px; color: #6B746F; transition: color .15s; }
+
+.postabs .postab:hover {
+  background: #EEF5E8 !important; color: #1A1A19 !important;
+  border-color: #C9DDB7; transform: none; box-shadow: none;
+}
+
+.postabs .postab.active {
+  background: #A5CF83 !important; color: #1A1A19 !important;
+  border-color: #A5CF83;
+  box-shadow: 0 6px 16px -6px rgba(126, 174, 92, 0.6);
+  transform: none;
+}
+.postabs .postab.active .tab-ic { color: #1A1A19; }
+
+/* "My race" dot */
+.postabs .postab.mine::before {
+  content: ''; position: static; inset: auto;
+  width: 6px; height: 6px; border-radius: 50%;
+  background: #1591DC;
+}
+.postabs .postab.mine.active::before { background: #1A1A19; }
+
+/* Hint / total pill inside the chip */
+.postabs .postab .pill {
+  background: #F2F4F0; color: #5C6560;
+  font-size: 10.5px; font-weight: 700;
+  padding: 2px 8px; border-radius: 999px; box-shadow: none;
+}
+.postabs .postab.active .pill { background: rgba(255, 255, 255, 0.55); color: #1A1A19; box-shadow: none; }
 </style>
 </head>
 <body>
@@ -1534,6 +1583,15 @@ function getDynamicTabTotal(pos) {
   if (SCOPE_MODE === 'ward' && DRILL_LEVEL === 'centre' && USER.ward) return L.ward[pos][USER.ward] || 0;
   return 0;
 }
+  
+var POSITION_ICONS = {
+  'President': 'fa-flag',
+  'Governor':  'fa-landmark',
+  'Senator':   'fa-scale-balanced',
+  'MP':        'fa-location-dot',
+  'Women Rep': 'fa-person-dress',
+  'MCA':       'fa-house'
+};
 function renderTabs() {
   var el = document.getElementById('posTabs'); if (!OVERVIEW) return;
   var ownPos = (!USER.isSpectator && USER.position) ? USER.position : '';
@@ -1589,7 +1647,10 @@ function renderTabs() {
     // --- CHANGE 3: Conditionally render the span tag ---
     var pillHtml = pillText ? '<span class="pill">' + pillText + '</span>' : '';
 
-    return '<button class="' + cls + '" data-pos="' + escAttr(p) + '" onclick="switchPosition(\'' + escAttr(p) + '\')">' + esc(p) + pillHtml + '</button>';
+        var icon = '<i class="fas ' + (POSITION_ICONS[p] || 'fa-circle') + ' tab-ic" aria-hidden="true"></i>';
+    return '<button class="' + cls + '" data-pos="' + escAttr(p) + '"' +
+           (p === VIEW_POS ? ' aria-current="true"' : '') +
+           ' onclick="switchPosition(\'' + escAttr(p) + '\')">' + icon + esc(p) + pillHtml + '</button>';
   }).join('');
 }
 
