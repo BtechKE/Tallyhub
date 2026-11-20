@@ -2777,6 +2777,34 @@ body::after {
   </div>
 </div>
 
+  <!-- CORRECTION MODAL -->
+<div class="modal-bg" id="correctionModal" onclick="if(event.target===this) closeCorrectionModal()">
+  <div class="modal" style="max-width: 520px;">
+    <div class="modal-head">
+      <div>
+        <div class="modal-title">Correct Result</div>
+        <div class="modal-sub" id="correctionSubtitle">—</div>
+      </div>
+      <button class="modal-close" onclick="closeCorrectionModal()"><i class="fas fa-times"></i></button>
+    </div>
+    <div id="correctionList" style="display: flex; flex-direction: column; gap: 10px; max-height: 50vh; overflow-y: auto; margin-bottom: 16px;"></div>
+    <div class="form-group">
+      <label>Reason for Correction</label>
+      <select id="correctionReason" style="width:100%; padding:10px; border-radius:10px; border:1.5px solid var(--border-strong);">
+        <option value="PO Error">PO Error (Interchanged votes)</option>
+        <option value="Form Mismatch">Form 34A Mismatch</option>
+        <option value="Court Order">Court Order</option>
+        <option value="Arithmetic Error">Arithmetic Error</option>
+        <option value="Other">Other</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeCorrectionModal()">Cancel</button>
+      <button class="btn btn-danger" id="correctionSaveBtn" onclick="saveCorrection()"><i class="fas fa-save"></i> Save Correction</button>
+    </div>
+  </div>
+</div>
+
 <!-- ============================================================
      TOASTS
 ============================================================ -->
@@ -4689,12 +4717,22 @@ function renderResults() {
       </div>
     ` : `<div class="card-empty-body"><i class="fas fa-hourglass-half"></i>No votes yet</div>`;
 
-    // Add a small total votes badge to the card head
     var totalBadge = totalVotesInArea > 0 ? `<span style="font-size:10px;font-weight:700;color:var(--blue);background:var(--blue-soft);padding:2px 6px;border-radius:10px;">${totalVotesInArea} votes</span>` : '';
+
+    // ADMIN ONLY: Correct Result button on stream cards
+    var correctBtn = '';
+    if (ADMIN_DRILL_LEVEL === 'stream') {
+      correctBtn = `<button
+        onclick="event.stopPropagation(); openCorrectionModal('${escAttr(levelId)}', '${escAttr(CURRENT_RESULT_POS)}')"
+        style="margin-top:10px; width:100%; padding:8px 12px; border-radius:8px; background:var(--danger-soft); border:1px solid var(--danger); color:var(--danger); font-weight:700; font-size:12px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px;">
+        <i class="fas fa-edit"></i> Correct Result
+      </button>`;
+    }
 
     return `<div class="card" style="${tintStyle}" onclick="${onClickAction}">
       <div class="card-head"><div><div class="card-name">${esc(item.name || item.code)}</div><div class="card-sub">${typeLabel}</div></div>${totalBadge}</div>
       ${leaderHtml}
+      ${correctBtn}
     </div>`;
   }
 
@@ -4735,7 +4773,6 @@ function renderResults() {
 
   el.innerHTML = `<div style="margin-bottom:16px; display:flex; gap:6px; align-items:center; flex-wrap:wrap;">${bcHtml}</div>` + gridHtml;
 }
-
 // --- MCA grid view: one card per ward, showing the leader ---
 function renderMCAGrid() {
   var el = document.getElementById('resultsList');
@@ -7272,6 +7309,87 @@ function sendWhatsAppCredentials(phone, role, username, password, centreString =
     const waLink = `https://wa.me/${formattedPhone}?text=${encodedMessage}`;
     
     window.open(waLink, '_blank');
+}
+  // ================================================================
+//  ADMIN — CORRECT RESULT
+// ================================================================
+var CORRECTION_CTX = { streamCode: null, position: null, data: [] };
+
+async function openCorrectionModal(streamCode, position) {
+  CORRECTION_CTX = { streamCode, position, data: [] };
+  document.getElementById('correctionSubtitle').textContent = streamCode + ' · ' + position;
+  document.getElementById('correctionList').innerHTML = '<div class="loading-inline"><i class="fas fa-spinner"></i>Loading candidates…</div>';
+  document.getElementById('correctionModal').classList.add('active');
+
+  try {
+    const { data, error } = await db.rpc('get_stream_results_for_correction_v3', { 
+      p_stream_code: streamCode, p_position: position 
+    });
+    if (error) throw error;
+    if (!data.success) throw new Error(data.message || 'Failed to fetch');
+    CORRECTION_CTX.data = data.data || [];
+    renderCorrectionList();
+  } catch (err) {
+    document.getElementById('correctionList').innerHTML = '<div class="empty">Error: ' + esc(err.message) + '</div>';
+  }
+}
+
+function renderCorrectionList() {
+  const list = CORRECTION_CTX.data;
+  if (!list.length) {
+    document.getElementById('correctionList').innerHTML = '<div class="empty">No candidates found.</div>';
+    return;
+  }
+  document.getElementById('correctionList').innerHTML = list.map((c, i) => `
+    <div style="display:flex; align-items:center; gap:10px; padding:10px; background:var(--bg); border-radius:10px;">
+      <div style="flex:1; min-width:0;">
+        <div style="font-weight:700; font-size:14px;">${esc(c.name)}</div>
+        <div style="font-size:11.5px; color:var(--slate);">${esc(c.party)}</div>
+      </div>
+      <input type="number" class="correction-input" data-idx="${i}" value="${c.current_votes}" 
+        style="width:100px; padding:8px 12px; border-radius:8px; border:1.5px solid var(--border-strong); font-weight:800; text-align:right; font-size:15px;">
+    </div>
+  `).join('');
+}
+
+function closeCorrectionModal() {
+  document.getElementById('correctionModal').classList.remove('active');
+  CORRECTION_CTX = { streamCode: null, position: null, data: [] };
+}
+
+async function saveCorrection() {
+  const inputs = document.querySelectorAll('.correction-input');
+  const newVotes = [];
+  inputs.forEach(inp => {
+    const idx = parseInt(inp.getAttribute('data-idx'), 10);
+    const c = CORRECTION_CTX.data[idx];
+    newVotes.push({ candidate_code: c.candidate_code, votes: parseInt(inp.value, 10) || 0 });
+  });
+
+  const reason = document.getElementById('correctionReason').value;
+  const btn = document.getElementById('correctionSaveBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving…';
+
+  try {
+    const { data, error } = await db.rpc('correct_result_v3', {
+      p_stream_code: CORRECTION_CTX.streamCode,
+      p_position: CORRECTION_CTX.position,
+      p_new_votes: newVotes,
+      p_reason: reason
+    });
+    if (error) throw error;
+    if (!data.success) throw new Error(data.message || 'Failed');
+    toast('Result corrected and audit logged.', 'success');
+    closeCorrectionModal();
+    if (typeof loadAdminResults === 'function') loadAdminResults();
+    if (typeof loadSubmissionMatrix === 'function') loadSubmissionMatrix();
+  } catch (err) {
+    toast('Error: ' + err.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-save"></i> Save Correction';
+  }
 }
   
 </script>
