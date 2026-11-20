@@ -1673,6 +1673,11 @@ function switchPosition(pos) {
   document.getElementById('heroCard').innerHTML = '<div class="hero-inner"><div class="load" style="color:#F0F0F0;"><i class="fas fa-spinner" style="color:#A5CF83;"></i>Loading…</div></div>';
   document.getElementById('drillGrid').innerHTML = '<div class="load" style="grid-column:1/-1;"><div class="tally-loader"></div>Loading…</div>';
   loadOverview();
+  
+   if (CURRENT_VIEW === 'warroom') {
+    WAR_DRILL_CONST = ''; WAR_DRILL_WARD = ''; WAR_DRILL_CENTRE = '';
+    loadWarRoom();
+  }
 }
 
 function renderHero() {
@@ -3084,56 +3089,58 @@ var WAR_DRILL_WARD = '';
 var WAR_DRILL_CENTRE = '';
   
 async function loadWarRoom() {
-  const grid = document.getElementById('warRoomGrid');
-  if (grid) grid.innerHTML = '<div class="load" style="grid-column:1/-1;"><div class="tally-loader"></div>Scanning database…</div>';
+  document.getElementById('warRoomGrid').innerHTML = '<div class="load" style="grid-column:1/-1;"><div class="tally-loader"></div>Scanning database…</div>';
   var titleEl = document.getElementById('warRoomTitle');
   if (titleEl) titleEl.textContent = VIEW_POS;
-
-  // 1. Prevent the race condition
-  if (!OVERVIEW || !OVERVIEW.streams) {
-      await loadOverview(true);
-      if (!OVERVIEW) return; 
-  }
+  var loadPos = VIEW_POS;   // remember which race this load is for
 
   try {
-    // 2. Call the lightweight RPC
-    const { data: rpcData, error } = await db.rpc('get_war_room_data_v3', { p_position: VIEW_POS });
-    if (error) throw error;
+    // 1. Turnout and forms for this race — paged, no 1,000-row cap
+    const turnout = await fetchAll(() => db.from('stream_turnout').select('*').eq('position', loadPos).order('stream_code'));
+    const forms = await fetchAll(() => db.from('form_photos').select('stream_code').eq('position', loadPos).order('stream_code'));
+
+    // If the user switched race while this was loading, drop these stale results
+    if (loadPos !== VIEW_POS) return;
+
+    var formSet = new Set((forms || []).map(f => f.stream_code));
 
     var reportedMap = {};
-    (rpcData || []).forEach(w => { reportedMap[w.stream_code] = w; });
+    (turnout || []).forEach(t => { reportedMap[t.stream_code] = t; });
 
     var anomalies = [];
     var cleanCount = 0, missingFormCount = 0, anomalyCount = 0, silentCount = 0;
 
+    // 2. Loop through OVERVIEW.streams (already scoped to the user / picked county)
     (OVERVIEW.streams || []).forEach(s => {
       var t = reportedMap[s.code];
-      
-      if (!t || t.status === 'silent') {
+
+      if (!t) {
         silentCount++;
         anomalies.push({
-          streamCode: s.code, 
-          countyId: s.county_id,
-          constId: s.constituency_id, 
-          wardId: s.ward_id, 
-          centreId: s.centre_id, 
-          status: 'silent', 
-          hasAnomaly: false, hasForm: false, cast: 0, rejected: 0, valid: 0, registered: s.registered_voters || 0
-        });
-      } else {
-        if (t.status === 'anomaly') anomalyCount++;
-        else if (t.status === 'no-form') missingFormCount++;
-        else cleanCount++;
-
-        anomalies.push({
-          streamCode: s.code, 
+          streamCode: s.code,
           countyId: s.county_id,
           constId: s.constituency_id,
           wardId: s.ward_id,
-          centreId: s.centre_id, 
-          status: t.status, 
-          hasAnomaly: t.status === 'anomaly', 
-          hasForm: t.status !== 'no-form', 
+          centreId: s.centre_id,
+          status: 'silent',
+          hasAnomaly: false, hasForm: false, cast: 0, rejected: 0, valid: 0, registered: s.registered_voters || 0
+        });
+      } else {
+        var hasForm = formSet.has(t.stream_code);
+        var isAnomaly = t.has_anomaly;
+
+        if (isAnomaly) anomalyCount++;
+        else if (!hasForm) missingFormCount++;
+        else cleanCount++;
+
+        anomalies.push({
+          streamCode: t.stream_code,
+          countyId: s.county_id,
+          constId: s.constituency_id,
+          wardId: s.ward_id,
+          centreId: s.centre_id,
+          status: isAnomaly ? 'anomaly' : (!hasForm ? 'no-form' : 'clean'),
+          hasAnomaly: isAnomaly, hasForm: hasForm,
           cast: t.total_cast, rejected: t.rejected, valid: t.valid_votes, registered: t.registered_voters
         });
       }
@@ -3145,7 +3152,7 @@ async function loadWarRoom() {
     if (document.getElementById('warGreyCount')) document.getElementById('warGreyCount').textContent = silentCount;
 
     WAR_DATA = anomalies;
-    
+
     if (SCOPE_MODE === 'national') WAR_DRILL_LEVEL = DRILL_COUNTY_ID ? 'constituency' : 'county';
     else if (SCOPE_MODE === 'county') WAR_DRILL_LEVEL = 'constituency';
     else if (SCOPE_MODE === 'constituency') WAR_DRILL_LEVEL = 'ward';
@@ -3154,7 +3161,9 @@ async function loadWarRoom() {
     renderWarRoom();
   } catch (err) {
     console.error(err);
-    if (grid) grid.innerHTML = '<div class="empty">Error loading War Room data.</div>';
+    if (loadPos === VIEW_POS) {
+      document.getElementById('warRoomGrid').innerHTML = '<div class="empty">Error loading War Room data.</div>';
+    }
   }
 }
 
@@ -3436,11 +3445,11 @@ function openWarRoomStream(streamCode) {
         
         ${missingForm ? `<div style="margin-top: 16px; padding: 12px; background: rgba(184, 134, 11, 0.08); border: 1px solid rgba(184, 134, 11, 0.2); border-radius: 12px; text-align: center; color: #b8860b; font-size: 12.5px; font-weight: 600;">
             <i class="fas fa-exclamation-triangle"></i> Statutory form not uploaded yet.
-        </div>` : `<div style="margin-top: 16px; text-align: center; color: var(--success); font-weight: 700; font-size: 13px;"><i class="fas fa-check-circle"></i> Statutory form verified</div>`}
+        </div>` : `<div style="margin-top: 16px; text-align: center; color: var(--success); font-weight: 700; font-size: 13px;"><i class="fas fa-check-circle"></i> Statutory Form Uploaded</div>`}
         `;
     }
 
-    sheet.innerHTML = `<div class="sheet-head"><div><div class="sheet-title">${esc(streamCode)}</div><div class="sheet-sub">Stream Details</div></div><button class="sheet-close" onclick="closeSheet()"><i class="fas fa-xmark"></i></button></div>${content}`;
+    sheet.innerHTML = `<div class="sheet-head"><div><div class="sheet-title">${esc(streamCode)}</div><div class="sheet-sub">${esc(VIEW_POS)} · Stream details</div></div><button class="sheet-close" onclick="closeSheet()"><i class="fas fa-xmark"></i></button></div>${content}`;
     bg.classList.add('active');
 }
   // ================================================================
