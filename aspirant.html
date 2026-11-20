@@ -1274,11 +1274,12 @@ async function loadOverview(silent) {
     if (centreIds.length) centreVotes = await fetchIn('centre_votes', '*', 'centre_id', centreIds, 'centre_id');
     if (streamCodes.length) streamVotes = await fetchIn('stream_votes', '*', 'stream_code', streamCodes, 'stream_code');
     // Fetch overall board for the current scope
-       const rawLeaderboard = await fetchAll(() => {
-      let q = db.from('county_leaderboard').select('*').eq('position', VIEW_POS);
-      if (SCOPE_MODE === 'county' && USER.county) q = q.eq('county_id', USER.county);
-      else if (SCOPE_MODE === 'national' && DRILL_COUNTY_ID) q = q.eq('county_id', DRILL_COUNTY_ID);
-      return q.order('county_id');
+         const rawLeaderboard = await fetchAll(() => {
+      let countyFilter = null;
+      if (SCOPE_MODE === 'county' && USER.county) countyFilter = USER.county;
+      else if (SCOPE_MODE === 'national' && DRILL_COUNTY_ID) countyFilter = DRILL_COUNTY_ID;
+      return db.rpc('get_county_leaderboard', { p_position: VIEW_POS, p_county_id: countyFilter })
+               .order('county_id').order('candidate_code');
     });
     // --- 4. BUILD THE MAPS ---
     const votesByConst = {}, votesByWard = {}, votesByCentre = {}, votesByStream = {}, votesByCounty = {};
@@ -1303,7 +1304,8 @@ async function loadOverview(silent) {
         votesByStream[r.stream_code][r.candidate_code] = Number(r.total_votes); 
     });
     if (SCOPE_MODE === 'national' && !DRILL_COUNTY_ID) {
-        const countyData = await fetchAll(() => db.from('county_leaderboard').select('*').eq('position', VIEW_POS));
+                const countyData = await fetchAll(() => db.rpc('get_county_leaderboard', { p_position: VIEW_POS, p_county_id: null })
+                                                  .order('county_id').order('candidate_code'));
         countyData.forEach(r => { if(!votesByCounty[r.county_id]) votesByCounty[r.county_id]={}; votesByCounty[r.county_id][r.candidate_code] = Number(r.total_votes); });
     }
 
