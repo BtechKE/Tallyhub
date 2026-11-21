@@ -6323,7 +6323,7 @@ level4.streams.forEach(level5 => {
   doc.line(marginL + 36, stampY + 12.5, stampX - 8, stampY + 12.5);
   doc.line(marginL + 22, stampY + 26.5, stampX - 8, stampY + 26.5);
   doc.setFontSize(7.5); doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]); doc.setFont('helvetica', 'italic');
-  var noteLines = doc.splitTextToSize('This page must be signed and stamped to be valid. Verify this report at tallyhub.co.ke/verify.html using the code above.', stampX - marginL - 8);
+  var noteLines = doc.splitTextToSize('This page must be signed and stamped to be valid.', stampX - marginL - 8);
   doc.text(noteLines, marginL, stampY + 38);
   
   // HEADERS & FOOTERS
