@@ -2080,9 +2080,68 @@ body::after {
     padding-top: 80px !important; /* Slightly smaller push on mobile */
   }
 }
+
+/* ================================================================
+   ADMIN TWO-FACTOR (TOTP) SCREEN
+================================================================ */
+.mfa-screen { position: fixed; inset: 0; z-index: 20000; display: none; align-items: center; justify-content: center;
+  padding: 20px; background: #F4F7F1; overflow-y: auto; }
+.mfa-screen.show { display: flex; }
+.mfa-card { width: 100%; max-width: 400px; background: #FFFFFF; border-radius: 22px; padding: 28px 24px 22px;
+  box-shadow: 0 20px 50px rgba(27, 33, 26, 0.10); border: 1px solid rgba(27, 33, 26, 0.06); text-align: center; }
+.mfa-icon { width: 56px; height: 56px; border-radius: 50%; margin: 0 auto 14px; display: flex; align-items: center; justify-content: center;
+  background: var(--primary-soft); color: var(--primary-dark); font-size: 22px; }
+.mfa-title { font-size: 19px; font-weight: 800; color: #1B211A; margin: 0 0 6px; }
+.mfa-sub { font-size: 13.5px; color: #5E665C; line-height: 1.45; margin: 0 0 18px; }
+.mfa-qr { width: 190px; height: 190px; margin: 0 auto 12px; padding: 10px; background: #FFFFFF; border-radius: 14px; border: 1px solid #E3E8DF; }
+.mfa-qr img { width: 100%; height: 100%; display: block; }
+.mfa-secret { font-size: 12px; color: #5E665C; margin-bottom: 16px; }
+.mfa-secret code { display: inline-block; margin-top: 4px; padding: 6px 10px; border-radius: 8px; background: var(--primary-tint);
+  font-size: 12.5px; letter-spacing: 1px; color: #1B211A; word-break: break-all; user-select: all; }
+.mfa-code { width: 100%; height: 56px; border-radius: 14px; border: 2px solid #DCE3D6; text-align: center; font-size: 26px;
+  font-weight: 800; letter-spacing: 10px; font-family: inherit; color: #1B211A; outline: none; }
+.mfa-code:focus { border-color: var(--primary-dark); box-shadow: 0 0 0 4px var(--primary-soft); }
+.mfa-error { min-height: 18px; margin: 8px 0 4px; font-size: 12.5px; font-weight: 600; color: #C0392B; }
+.mfa-btn { width: 100%; height: 50px; border: none; border-radius: 14px; background: var(--primary); color: #1B211A;
+  font-size: 15px; font-weight: 700; font-family: inherit; cursor: pointer; margin-top: 4px; }
+.mfa-btn:disabled { opacity: 0.6; cursor: default; }
+.mfa-link { margin-top: 14px; background: none; border: none; color: #5E665C; font-size: 13px; font-family: inherit; cursor: pointer; text-decoration: underline; }
+.mfa-loading { padding: 30px 0; color: #5E665C; font-size: 14px; }
 </style>
 </head>
 <body>
+<!-- ============================================================
+     ADMIN TWO-FACTOR SCREEN
+============================================================ -->
+<div class="mfa-screen" id="mfaScreen">
+  <div class="mfa-card">
+    <div class="mfa-icon"><i class="fas fa-shield-alt"></i></div>
+
+    <div id="mfaLoading" class="mfa-loading"><i class="fas fa-spinner fa-spin"></i> Preparing secure sign-in…</div>
+
+    <div id="mfaEnrolBox" style="display:none;">
+      <h2 class="mfa-title">Turn on two-factor sign-in</h2>
+      <p class="mfa-sub">Scan this code with Google Authenticator, Authy or Microsoft Authenticator, then type the 6-digit code it shows.</p>
+      <div class="mfa-qr"><img id="mfaQr" alt="Two-factor QR code"></div>
+      <div class="mfa-secret">Can't scan? Enter this key in the app:<br><code id="mfaSecret"></code></div>
+    </div>
+
+    <div id="mfaVerifyBox" style="display:none;">
+      <h2 class="mfa-title">Enter your security code</h2>
+      <p class="mfa-sub">Open your authenticator app and type the 6-digit code for TallyHub.</p>
+    </div>
+
+    <div id="mfaCodeBox" style="display:none;">
+      <input id="mfaCode" class="mfa-code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="••••••"
+             oninput="onMfaCodeInput(this)" onkeydown="if(event.key==='Enter') submitMfaCode()">
+      <div class="mfa-error" id="mfaError"></div>
+      <button class="mfa-btn" id="mfaSubmit" onclick="submitMfaCode()"><i class="fas fa-lock"></i> Verify</button>
+    </div>
+
+    <button class="mfa-link" onclick="mfaSignOut()">Sign out</button>
+  </div>
+</div>
+
 
 <!-- ============================================================
      TOP BAR
@@ -2967,8 +3026,115 @@ function escAttr(s) { return esc(s); }
     return;
   }
 
+  // Two-factor gate — nothing loads until the 6-digit code is verified
+  const mfaOk = await mfaGate();
+  if (!mfaOk) return;
+
   refreshAll();
 })();
+
+// ================================================================
+//  ADMIN TWO-FACTOR (TOTP)
+// ================================================================
+var MFA_CTX = { mode: null, factorId: null, resolve: null, busy: false };
+
+async function mfaGate() {
+  const { data: aal, error } = await db.auth.mfa.getAuthenticatorAssuranceLevel();
+  if (error || !aal) { toast('Could not check two-factor status. Refresh and try again.', 'error'); return false; }
+  if (aal.currentLevel === 'aal2') return true;   // already verified this session
+
+  return new Promise(function (resolve) {
+    MFA_CTX.resolve = resolve;
+    showMfa('loading');
+    (async function () {
+      const { data: f } = await db.auth.mfa.listFactors();
+      const verified = ((f && f.totp) || []).filter(function (x) { return x.status === 'verified'; });
+      if (verified.length) {
+        MFA_CTX.mode = 'verify';
+        MFA_CTX.factorId = verified[0].id;
+        showMfa('verify');
+      } else {
+        await startMfaEnrol();
+      }
+    })();
+  });
+}
+
+async function startMfaEnrol() {
+  showMfa('loading');
+  // Clear any half-finished setup from an earlier attempt
+  const { data: f } = await db.auth.mfa.listFactors();
+  const stale = ((f && f.all) || []).filter(function (x) { return x.factor_type === 'totp' && x.status !== 'verified'; });
+  for (const s of stale) { await db.auth.mfa.unenroll({ factorId: s.id }); }
+
+  const { data, error } = await db.auth.mfa.enroll({
+    factorType: 'totp',
+    issuer: 'TallyHub',
+    friendlyName: 'TallyHub Admin ' + new Date().toISOString().slice(0, 16)
+  });
+  if (error || !data) {
+    showMfa('verify');
+    document.getElementById('mfaVerifyBox').style.display = 'none';
+    mfaError('Could not start two-factor setup: ' + ((error && error.message) || 'unknown error'));
+    document.getElementById('mfaSubmit').style.display = 'none';
+    return;
+  }
+  MFA_CTX.mode = 'enrol';
+  MFA_CTX.factorId = data.id;
+  document.getElementById('mfaQr').src = data.totp.qr_code;
+  document.getElementById('mfaSecret').textContent = data.totp.secret;
+  showMfa('enrol');
+}
+
+function showMfa(view) {
+  document.getElementById('mfaScreen').classList.add('show');
+  document.getElementById('mfaLoading').style.display = view === 'loading' ? 'block' : 'none';
+  document.getElementById('mfaEnrolBox').style.display = view === 'enrol' ? 'block' : 'none';
+  document.getElementById('mfaVerifyBox').style.display = view === 'verify' ? 'block' : 'none';
+  document.getElementById('mfaCodeBox').style.display = view === 'loading' ? 'none' : 'block';
+  document.getElementById('mfaSubmit').style.display = '';
+  mfaError('');
+  if (view !== 'loading') setTimeout(function () { document.getElementById('mfaCode').focus(); }, 50);
+}
+
+function hideMfa() { document.getElementById('mfaScreen').classList.remove('show'); }
+function mfaError(msg) { document.getElementById('mfaError').textContent = msg || ''; }
+
+function onMfaCodeInput(el) {
+  el.value = el.value.replace(/\D/g, '').slice(0, 6);
+  mfaError('');
+  if (el.value.length === 6) submitMfaCode();
+}
+
+async function submitMfaCode() {
+  if (MFA_CTX.busy || !MFA_CTX.factorId) return;
+  const input = document.getElementById('mfaCode');
+  const code = input.value.replace(/\D/g, '');
+  if (code.length !== 6) { mfaError('Enter the 6-digit code from your app.'); return; }
+
+  const btn = document.getElementById('mfaSubmit');
+  MFA_CTX.busy = true; btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Checking…';
+
+  const { error } = await db.auth.mfa.challengeAndVerify({ factorId: MFA_CTX.factorId, code: code });
+
+  MFA_CTX.busy = false; btn.disabled = false;
+  btn.innerHTML = '<i class="fas fa-lock"></i> Verify';
+
+  if (error) {
+    mfaError(/rate|too many/i.test(error.message || '') ? 'Too many attempts. Wait a minute and try again.' : 'That code didn\'t work. Check the time on your phone and try the newest code.');
+    input.value = ''; input.focus();
+    return;
+  }
+
+  hideMfa();
+  toast(MFA_CTX.mode === 'enrol' ? 'Two-factor sign-in is now on for this account.' : 'Verified.', 'success');
+  if (MFA_CTX.resolve) { MFA_CTX.resolve(true); MFA_CTX.resolve = null; }
+}
+
+function mfaSignOut() {
+  db.auth.signOut().then(function () { window.location.href = 'index.html'; });
+}
 
 function refreshAll(btn) {
   if (btn) thBtnLoad(btn, 'Refreshing…');
