@@ -5483,6 +5483,7 @@ document.getElementById('exportConstId')?.addEventListener('change', function() 
   var wards = WARDS.filter(w => w.constituency_id === constId);
   wardSel.innerHTML = '<option value="">— Select Ward —</option>' + wards.map(w => `<option value="${w.id}">${w.name}</option>`).join('');
 });   
+
 async function generatePDF() {
   if (!exportSelectedPos) return;
   var pos = exportSelectedPos;
@@ -5610,6 +5611,9 @@ async function generatePDF() {
         }
     });
 
+    // Create a Set of streams that have forms for quick lookup
+    var formsSet = new Set((formsData || []).map(f => f.stream_code));
+
     var data = {
       position: pos,
       county: isNational ? 'Republic of Kenya' : (CONFIG.County || COUNTIES.find(c=>c.id===CURRENT_COUNTY)?.name || 'County'),
@@ -5617,8 +5621,8 @@ async function generatePDF() {
       totalVotes: totalVotes,
       totalRegisteredVoters: totalRegisteredVoters,
       margin: margin,
-      // Passing correctedStreams as the 12th argument
-      hierarchy: buildHierarchy(allCounties, allConsts, allWards, votesByWard, votesByCentre, votesByStream, formsByWard, allStreams, candMap, pos, resultsData, correctedStreams),
+      // Passing formsSet as the 13th argument
+      hierarchy: buildHierarchy(allCounties, allConsts, allWards, votesByWard, votesByCentre, votesByStream, formsByWard, allStreams, candMap, pos, resultsData, correctedStreams, formsSet),
       isNational: isNational,
       missingForms: missingForms,
       generatedAt: new Date().toISOString(),
@@ -5629,7 +5633,7 @@ async function generatePDF() {
 
     // ---- Register this report for public verification (before the PDF is drawn) ----
     var reportedSet = new Set((resultsData || []).filter(r => streamMap[r.stream_code]).map(r => r.stream_code));
-    var formsSet = new Set((formsData || []).filter(f => streamMap[f.stream_code]).map(f => f.stream_code));
+    var formsSetSize = new Set((formsData || []).filter(f => streamMap[f.stream_code]).map(f => f.stream_code));
     var scopeLabel = reportScopeTitle(data);
     var snapPayload = {
       leaderboard: leaderboard.map(c => ({ name: c.name, party: c.party, votes: c.votes })),
@@ -5637,7 +5641,7 @@ async function generatePDF() {
       registered: totalRegisteredVoters,
       streams_reported: reportedSet.size,
       streams_total: (allStreams || []).length,
-      forms_received: formsSet.size,
+      forms_received: formsSetSize.size,
       corrected_streams: Array.from(correctedStreams).filter(code => streamMap[code]).length
     };
 
@@ -5676,7 +5680,7 @@ async function generatePDF() {
   }
 }
   
-function buildHierarchy(allCounties, allConsts, allWards, votesByWard, votesByCentre, votesByStream, formsByWard, allStreams, candMap, pos, rawResults, correctedStreams) {
+function buildHierarchy(allCounties, allConsts, allWards, votesByWard, votesByCentre, votesByStream, formsByWard, allStreams, candMap, pos, rawResults, correctedStreams, formsSet) {
     var hierarchy = [];
     
     // Anomaly lookup
@@ -5743,7 +5747,8 @@ function buildHierarchy(allCounties, allConsts, allWards, votesByWard, votesByCe
                             candidates: toCandArray(sv),
                             totalVotes: Object.values(sv).reduce((sum, v) => sum + v, 0),
                             isAnomaly: anomalyMap[s.code] || false,
-                            isCorrected: corrSet.has(s.code)   // <-- NEW
+                            isCorrected: corrSet.has(s.code),
+                            hasForm: formsSet ? formsSet.has(s.code) : false // NEW
                         });
                     });
 
@@ -5881,6 +5886,7 @@ async function getBase64ImageFromUrl(imageUrl, retries = 2) {
     img.src = imageUrl;
   });
 }
+
 async function buildPositionPDF(data) {
   var jsPDF = window.jspdf.jsPDF;
   var doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
@@ -5953,6 +5959,118 @@ async function buildPositionPDF(data) {
           }
       });
       return doc.lastAutoTable.finalY + 6;
+  }
+
+  function drawWardMatrixTable(wardName, centres, candidatesList, currentY) {
+      if (!centres || centres.length === 0) return currentY;
+
+      // 1. Check if we need landscape based on candidate count
+      var needLandscape = candidatesList.length > 5;
+      if (needLandscape) {
+          doc.addPage('a4', 'landscape');
+          pageW = 297; marginL = 14; marginR = 14; currentY = 25;
+      } else {
+          if (currentY > 200) { doc.addPage(); currentY = 25; }
+      }
+
+      // 2. Build Headers
+      var head = [['Stream']];
+      candidatesList.forEach(c => head[0].push(c.name + '\n(' + c.party + ')'));
+      head[0].push('Total Valid', 'Form', 'Status');
+
+      var body = [];
+      var wardTotalVotes = 0;
+      var wardCandVotes = {};
+
+      // 3. Build Rows per Centre
+      centres.forEach(cen => {
+          // Centre Header Merged Row
+          body.push([{ content: 'Centre: ' + cen.centreName, colSpan: candidatesList.length + 4, styles: { fillColor: [230, 230, 230], fontStyle: 'bold', halign: 'left', textColor: INK } }]);
+
+          var cenTotalVotes = 0;
+          var cenCandVotes = {};
+
+          cen.streams.forEach(s => {
+              var row = [s.streamName];
+              candidatesList.forEach(c => {
+                  var cd = s.candidates.find(x => x.name === c.name);
+                  var v = cd ? cd.votes : 0;
+                  row.push(v.toLocaleString());
+                  cenCandVotes[c.name] = (cenCandVotes[c.name] || 0) + v;
+                  wardCandVotes[c.name] = (wardCandVotes[c.name] || 0) + v;
+              });
+              row.push(s.totalVotes.toLocaleString());
+              row.push(s.hasForm ? 'Yes' : 'No');
+              
+              var stat = s.isAnomaly ? 'Check' : (s.isCorrected ? 'Corr.' : (s.totalVotes === 0 ? 'Awaiting' : 'OK'));
+              row.push(stat);
+
+              cenTotalVotes += s.totalVotes;
+              wardTotalVotes += s.totalVotes;
+
+              body.push(row);
+          });
+
+          // Centre Total Row
+          var cenTotalRow = [{ content: 'Centre Total', styles: { fontStyle: 'bold', fillColor: GREEN_SOFT } }];
+          candidatesList.forEach(c => cenTotalRow.push((cenCandVotes[c.name] || 0).toLocaleString()));
+          cenTotalRow.push(cenTotalVotes.toLocaleString());
+          cenTotalRow.push(''); // Form
+          cenTotalRow.push(''); // Status
+          body.push(cenTotalRow);
+      });
+
+      // Ward Grand Total Row
+      var wardTotalRow = [{ content: 'WARD TOTAL', styles: { fontStyle: 'bold', fillColor: GREEN, textColor: INK } }];
+      candidatesList.forEach(c => wardTotalRow.push((wardCandVotes[c.name] || 0).toLocaleString()));
+      wardTotalRow.push(wardTotalVotes.toLocaleString());
+      wardTotalRow.push('');
+      wardTotalRow.push('');
+      body.push(wardTotalRow);
+
+      // 4. Draw Table
+      doc.autoTable({
+          startY: currentY,
+          head: head,
+          body: body,
+          theme: 'grid',
+          styles: { font: 'helvetica', fontSize: 7, cellPadding: 1.5, textColor: INK, lineColor: [220, 220, 220], valign: 'middle' },
+          headStyles: { fillColor: GREEN_SOFT, textColor: INK, fontStyle: 'bold', halign: 'center', valign: 'middle' },
+          bodyStyles: { halign: 'center' },
+          alternateRowStyles: { fillColor: [250, 250, 250] },
+          margin: { left: marginL, right: marginR },
+          didParseCell: function (data) {
+              if (data.section === 'body') {
+                  if (data.cell.colSpan > 1) {
+                      data.cell.styles.fillColor = [240, 240, 240];
+                  } else if (data.row.raw[0] === 'Centre Total') {
+                      data.cell.styles.fontStyle = 'bold';
+                      data.cell.styles.fillColor = GREEN_SOFT;
+                  } else if (data.row.raw[0] === 'WARD TOTAL') {
+                      data.cell.styles.fontStyle = 'bold';
+                      data.cell.styles.fillColor = GREEN;
+                  } else if (data.column.index === data.table.columns.length - 1) {
+                      var val = data.cell.raw;
+                      if (val === 'Check') { data.cell.styles.textColor = RED; data.cell.styles.fontStyle = 'bold'; }
+                      else if (val === 'Corr.') { data.cell.styles.textColor = BLUE; data.cell.styles.fontStyle = 'bold'; }
+                      else if (val === 'Awaiting') { data.cell.styles.textColor = SLATE; data.cell.styles.fontStyle = 'italic'; }
+                      else { data.cell.styles.textColor = [0, 150, 0]; data.cell.styles.fontStyle = 'bold'; }
+                  } else if (data.column.index === data.table.columns.length - 2) {
+                      if (data.cell.raw === 'No') { data.cell.styles.textColor = RED; }
+                      if (data.cell.raw === 'Yes') { data.cell.styles.textColor = [0, 150, 0]; }
+                  }
+              }
+          }
+      });
+
+      currentY = doc.lastAutoTable.finalY + 8;
+
+      // 5. Revert to portrait for next section if needed
+      if (needLandscape) {
+          doc.addPage('a4', 'portrait');
+          pageW = 210; marginL = 14; marginR = 14; currentY = 25;
+      }
+      return currentY;
   }
 
   // ==========================================
@@ -6066,178 +6184,63 @@ async function buildPositionPDF(data) {
   }
 
   // ==========================================
-  // HIERARCHICAL RESULTS
+  // HIERARCHICAL RESULTS (NEW 34B MATRIX)
   // ==========================================
-  data.hierarchy.forEach((level1, countyIndex) => { // level1 is County
+  
+  // Get the list of candidates to use as columns in the matrix
+  var raceCandidates = data.leaderboard || [];
+
+  data.hierarchy.forEach((level1) => { // level1 is County
       
+      // --- PRESIDENT: Show County overview ---
       if (data.posContext === 'President') {
-          if (countyIndex > 0 || currentY > pageH - 60) { doc.addPage(); currentY = 25; }
-          
+          if (currentY > pageH - 60) { doc.addPage(); currentY = 25; }
           doc.setFillColor(INK[0], INK[1], INK[2]);
           doc.rect(marginL, currentY - 6, pageW - marginL - marginR, 8, 'F');
           doc.setTextColor(255, 255, 255); doc.setFontSize(11); doc.setFont('helvetica', 'bold');
-          
           var countyLabel = String(level1.countyName || 'Unknown').toUpperCase();
           if (!countyLabel.includes('COUNTY')) countyLabel += ' COUNTY';
-          
           doc.text(countyLabel, marginL + 3, currentY);
           currentY += 10;
-          
-          if (level1.candidates && level1.candidates.length > 0) {
-              currentY = drawOverallTable(level1.candidates, currentY, true);
-          } else {
-              doc.setFontSize(8); doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]); doc.setFont('helvetica', 'italic');
-              doc.text('No votes recorded in this county yet.', marginL + 6, currentY + 2);
-              currentY += 8;
-          }
+          currentY = drawOverallTable(level1.candidates, currentY, true);
       }
 
       level1.subAreas.forEach(level2 => { // level2 is Constituency
           
-          if (data.posContext === 'President' || data.posContext === 'Governor' || data.posContext === 'Senator' || data.posContext === 'Women Rep') {
+          // --- MP / COUNTY POSITIONS: Show Constituency overview ---
+          if (['President', 'Governor', 'Senator', 'Women Rep', 'MP'].includes(data.posContext)) {
               if (currentY > 25) { doc.addPage(); currentY = 25; } 
-
               doc.setFillColor(INK[0], INK[1], INK[2]);
               doc.rect(marginL, currentY - 6, pageW - marginL - marginR, 8, 'F');
               doc.setTextColor(255, 255, 255); doc.setFontSize(11); doc.setFont('helvetica', 'bold');
-              
               var constLabel = String(level2.constituencyName || 'Unknown').toUpperCase();
               if (!constLabel.includes('CONSTITUENCY')) constLabel += ' CONSTITUENCY';
-              
               doc.text(constLabel, marginL + 3, currentY);
               currentY += 10;
-              
-              if (level2.candidates && level2.candidates.length > 0) {
-                  currentY = drawOverallTable(level2.candidates, currentY, true);
-              } else {
-                  doc.setFontSize(8); doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]); doc.setFont('helvetica', 'italic');
-                  doc.text('No votes recorded in this constituency yet.', marginL + 6, currentY + 2);
-                  currentY += 8;
-              }
+              currentY = drawOverallTable(level2.candidates, currentY, true);
           }
 
           level2.subAreas.forEach(level3 => { // level3 is Ward
               
-              if (data.posContext !== 'MCA') {
-                  if (currentY > pageH - 50) { doc.addPage(); currentY = 25; }
-                  
-                  doc.setFontSize(11); doc.setTextColor(INK[0], INK[1], INK[2]); doc.setFont('helvetica', 'bold');
-                  
-                  var wardLabel = String(level3.wardName || 'Unknown').toUpperCase();
-                  if (!wardLabel.includes('WARD')) wardLabel += ' WARD';
-                  
-                  doc.text(wardLabel, marginL + 3, currentY);
-                  
-                  doc.setFontSize(8); doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]); doc.setFont('helvetica', 'normal');
-                  doc.text('Forms: ' + level3.formsCount + '/' + level3.totalStreams + '  |  Total Votes: ' + level3.totalVotes.toLocaleString(), pageW - marginR, currentY, { align: 'right' });
-                  currentY += 6;
+              // --- Show Ward overview ---
+              if (currentY > pageH - 50) { doc.addPage(); currentY = 25; }
+              doc.setFontSize(11); doc.setTextColor(INK[0], INK[1], INK[2]); doc.setFont('helvetica', 'bold');
+              var wardLabel = String(level3.wardName || 'Unknown').toUpperCase();
+              if (!wardLabel.includes('WARD')) wardLabel += ' WARD';
+              doc.text(wardLabel, marginL + 3, currentY);
+              doc.setFontSize(8); doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]); doc.setFont('helvetica', 'normal');
+              doc.text('Forms: ' + level3.formsCount + '/' + level3.totalStreams + '  |  Total Votes: ' + level3.totalVotes.toLocaleString(), pageW - marginR, currentY, { align: 'right' });
+              currentY += 6;
+              currentY = drawOverallTable(level3.candidates, currentY, false);
+              currentY += 4;
 
-                  if (level3.candidates && level3.candidates.length > 0) {
-                      currentY = drawOverallTable(level3.candidates, currentY, false);
-                  } else {
-                      doc.setFontSize(8); doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]); doc.setFont('helvetica', 'italic');
-                      doc.text('No votes recorded in this ward yet.', marginL + 6, currentY + 2);
-                      currentY += 8;
-                  }
-              }
-
-              level3.centres.forEach(level4 => { // level4 is Centre
-                  
-                  if (currentY > pageH - 50) { doc.addPage(); currentY = 25; }
-                  doc.setFontSize(12); doc.setTextColor(INK[0], INK[1], INK[2]); doc.setFont('helvetica', 'bold');
-                  doc.text('Centre: ' + String(level4.centreName), marginL + 6, currentY);
-                  doc.setDrawColor(230, 230, 230); doc.setLineWidth(0.3);
-                  doc.line(marginL + 6, currentY + 1.5, pageW - marginR - 5, currentY + 1.5);
-                  currentY += 6;
-
-                  if (level4.candidates && level4.candidates.length > 0) {
-                      currentY = drawOverallTable(level4.candidates, currentY, false);
-                  } else {
-                      doc.setFontSize(8); doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]); doc.setFont('helvetica', 'italic');
-                      doc.text('No votes recorded in this centre yet.', marginL + 8, currentY + 2);
-                      currentY += 8;
-                  }
-
-                  // Then inside the level4.streams.forEach:
-level4.streams.forEach(level5 => {
-    if (currentY > pageH - 50) { doc.addPage(); currentY = 25; }
-
-    // 1. Stream title color (corrected → blue, anomaly → red, else slate)
-    var streamTitleColor = level5.isCorrected ? BLUE : (level5.isAnomaly ? RED : SLATE);
-    doc.setFontSize(9);
-    doc.setTextColor(streamTitleColor[0], streamTitleColor[1], streamTitleColor[2]);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Stream: ' + String(level5.streamName) + ' (' + level5.streamCode + ')', marginL + 12, currentY);
-    currentY += 3;
-
-    if (level5.candidates && level5.candidates.length > 0) {
-        var strRows = level5.candidates.map((c, idx) => [
-            String(idx + 1), String(c.name), String(c.party), Number(c.votes).toLocaleString(),
-            level5.totalVotes > 0 ? ((c.votes / level5.totalVotes) * 100).toFixed(1) + '%' : '0.0%'
-        ]);
-
-        // 2. Table header color (corrected → blue, anomaly → red, else green)
-        var headBgColor  = level5.isCorrected ? BLUE : (level5.isAnomaly ? RED : GREEN_SOFT);
-        var headTextColor = (level5.isCorrected || level5.isAnomaly) ? [255, 255, 255] : INK;
-
-        doc.autoTable({
-            startY: currentY,
-            head: [['#', 'Candidate', 'Party', 'Votes', 'Share']],
-            body: strRows, theme: 'grid',
-            styles: { font: 'helvetica', fontSize: 7, cellPadding: 1.5, textColor: INK, lineColor: [245, 245, 245] },
-            headStyles: { fillColor: headBgColor, textColor: headTextColor, fontStyle: 'bold', halign: 'center', lineWidth: { bottom: 0.5 } },
-            alternateRowStyles: { fillColor: [250, 250, 250] },
-            margin: { left: marginL + 14, right: marginR },
-            columnStyles: { 
-                0: { cellWidth: 8, halign: 'center' },
-                1: { halign: 'left' },
-                2: { halign: 'left' },
-                3: { halign: 'right', fontStyle: 'bold' },
-                4: { halign: 'right', fontStyle: 'bold' }
-            }
-        });
-        currentY = doc.lastAutoTable.finalY + 4;
-    } else {
-        doc.setFontSize(8);
-        doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]);
-        doc.setFont('helvetica', 'italic');
-        doc.text('No votes recorded in this stream yet.', marginL + 14, currentY + 2);
-        currentY += 6;
-    }
-});
-              });
+              // --- NEW: Single 34B Matrix for the entire Ward ---
+              currentY = drawWardMatrixTable(level3.wardName, level3.centres, raceCandidates, currentY);
           });
       });
   });
 
-  // MISSING FORMS
-  if (data.missingForms && data.missingForms.length > 0) {
-    if (currentY > pageH - 50) { doc.addPage(); currentY = 25; }
-    
-    doc.setFillColor(184, 134, 11);
-    doc.rect(marginL, currentY - 6, pageW - marginL - marginR, 8, 'F');
-    doc.setTextColor(255, 255, 255); doc.setFontSize(11); doc.setFont('helvetica', 'bold');
-    doc.text('MISSING STATUTORY FORMS AUDIT', marginL + 3, currentY);
-    currentY += 10;
-
-    var rows = data.missingForms.map(mf => [
-        String(mf.ward || 'Unknown'), 
-        String(mf.centre || 'Unknown'), 
-        String(mf.stream || 'Unknown')
-    ]);
-    
-    doc.autoTable({
-        startY: currentY,
-        head: [['Ward', 'Polling Centre', 'Stream']], body: rows, theme: 'grid',
-        styles: { font: 'helvetica', fontSize: 8, cellPadding: 3, textColor: INK, lineColor: [240, 240, 240] },
-        headStyles: { fillColor: [184, 134, 11], textColor: 255, fontStyle: 'bold', halign: 'center' },
-        margin: { left: marginL, right: marginR },
-        columnStyles: { 0: { halign: 'left' }, 1: { halign: 'left' }, 2: { halign: 'left' } }
-    });
-  }
-
-
-// ==========================================
+  // ==========================================
   // LAST PAGE: FOR OFFICIAL USE (certification & sign-off)
   // ==========================================
   doc.addPage();
