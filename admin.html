@@ -6236,6 +6236,96 @@ level4.streams.forEach(level5 => {
     });
   }
 
+
+// ==========================================
+  // LAST PAGE: FOR OFFICIAL USE (certification & sign-off)
+  // ==========================================
+  doc.addPage();
+  currentY = 25;
+  var contentW = pageW - marginL - marginR;
+
+  doc.setFillColor(INK[0], INK[1], INK[2]);
+  doc.rect(marginL, currentY - 6, contentW, 8, 'F');
+  doc.setTextColor(255, 255, 255); doc.setFontSize(11); doc.setFont('helvetica', 'bold');
+  doc.text('FOR OFFICIAL USE', marginL + 3, currentY);
+  doc.setFontSize(8); doc.setFont('helvetica', 'normal');
+  doc.text('Certification of Results', pageW - marginR - 3, currentY, { align: 'right' });
+  currentY += 10;
+
+  // Report reference box
+  doc.setFillColor(GREEN_SOFT[0], GREEN_SOFT[1], GREEN_SOFT[2]);
+  doc.roundedRect(marginL, currentY, contentW, 24, 2, 2, 'F');
+  var refRows = [
+    ['Race:', String(data.position || '').toUpperCase(), 'Verification Code:', verifyCode],
+    ['Area:', scopeTitle, 'Generated:', timestamp],
+    ['Total Valid Votes:', Number(data.totalVotes || 0).toLocaleString(), 'Data Fingerprint:', fpShort]
+  ];
+  refRows.forEach(function (r, i) {
+    var y = currentY + 7 + i * 6;
+    doc.setFontSize(8.5); doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]); doc.setFont('helvetica', 'bold');
+    doc.text(r[0], marginL + 5, y);
+    doc.text(r[2], marginL + contentW / 2 + 2, y);
+    doc.setTextColor(INK[0], INK[1], INK[2]); doc.setFont('helvetica', 'normal');
+    doc.text(String(r[1]), marginL + 36, y);
+    doc.text(String(r[3]), marginL + contentW / 2 + 33, y);
+  });
+  currentY += 32;
+
+  // Certification statement
+  var certText = 'We, the undersigned, certify that we have examined this report and that the results it contains, ' +
+    'as transmitted from the polling streams and recorded under Verification Code ' + verifyCode + ', are a true and ' +
+    'accurate record of the ' + String(data.position || '') + ' results for ' + scopeTitle + ' as at the time of generation.';
+  doc.setFontSize(9.5); doc.setTextColor(INK[0], INK[1], INK[2]); doc.setFont('helvetica', 'normal');
+  var certLines = doc.splitTextToSize(certText, contentW);
+  doc.text(certLines, marginL, currentY);
+  currentY += certLines.length * 4.6 + 6;
+
+  // Signatories table
+  var signRows = [
+    ['Party Leader / Chairperson', '', '', ''],
+    ['Secretary General', '', '', ''],
+    ['Witness 1\n\nPosition: ____________________', '', '', ''],
+    ['Witness 2\n\nPosition: ____________________', '', '', '']
+  ];
+  doc.autoTable({
+    startY: currentY,
+    head: [['Position', 'Full Name', 'Signature', 'Date']],
+    body: signRows,
+    theme: 'grid',
+    styles: { font: 'helvetica', fontSize: 9, cellPadding: 3, textColor: INK, lineColor: [200, 200, 200], lineWidth: 0.2, minCellHeight: 20, valign: 'middle' },
+    headStyles: { fillColor: GREEN_SOFT, textColor: INK, fontStyle: 'bold', halign: 'center', minCellHeight: 8 },
+    margin: { left: marginL, right: marginR },
+    columnStyles: {
+      0: { cellWidth: 58, fontStyle: 'bold' },
+      1: { cellWidth: 52 },
+      2: { cellWidth: 42 },
+      3: { cellWidth: contentW - 152 }
+    }
+  });
+  currentY = doc.lastAutoTable.finalY + 12;
+
+  // Official stamp box (bottom of page)
+  var stampW = 78, stampH = 48;
+  var stampY = Math.max(currentY, pageH - 20 - stampH);
+  var stampX = pageW - marginR - stampW;
+  doc.setDrawColor(SLATE[0], SLATE[1], SLATE[2]); doc.setLineWidth(0.4);
+  doc.setLineDashPattern([2, 1.5], 0);
+  doc.roundedRect(stampX, stampY, stampW, stampH, 2, 2, 'S');
+  doc.setLineDashPattern([], 0);
+  doc.setFontSize(8.5); doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]); doc.setFont('helvetica', 'bold');
+  doc.text('OFFICIAL PARTY STAMP', stampX + stampW / 2, stampY + 6, { align: 'center' });
+
+  // Left of the stamp: place and date of certification
+  doc.setFontSize(9); doc.setTextColor(INK[0], INK[1], INK[2]); doc.setFont('helvetica', 'normal');
+  doc.text('Place of certification:', marginL, stampY + 12);
+  doc.text('Date & time:', marginL, stampY + 26);
+  doc.setDrawColor(160, 160, 160); doc.setLineWidth(0.2);
+  doc.line(marginL + 36, stampY + 12.5, stampX - 8, stampY + 12.5);
+  doc.line(marginL + 22, stampY + 26.5, stampX - 8, stampY + 26.5);
+  doc.setFontSize(7.5); doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]); doc.setFont('helvetica', 'italic');
+  var noteLines = doc.splitTextToSize('This page must be signed and stamped to be valid. Verify this report at tallyhub.co.ke/verify.html using the code above.', stampX - marginL - 8);
+  doc.text(noteLines, marginL, stampY + 38);
+  
   // HEADERS & FOOTERS
   var totalPages = Number(doc.internal.getNumberOfPages()); 
   if (isNaN(totalPages) || totalPages < 1) totalPages = 1;
