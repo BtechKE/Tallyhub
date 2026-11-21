@@ -5998,8 +5998,7 @@ async function buildPositionPDF(data) {
     doc.setFontSize(9); doc.setFont('helvetica', 'bold'); doc.setTextColor(INK[0], INK[1], INK[2]);
     doc.text('Scan to verify this report', pageW / 2, qrY + qrSize + 8, { align: 'center' });
     doc.setFont('helvetica', 'normal'); doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]);
-    doc.text('or visit tallyhub.co.ke/verify.html and enter the code above.', pageW / 2, qrY + qrSize + 13, { align: 'center' });
-    doc.text('The original copy of this document can be downloaded and compared there.', pageW / 2, qrY + qrSize + 18, { align: 'center' });
+    doc.text('The original copy of this document can be downloaded and compared.', pageW / 2, qrY + qrSize + 18, { align: 'center' });
   }
 
   doc.saveGraphicsState();
