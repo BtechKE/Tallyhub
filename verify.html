@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Verify Report — TallyHub</title>
+  <meta name="robots" content="noindex">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    :root {
+      --primary: #A5CF83; --primary-dark: #8bb869; --primary-soft: rgba(165,207,131,0.14);
+      --ink: #1B211A; --muted: #5E665C; --line: #E3E8DF; --bg: #F4F7F1; --surface: #FFFFFF;
+      --ok: #3C8C3A; --ok-bg: #EAF5E4; --bad: #C0392B; --bad-bg: #FBECEA;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--ink); font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; }
+    .top { background: var(--primary); height: 6px; }
+    .wrap { max-width: 620px; margin: 0 auto; padding: 28px 16px 48px; }
+    .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 22px; }
+    .brand .logo { width: 40px; height: 40px; border-radius: 12px; background: var(--primary); display: flex; align-items: center; justify-content: center; color: var(--ink); font-size: 18px; }
+    .brand h1 { margin: 0; font-size: 20px; }
+    .brand p { margin: 2px 0 0; font-size: 13px; color: var(--muted); }
+    .card { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 20px; margin-bottom: 16px; }
+    .row { display: flex; gap: 10px; }
+    input[type=text] { flex: 1; min-width: 0; height: 48px; border: 2px solid var(--line); border-radius: 12px; padding: 0 14px; font-size: 16px; font-family: inherit; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; color: var(--ink); outline: none; }
+    input[type=text]:focus { border-color: var(--primary-dark); box-shadow: 0 0 0 4px var(--primary-soft); }
+    .btn { height: 48px; padding: 0 18px; border: none; border-radius: 12px; background: var(--primary); color: var(--ink); font-size: 15px; font-weight: 700; font-family: inherit; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none; }
+    .btn:disabled { opacity: 0.6; cursor: default; }
+    .btn.ghost { background: transparent; border: 2px solid var(--line); }
+    .status { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 14px; font-weight: 700; margin-bottom: 16px; }
+    .status i { font-size: 22px; }
+    .status.ok { background: var(--ok-bg); color: var(--ok); }
+    .status.bad { background: var(--bad-bg); color: var(--bad); }
+    .status small { display: block; font-weight: 500; color: var(--muted); margin-top: 2px; }
+    .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; }
+    .meta div span { display: block; font-size: 12px; color: var(--muted); margin-bottom: 2px; }
+    .meta div strong { font-size: 15px; word-break: break-word; }
+    h2 { font-size: 15px; margin: 0 0 12px; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th { text-align: left; font-size: 12px; color: var(--muted); font-weight: 600; padding: 8px 6px; border-bottom: 1px solid var(--line); }
+    td { padding: 10px 6px; border-bottom: 1px solid var(--line); }
+    td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+    tr:last-child td { border-bottom: none; }
+    .fp { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; word-break: break-all; color: var(--muted); }
+    .hint { font-size: 13px; color: var(--muted); line-height: 1.5; margin: 0 0 14px; }
+    .file-check { margin-top: 12px; padding: 12px 14px; border-radius: 12px; font-size: 14px; font-weight: 600; display: none; }
+    .file-check.ok { display: block; background: var(--ok-bg); color: var(--ok); }
+    .file-check.bad { display: block; background: var(--bad-bg); color: var(--bad); }
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; }
+    .hidden { display: none; }
+    .foot { text-align: center; font-size: 12px; color: var(--muted); margin-top: 24px; }
+    @media (max-width: 480px) { .meta { grid-template-columns: 1fr; } .actions .btn { flex: 1; padding: 0 10px; font-size: 14px; white-space: nowrap; } }
+  </style>
+</head>
+<body>
+  <div class="top"></div>
+  <div class="wrap">
+    <div class="brand">
+      <div class="logo"><i class="fas fa-shield-alt"></i></div>
+      <div>
+        <h1>Verify a TallyHub Report</h1>
+        <p>Check that a printed or shared report is genuine and unaltered.</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <input type="text" id="codeInput" placeholder="TH-SEN-XXXXXXXXXX" autocomplete="off" spellcheck="false"
+               onkeydown="if(event.key==='Enter') lookup()">
+        <button class="btn" id="lookupBtn" onclick="lookup()"><i class="fas fa-search"></i> Verify</button>
+      </div>
+    </div>
+
+    <div id="result" class="hidden">
+      <div class="status" id="status"></div>
+
+      <div class="card" id="detailsCard">
+        <div class="meta">
+          <div><span>Race</span><strong id="mPos"></strong></div>
+          <div><span>Area</span><strong id="mScope"></strong></div>
+          <div><span>Generated</span><strong id="mTime"></strong></div>
+          <div><span>Streams reported</span><strong id="mStreams"></strong></div>
+          <div><span>Total valid votes</span><strong id="mValid"></strong></div>
+          <div><span>Forms received</span><strong id="mForms"></strong></div>
+        </div>
+      </div>
+
+      <div class="card" id="candCard">
+        <h2>Results as certified in this report</h2>
+        <table>
+          <thead><tr><th>#</th><th>Candidate</th><th>Party</th><th class="num">Votes</th><th class="num">Share</th></tr></thead>
+          <tbody id="candBody"></tbody>
+        </table>
+      </div>
+
+      <div class="card" id="pdfCard">
+        <h2>Original document</h2>
+        <p class="hint">Download the original PDF exactly as it was issued, or check a copy you received. Any change to the file, even one number, will make the check fail.</p>
+        <div class="actions">
+          <a class="btn" id="downloadBtn" target="_blank" rel="noopener"><i class="fas fa-download"></i> Download original</a>
+          <label class="btn ghost" for="fileInput"><i class="fas fa-file-shield"></i> Check my copy</label>
+          <input type="file" id="fileInput" accept="application/pdf" class="hidden" onchange="checkFile(this)">
+        </div>
+        <div class="file-check" id="fileCheck"></div>
+      </div>
+
+      <div class="card">
+        <h2>Data fingerprint</h2>
+        <div class="fp" id="mFp"></div>
+      </div>
+    </div>
+
+    <div class="foot">TallyHub · Secure Election Tally System</div>
+  </div>
+
+<script>
+const supabaseUrl = 'https://mqafninsctppbkpwwmxx.supabase.co';
+const supabaseKey = 'sb_publishable_ooW3EE91PVdXoXM7tdxwKw_r51RrZ2z';
+const db = window.supabase.createClient(supabaseUrl, supabaseKey, { auth: { persistSession: false } });
+
+let REPORT = null;
+
+function $(id) { return document.getElementById(id); }
+function fmt(n) { return Number(n || 0).toLocaleString('en-KE'); }
+
+function showStatus(ok, title, sub) {
+  const el = $('status');
+  el.className = 'status ' + (ok ? 'ok' : 'bad');
+  el.innerHTML = '<i class="fas ' + (ok ? 'fa-circle-check' : 'fa-circle-xmark') + '"></i><div><span></span><small></small></div>';
+  el.querySelector('span').textContent = title;
+  el.querySelector('small').textContent = sub || '';
+  $('result').classList.remove('hidden');
+}
+
+async function lookup() {
+  const code = $('codeInput').value.trim().toUpperCase();
+  if (!code) { $('codeInput').focus(); return; }
+  const btn = $('lookupBtn');
+  btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Checking';
+
+  const { data, error } = await db.rpc('verify_report', { p_code: code });
+
+  btn.disabled = false; btn.innerHTML = '<i class="fas fa-search"></i> Verify';
+  $('fileCheck').className = 'file-check'; $('fileInput').value = '';
+
+  ['detailsCard', 'candCard', 'pdfCard'].forEach(id => $(id).classList.add('hidden'));
+  $('mFp').parentElement.classList.add('hidden');
+
+  if (error) { showStatus(false, 'Could not check right now', 'Please check your connection and try again.'); return; }
+  if (!data) {
+    REPORT = null;
+    showStatus(false, 'No report found with this code', 'This code was not issued by TallyHub. Treat the document as unverified.');
+    return;
+  }
+
+  REPORT = data;
+  const s = data.summary || {};
+  const when = new Date(data.generated_at).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  showStatus(true, 'Genuine TallyHub report', 'Code ' + data.code + ' · issued ' + when);
+
+  $('mPos').textContent = data.position;
+  $('mScope').textContent = data.scope;
+  $('mTime').textContent = when;
+  $('mStreams').textContent = s.streams_total ? fmt(s.streams_reported) + ' of ' + fmt(s.streams_total) : fmt(s.streams_reported);
+  $('mValid').textContent = fmt(s.total_valid);
+  $('mForms').textContent = s.streams_total ? fmt(s.forms_received) + ' of ' + fmt(s.streams_total) : fmt(s.forms_received);
+  $('detailsCard').classList.remove('hidden');
+
+  const rows = (s.leaderboard || []);
+  const total = rows.reduce((a, c) => a + Number(c.votes || 0), 0);
+  const body = $('candBody'); body.innerHTML = '';
+  rows.forEach((c, i) => {
+    const tr = document.createElement('tr');
+    [String(i + 1), c.name, c.party, fmt(c.votes), total > 0 ? ((c.votes / total) * 100).toFixed(1) + '%' : '0.0%']
+      .forEach((v, k) => { const td = document.createElement('td'); td.textContent = v; if (k >= 3) td.className = 'num'; tr.appendChild(td); });
+    body.appendChild(tr);
+  });
+  if (rows.length) $('candCard').classList.remove('hidden');
+
+  if (data.has_pdf && data.pdf_path) {
+    $('downloadBtn').href = supabaseUrl + '/storage/v1/object/public/reports/' + encodeURIComponent(data.pdf_path) + '?download=' + encodeURIComponent('TallyHub-' + data.code + '.pdf');
+    $('pdfCard').classList.remove('hidden');
+  }
+
+  $('mFp').textContent = (data.fingerprint || '').toUpperCase();
+  $('mFp').parentElement.classList.remove('hidden');
+
+  history.replaceState(null, '', '?c=' + encodeURIComponent(data.code));
+}
+
+async function checkFile(input) {
+  const out = $('fileCheck');
+  const file = input.files && input.files[0];
+  if (!file || !REPORT || !REPORT.pdf_sha256) return;
+  out.className = 'file-check ok'; out.textContent = 'Checking…';
+  try {
+    const hash = await crypto.subtle.digest('SHA-256', await file.arrayBuffer());
+    const hex = Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
+    if (hex === REPORT.pdf_sha256) {
+      out.className = 'file-check ok';
+      out.innerHTML = '<i class="fas fa-circle-check"></i> This file is identical to the original issued by TallyHub.';
+    } else {
+      out.className = 'file-check bad';
+      out.innerHTML = '<i class="fas fa-triangle-exclamation"></i> This file does NOT match the original. It has been changed, or it is a different report.';
+    }
+  } catch (e) {
+    out.className = 'file-check bad'; out.textContent = 'Could not read this file.';
+  }
+}
+
+(function init() {
+  const c = new URLSearchParams(location.search).get('c');
+  if (c) { $('codeInput').value = c; lookup(); }
+})();
+</script>
+</body>
+</html>
