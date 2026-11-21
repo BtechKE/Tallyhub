@@ -6015,8 +6015,8 @@ async function buildPositionPDF(data) {
           var cenTotalRow = [{ content: 'Centre Total', styles: { fontStyle: 'bold', fillColor: GREEN_SOFT } }];
           candidatesList.forEach(c => cenTotalRow.push((cenCandVotes[c.name] || 0).toLocaleString()));
           cenTotalRow.push(cenTotalVotes.toLocaleString());
-          cenTotalRow.push(''); // Form
-          cenTotalRow.push(''); // Status
+          // Merge the last two empty cells to span across Form and Status columns
+          cenTotalRow.push({ content: '', colSpan: 2, styles: { fillColor: GREEN_SOFT } });
           body.push(cenTotalRow);
       });
 
@@ -6024,8 +6024,8 @@ async function buildPositionPDF(data) {
       var wardTotalRow = [{ content: 'WARD TOTAL', styles: { fontStyle: 'bold', fillColor: GREEN, textColor: INK } }];
       candidatesList.forEach(c => wardTotalRow.push((wardCandVotes[c.name] || 0).toLocaleString()));
       wardTotalRow.push(wardTotalVotes.toLocaleString());
-      wardTotalRow.push('');
-      wardTotalRow.push('');
+      // Merge the last two empty cells to span across Form and Status columns
+      wardTotalRow.push({ content: '', colSpan: 2, styles: { fillColor: GREEN } });
       body.push(wardTotalRow);
 
       // 4. Draw Table
@@ -6041,21 +6041,59 @@ async function buildPositionPDF(data) {
           margin: { left: marginL, right: marginR },
           didParseCell: function (data) {
               if (data.section === 'body') {
-                  if (data.cell.colSpan > 1) {
+                  var rawRow = data.row.raw;
+                  var firstCell = rawRow[0];
+
+                  // Centre Header
+                  if (data.cell.colSpan > 1 && !firstCell) {
                       data.cell.styles.fillColor = [240, 240, 240];
-                  } else if (data.row.raw[0] === 'Centre Total') {
+                      return;
+                  }
+
+                  // Centre Total
+                  if (firstCell === 'Centre Total') {
                       data.cell.styles.fontStyle = 'bold';
                       data.cell.styles.fillColor = GREEN_SOFT;
-                  } else if (data.row.raw[0] === 'WARD TOTAL') {
+                      return;
+                  }
+
+                  // Ward Total
+                  if (firstCell === 'WARD TOTAL') {
                       data.cell.styles.fontStyle = 'bold';
                       data.cell.styles.fillColor = GREEN;
-                  } else if (data.column.index === data.table.columns.length - 1) {
-                      var val = data.cell.raw;
-                      if (val === 'Check') { data.cell.styles.textColor = RED; data.cell.styles.fontStyle = 'bold'; }
-                      else if (val === 'Corr.') { data.cell.styles.textColor = BLUE; data.cell.styles.fontStyle = 'bold'; }
-                      else if (val === 'Awaiting') { data.cell.styles.textColor = SLATE; data.cell.styles.fontStyle = 'italic'; }
-                      else { data.cell.styles.textColor = [0, 150, 0]; data.cell.styles.fontStyle = 'bold'; }
-                  } else if (data.column.index === data.table.columns.length - 2) {
+                      return;
+                  }
+
+                  // Regular Stream Row
+                  var status = rawRow[rawRow.length - 1];
+                  
+                  if (status === 'Check') {
+                      data.cell.styles.fillColor = [255, 235, 235]; // Light Red
+                      if (data.column.index === data.table.columns.length - 1) {
+                          data.cell.styles.textColor = RED;
+                          data.cell.styles.fontStyle = 'bold';
+                      }
+                  } else if (status === 'Corr.') {
+                      data.cell.styles.fillColor = [235, 245, 255]; // Light Blue
+                      if (data.column.index === data.table.columns.length - 1) {
+                          data.cell.styles.textColor = BLUE;
+                          data.cell.styles.fontStyle = 'bold';
+                      }
+                  } else if (status === 'Awaiting') {
+                      data.cell.styles.fillColor = [248, 248, 248]; // Very light grey
+                      if (data.column.index === data.table.columns.length - 1) {
+                          data.cell.styles.textColor = SLATE;
+                          data.cell.styles.fontStyle = 'italic';
+                      }
+                  } else {
+                      if (data.column.index === data.table.columns.length - 1) {
+                          data.cell.styles.textColor = [0, 150, 0];
+                          data.cell.styles.fontStyle = 'bold';
+                      }
+                  }
+
+                  // Form Column
+                  if (data.column.index === data.table.columns.length - 2) {
                       if (data.cell.raw === 'No') { data.cell.styles.textColor = RED; }
                       if (data.cell.raw === 'Yes') { data.cell.styles.textColor = [0, 150, 0]; }
                   }
