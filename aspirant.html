@@ -1244,25 +1244,7 @@ function startAutoRefresh() {
     silentRefresh();
   }, 30000);
 }
-// ================================================================
-//  WAR ROOM — quiet refresh every 60 seconds while it's on screen
-// ================================================================
-var warRefreshTimer = null;
-var warRefreshBusy = false;
 
-function startWarRoomRefresh() {
-  if (warRefreshTimer) clearInterval(warRefreshTimer);
-  warRefreshTimer = setInterval(async function () {
-    if (document.hidden || warRefreshBusy) return;      // tab hidden or a refresh still running
-    if (CURRENT_VIEW !== 'warroom') return;             // only while the War Room is open
-    warRefreshBusy = true;
-    try { await fetchWarLevel(true); }                  // silent: no spinner, keeps your place
-    finally { warRefreshBusy = false; }
-  }, 60000);
-}
-
-startWarRoomRefresh();
-  
 function silentRefresh() { 
     setPulse('loading'); 
     updateHeartbeat();
@@ -1433,109 +1415,395 @@ async function loadOverview(silent) {
   }
 }
 
+// ================================================================
+//  LIVE TRACKER — progress counted on the server
+// ================================================================
+var TRACKER_ROWS = [];      // area cards for the current level
+var TRACKER_STREAMS = [];   // streams of the open centre
+var TRACKER_REQ_KEY = '';
+
+// Which level the tracker starts at for this login
+function trackerRootLevel() {
+  if (SCOPE_MODE === 'national') return DRILL_COUNTY_ID ? 'constituency' : 'county';
+  if (SCOPE_MODE === 'county') return 'constituency';
+  if (SCOPE_MODE === 'constituency') return 'ward';
+  return 'centre';
+}
+
+// The area whose children we list at a given level
+function trackerParentId(level) {
+  if (level === 'county') return null;
+  if (level === 'constituency') return SCOPE_MODE === 'national' ? DRILL_COUNTY_ID : USER.county;
+  if (level === 'ward') return TRACKER_CONST_ID || USER.constituency;
+  if (level === 'centre') return TRACKER_WARD || USER.ward;
+  return TRACKER_CENTRE;
+}
+
+function trackerNameOf(list, id) {
+  var x = (list || []).find(function (i) { return i.id === id; });
+  return x ? x.name : '';
+}
+
+// Open the tracker fresh (top level). silent = quiet refresh of the current level.
 async function loadTracker(silent) {
-  if (!silent) document.getElementById('trackerGrid').innerHTML = '<div class="load" style="grid-column:1/-1;"><div class="tally-loader"></div>Loading…</div>';
-  
+  if (!silent) {
+    TRACKER_CONST_ID = ''; TRACKER_CONST_NAME = '';
+    TRACKER_WARD = ''; TRACKER_WARD_NAME = '';
+    TRACKER_CENTRE = ''; TRACKER_CENTRE_NAME = '';
+    TRACKER_LEVEL = trackerRootLevel();
+  }
+  if (!TRACKER_LEVEL) TRACKER_LEVEL = trackerRootLevel();
+  await fetchTrackerLevel(!!silent);
+}
+
+// Fetch the current level from the server
+async function fetchTrackerLevel(silent) {
+  var gridEl = document.getElementById('trackerGrid');
+  if (!silent) gridEl.innerHTML = '<div class="load" style="grid-column:1/-1;"><div class="tally-loader"></div>Loading…</div>';
+
+  var level = TRACKER_LEVEL, parent = trackerParentId(level);
+  var key = level + '|' + parent;
+  TRACKER_REQ_KEY = key;
+
   try {
-    var streamCodes = (OVERVIEW.streams || []).map(s => s.code);
-    if (!streamCodes.length) {
-       document.getElementById('trackerGrid').innerHTML = '<div class="empty">No streams found.</div>';
-       return;
+    var res = level === 'stream'
+      ? await db.rpc('tracker_streams', { p_centre_id: parent })
+      : await db.rpc('tracker_summary', { p_level: level, p_parent_id: parent });
+    if (res.error) throw res.error;
+
+    // A newer click replaced this request — ignore this answer
+    if (TRACKER_REQ_KEY !== key) return;
+
+    if (level === 'stream') {
+      TRACKER_ROWS = [];
+      TRACKER_STREAMS = (res.data || []).map(function (r) {
+        var done = (r.positions_done || []).length;
+        return {
+          code: r.stream_code,
+          label: 'STR ' + String(r.stream_number).padStart(2, '0'),
+          positionsDone: r.positions_done || [],
+          forms: r.forms || {},
+          done: done,
+          total: POSITIONS.length,
+          isComplete: done >= POSITIONS.length,
+          lastAt: r.last_at,
+          lastBy: r.last_by
+        };
+      });
+    } else {
+      TRACKER_STREAMS = [];
+      TRACKER_ROWS = res.data || [];
     }
 
-    // 1. Fetch results AND the ward_id directly from the results row
-    let resultsData = await fetchIn('results', 'stream_code, position, created_at, submitted_by, ward_id', 'stream_code', streamCodes, 'stream_code');
-    let formsData = await fetchIn('form_photos', 'stream_code, position, photo_url', 'stream_code', streamCodes, 'stream_code');
-    
-    const agentsData = await fetchAll(() => db.from('aspirants').select('login_code, name'));
-    TRACKER_AGENTS = {};
-    (agentsData || []).forEach(a => {
-        if (a.login_code) TRACKER_AGENTS[a.login_code] = a.name;
-    });
-
-    TRACKER_FORMS = {};
-    (formsData || []).forEach(f => {
-        TRACKER_FORMS[f.stream_code + '_' + f.position] = f.photo_url;
-    });
-
-    const reportedMap = {};
-    (resultsData || []).forEach(r => {
-        if (!reportedMap[r.stream_code]) reportedMap[r.stream_code] = {};
-        reportedMap[r.stream_code][r.position] = true;
-    });
-
-    // 2. Build the latest submission map using results.ward_id directly
-    const latestMap = {};
-    (resultsData || []).forEach(r => {
-        if (!r.created_at || !r.ward_id) return;
-        const wId = r.ward_id;
-        
-        // Find the most recent submission for this ward
-        if (!latestMap[wId] || new Date(r.created_at) > new Date(latestMap[wId].time)) {
-            latestMap[wId] = {
-                time: r.created_at,
-                by: TRACKER_AGENTS[r.submitted_by] || r.submitted_by
-            };
-        }
-    });
-
-    let totalCompleteStreams = 0;
-    
-    const trackerWards = (OVERVIEW.wards || []).map(w => {
-        const wCentres = (OVERVIEW.centres || []).filter(c => c.ward_id === w.id);
-        let wStreamsTotal = 0, wStreamsComplete = 0, wCellsDone = 0, wCellsTotal = 0;
-
-        const trackerCentres = wCentres.map(c => {
-            const cStreams = (OVERVIEW.streams || []).filter(s => s.centre_id === c.id);
-            let cStreamsTotal = cStreams.length, cStreamsComplete = 0, cCellsDone = 0, cCellsTotal = cStreamsTotal * POSITIONS.length;
-
-            const trackerStreams = cStreams.map(s => {
-                const pips = {}; let done = 0;
-                POSITIONS.forEach(p => {
-                    if (reportedMap[s.code] && reportedMap[s.code][p]) { pips[p] = { status: 'submitted' }; done++; }
-                    else { pips[p] = null; }
-                });
-                const isComplete = done === POSITIONS.length;
-                if (isComplete) cStreamsComplete++;
-                cCellsDone += done;
-                return { code: s.code, label: 'STR ' + String(s.stream_number).padStart(2, '0'), pips: pips, done: done, total: POSITIONS.length, isComplete: isComplete };
-            });
-
-            wStreamsTotal += cStreamsTotal; wStreamsComplete += cStreamsComplete; wCellsDone += cCellsDone; wCellsTotal += cCellsTotal;
-            return { centreId: c.id, centreName: c.name, streamsTotal: cStreamsTotal, streamsComplete: cStreamsComplete, cellsDone: cCellsDone, cellsTotal: cCellsTotal, streams: trackerStreams };
-        });
-
-        totalCompleteStreams += wStreamsComplete;
-        
-        const wardLatest = latestMap[w.id];
-
-        return { 
-            wardId: w.id, 
-            wardName: w.name, 
-            constituency_id: w.constituency_id, 
-            streamsTotal: wStreamsTotal, 
-            streamsComplete: wStreamsComplete, 
-            cellsDone: wCellsDone, 
-            cellsTotal: wCellsTotal, 
-            centres: trackerCentres,
-            lastAt: wardLatest ? wardLatest.time : null,
-            lastBy: wardLatest ? wardLatest.by : null
-        };
-    });
-
-    TRACKER_DATA = {
-        isMCA: (!USER.isSpectator && USER.position === 'MCA'), scopedWardName: USER.ward || '',
-        positions: POSITIONS, 
-        consts: OVERVIEW.consts || [], 
-        wards: trackerWards,
-        summary: { totalStreams: OVERVIEW.streams.length, completeStreams: totalCompleteStreams, pendingStreams: OVERVIEW.streams.length - totalCompleteStreams, cellsDone: (resultsData || []).length, cellsTotal: OVERVIEW.streams.length * POSITIONS.length, staleCount: 0, lastSubmitAt: null }
-    };
-    
+    TRACKER_DATA = { level: level, loadedAt: Date.now() };   // marker used by switchView
     renderTracker();
   } catch (err) {
-    console.error(err); if (!silent) toast('Connection error.', 'error');
+    console.error(err);
+    if (!silent && TRACKER_REQ_KEY === key) {
+      gridEl.innerHTML = '<div class="empty">Could not load the tracker. Check your connection.</div>';
+    }
   }
 }
+
+// Summary tiles + breadcrumb + grid
+function renderTracker() {
+  if (!TRACKER_DATA) return;
+
+  var tot = 0, comp = 0, last = null;
+  if (TRACKER_LEVEL === 'stream') {
+    TRACKER_STREAMS.forEach(function (s) {
+      tot++; if (s.isComplete) comp++;
+      if (s.lastAt && (!last || new Date(s.lastAt) > new Date(last))) last = s.lastAt;
+    });
+  } else {
+    TRACKER_ROWS.forEach(function (r) {
+      tot += r.streams_total; comp += r.streams_complete;
+      if (r.last_at && (!last || new Date(r.last_at) > new Date(last))) last = r.last_at;
+    });
+  }
+
+  document.getElementById('trackerAlert').innerHTML = '';
+
+  var pct = tot > 0 ? Math.round(comp / tot * 100) : 0;
+  var lastText = last ? timeAgo(new Date(last).getTime()) : 'Never';
+  document.getElementById('trackerSummary').innerHTML =
+    '<div class="tracker-stat green"><div class="num">' + comp + '/' + tot + '</div><div class="lbl">Complete</div></div>' +
+    '<div class="tracker-stat blue"><div class="num">' + (tot - comp) + '</div><div class="lbl">Pending</div></div>' +
+    '<div class="tracker-stat blue"><div class="num">' + pct + '%</div><div class="lbl">Progress</div></div>' +
+    '<div class="tracker-stat"><div class="num small">' + esc(lastText) + '</div><div class="lbl">Last Submit</div></div>';
+
+  renderTrackerBreadcrumb();
+  renderTrackerGrid();
+}
+
+function renderTrackerGrid() {
+  if (!TRACKER_DATA) return;
+  var gridEl = document.getElementById('trackerGrid');
+  var title = document.getElementById('trackerTitle');
+  var sub = document.getElementById('trackerSub');
+  var count = document.getElementById('trackerCount');
+
+  // ---- Last level: streams of one centre ----
+  if (TRACKER_LEVEL === 'stream') {
+    var cName = TRACKER_CENTRE_NAME || trackerNameOf(OVERVIEW.centres, TRACKER_CENTRE) || 'Centre';
+    var compl = TRACKER_STREAMS.filter(function (s) { return s.isComplete; }).length;
+    title.textContent = cName + ' Streams';
+    sub.textContent = compl + ' of ' + TRACKER_STREAMS.length + ' streams complete · all positions';
+    count.textContent = TRACKER_STREAMS.length + ' streams';
+    gridEl.innerHTML = TRACKER_STREAMS.length
+      ? TRACKER_STREAMS.map(renderTrackerStreamCard).join('')
+      : '<div class="empty">No streams found for this centre.</div>';
+    return;
+  }
+
+  // ---- Area levels ----
+  var text = {
+    county:       ['County Status', 'Submission progress by county', 'counties'],
+    constituency: ['Constituency Status', 'Submission progress by constituency', 'constituencies'],
+    ward:         [(TRACKER_CONST_NAME ? TRACKER_CONST_NAME + ' ' : '') + 'Wards', 'Submission progress by ward', 'wards'],
+    centre:       [(TRACKER_WARD_NAME ? TRACKER_WARD_NAME + ' ' : '') + 'Centres', 'Submission progress by polling centre', 'centres']
+  }[TRACKER_LEVEL] || ['Submission Status', 'Which streams have reported', 'areas'];
+
+  title.textContent = text[0];
+  sub.textContent = text[1];
+  count.textContent = TRACKER_ROWS.length + ' ' + text[2];
+
+  gridEl.innerHTML = TRACKER_ROWS.length
+    ? TRACKER_ROWS.map(function (r) { return renderTrackerAreaCard(r, TRACKER_LEVEL); }).join('')
+    : '<div class="empty">No streams found here.</div>';
+}
+
+// One card for a county / constituency / ward / centre
+function renderTrackerAreaCard(r, level) {
+  var cellPct = r.cells_total > 0 ? (r.cells_done / r.cells_total * 100) : 0;
+  var isComplete = r.streams_total > 0 && r.streams_complete === r.streams_total;
+  var isPending = r.streams_complete === 0;
+  var cls = 'card' + (isComplete ? ' leading' : (isPending ? ' empty' : ' trailing'));
+  var chip = trackerChip(r.streams_complete, r.streams_total);
+
+  var subLabel = { county: 'County', constituency: 'Constituency', ward: 'Ward', centre: 'Polling Centre' }[level];
+  var subLine = level === 'centre'
+    ? r.streams_total + ' streams'
+    : subLabel + ' · ' + r.centres + ' centres · ' + r.streams_total + ' streams';
+
+  var nextLevel = { constituency: 'ward', ward: 'centre', centre: 'stream' }[level];
+  var click = level === 'county'
+    ? "trackerPickCounty('" + escAttr(r.geo_id) + "')"
+    : "trackerDrill('" + nextLevel + "', '" + escAttr(r.geo_id) + "')";
+
+  var lastHtml = '';
+  if (level === 'ward' || level === 'centre') {
+    lastHtml = r.last_at
+      ? '<div class="tracker-last"><i class="fas fa-clock"></i>Last ' + esc(timeAgo(new Date(r.last_at).getTime())) + (r.last_by ? ' · ' + esc(r.last_by) : '') + '</div>'
+      : '<div class="tracker-last empty">No submissions yet</div>';
+  }
+
+  return `<div class="${cls}" onclick="${click}">
+    <div class="card-head">
+      <div>
+        <div class="card-name">${esc(r.geo_name)}</div>
+        <div class="card-sub">${subLine}</div>
+      </div>
+      <span class="card-status ${chip.cls}">${chip.label}</span>
+    </div>
+    <div>
+      <div class="card-numbers">
+        <span class="card-votes">${r.streams_complete} / ${r.streams_total}</span>
+        <span class="card-pct">${cellPct.toFixed(1)}%</span>
+      </div>
+      <div class="card-votes-lbl">Streams complete</div>
+    </div>
+    <div class="card-bar"><div class="card-bar-fill" style="width:${cellPct}%"></div></div>
+    ${lastHtml}
+  </div>`;
+}
+
+// One stream card with its six position pips
+function renderTrackerStreamCard(s) {
+  var cls = 'card'; if (s.isComplete) cls += ' leading'; else if (s.done === 0) cls += ' empty'; else cls += ' trailing';
+  var chip;
+  if (s.isComplete) chip = { cls: 'done', label: '<i class="fas fa-circle-check"></i> Complete' };
+  else if (s.done > 0) chip = { cls: 'partial', label: '<i class="fas fa-circle-half-stroke"></i> ' + s.done + '/' + s.total };
+  else chip = { cls: 'pending', label: '<i class="fas fa-circle"></i> Pending' };
+
+  var pipsHtml = POSITIONS.map(function (pos) {
+    var hit = s.positionsDone.indexOf(pos) !== -1;
+    var short = POSITION_SHORT[pos] || pos.charAt(0);
+    var tip = hit ? pos + ' · tap to view results' : pos + ' · not submitted yet';
+    var click = hit ? ' onclick="openTrackerPip(\'' + escAttr(s.code) + '\',\'' + escAttr(pos) + '\')"' : '';
+    var formBadge = s.forms[pos]
+      ? '<span style="position:absolute;bottom:-3px;right:-3px;background:var(--blue);color:white;border-radius:50%;width:12px;height:12px;display:flex;align-items:center;justify-content:center;border:1.5px solid #fff;box-shadow:0 2px 4px rgba(0,0,0,0.2);"><i class="fas fa-camera" style="font-size:6px;"></i></span>'
+      : '';
+    var tag = hit ? 'button' : 'span';
+    var extra = hit ? ' type="button"' : '';
+    return '<' + tag + extra + ' class="pip ' + (hit ? 'pip-done' : 'pip-pending') + '" title="' + escAttr(tip) + '"' + click + '>' + short + formBadge + '</' + tag + '>';
+  }).join('');
+
+  var lastHtml = s.lastAt
+    ? '<div class="tracker-last"><i class="fas fa-clock"></i>' + esc(timeAgo(new Date(s.lastAt).getTime())) + (s.lastBy ? ' · ' + esc(s.lastBy) : '') + '</div>'
+    : '';
+
+  return '<div class="' + cls + '"><div class="card-head"><div><div class="card-name">' + esc(s.label) + '</div><div class="card-sub">' + esc(s.code) + '</div></div><span class="card-status ' + chip.cls + '">' + chip.label + '</span></div><div class="pips">' + pipsHtml + '</div>' + lastHtml + '</div>';
+}
+
+// Tap a green pip → results sheet for that stream + position
+async function openTrackerPip(streamCode, position) {
+  var sheetBg = document.getElementById('sheetBg');
+  var sheet = document.getElementById('sheetContent');
+  if (!sheetBg || !sheet) { toast('Could not open sheet — please reload.', 'error'); return; }
+
+  var st = TRACKER_STREAMS.find(function (x) { return x.code === streamCode; });
+  var label = st ? st.label : streamCode;
+  var centreObj = (OVERVIEW.centres || []).find(function (c) { return c.id === TRACKER_CENTRE; });
+  var centreName = TRACKER_CENTRE_NAME || (centreObj ? centreObj.name : '');
+  var wardName = TRACKER_WARD_NAME || trackerNameOf(OVERVIEW.wards, centreObj ? centreObj.ward_id : '');
+
+  var head = '<div class="sheet-head"><div><div class="sheet-title">' + esc(position) + ' · ' + esc(label) + '</div><div class="sheet-sub">' + esc(centreName) + (wardName ? ' · ' + esc(wardName) + ' Ward' : '') + '</div></div><button class="sheet-close" onclick="closeSheet()"><i class="fas fa-xmark"></i></button></div>';
+
+  sheetBg.classList.add('active');
+  sheet.innerHTML = head + '<div class="load"><div class="tally-loader"></div>Loading results…</div>';
+
+  try {
+    const { data: results } = await db.from('results')
+      .select('votes, submitted_by, created_at, candidates(name, party, photo_url)')
+      .eq('stream_code', streamCode).eq('position', position);
+
+    if (!results || results.length === 0) {
+      sheet.innerHTML = head + '<div class="empty"><div class="empty-icon"><i class="fas fa-hourglass-half"></i></div><div class="empty-title">Not submitted yet</div></div>';
+      return;
+    }
+
+    const mappedResults = results.map(function (r) {
+      return {
+        candidateName: r.candidates ? r.candidates.name : 'Unknown',
+        party: r.candidates ? r.candidates.party : '',
+        photo_url: normalizeImageUrl(r.candidates ? r.candidates.photo_url : ''),
+        votes: r.votes
+      };
+    }).sort(function (a, b) { return b.votes - a.votes; });
+
+    // Form photo (short-lived link)
+    var formPhotoUrl = '';
+    var fileName = st && st.forms ? st.forms[position] : '';
+    if (fileName) {
+      const { data: signedData } = await db.storage.from('form-photos').createSignedUrl(fileName, 600);
+      if (signedData) formPhotoUrl = signedData.signedUrl;
+    }
+
+    const res = {
+      submitted: true,
+      submittedBy: results[0].submitted_by,
+      submittedByName: results[0].submitted_by || 'Unknown',
+      submittedAt: new Date(results[0].created_at).toLocaleString(),
+      results: mappedResults
+    };
+
+    renderTrackerPipResult(res, position, label, centreName, wardName, formPhotoUrl);
+  } catch (err) {
+    console.error(err);
+    sheet.innerHTML = head + '<div class="empty"><div class="empty-title">Connection error</div></div>';
+  }
+}
+
+// Back to the top level of this login's area
+function trackerResetDrill() {
+  TRACKER_CONST_ID = ''; TRACKER_CONST_NAME = '';
+  TRACKER_WARD = ''; TRACKER_WARD_NAME = '';
+  TRACKER_CENTRE = ''; TRACKER_CENTRE_NAME = '';
+  TRACKER_LEVEL = trackerRootLevel();
+  fetchTrackerLevel(false);
+}
+
+// Click into the next level (names come from the card or the loaded lists)
+function trackerDrill(level, id) {
+  var row = TRACKER_ROWS.find(function (r) { return r.geo_id === id; });
+  if (level === 'ward') {
+    TRACKER_CONST_ID = id; TRACKER_CONST_NAME = row ? row.geo_name : trackerNameOf(OVERVIEW.consts, id);
+    TRACKER_WARD = ''; TRACKER_WARD_NAME = ''; TRACKER_CENTRE = ''; TRACKER_CENTRE_NAME = '';
+  }
+  if (level === 'centre') {
+    TRACKER_WARD = id; TRACKER_WARD_NAME = row ? row.geo_name : trackerNameOf(OVERVIEW.wards, id);
+    TRACKER_CENTRE = ''; TRACKER_CENTRE_NAME = '';
+  }
+  if (level === 'stream') {
+    TRACKER_CENTRE = id; TRACKER_CENTRE_NAME = row ? row.geo_name : trackerNameOf(OVERVIEW.centres, id);
+  }
+  TRACKER_LEVEL = level;
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  fetchTrackerLevel(false);
+}
+
+// Pick a county from the tracker (national only) — keeps Results, dropdown and tracker in sync
+function trackerPickCounty(id) {
+  const sel = document.getElementById('aspCountySelector');
+  if (sel) sel.value = id;
+  switchAspCounty(id);
+}
+
+function renderTrackerBreadcrumb() {
+  var el = document.getElementById('trackerBreadcrumb');
+  if (!el) return;
+  var parts = [];
+
+  // 1. Root
+  if (SCOPE_MODE === 'national') {
+    parts.push({ label: 'All Counties', active: TRACKER_LEVEL === 'county', onclick: "trackerPickCounty('')" });
+    if (DRILL_COUNTY_ID) parts.push({ label: DRILL_COUNTY_NAME || 'County', active: TRACKER_LEVEL === 'constituency', onclick: 'trackerResetDrill()' });
+  } else if (SCOPE_MODE === 'county') {
+    parts.push({ label: 'All Constituencies', active: TRACKER_LEVEL === 'constituency', onclick: 'trackerResetDrill()' });
+  } else if (SCOPE_MODE === 'constituency') {
+    parts.push({ label: 'All Wards', active: TRACKER_LEVEL === 'ward', onclick: 'trackerResetDrill()' });
+  } else if (SCOPE_MODE === 'ward') {
+    parts.push({ label: 'All Centres', active: TRACKER_LEVEL === 'centre', onclick: 'trackerResetDrill()' });
+  }
+
+  // 2. Constituency (only below constituency level)
+  if (TRACKER_CONST_ID && TRACKER_LEVEL !== 'county' && TRACKER_LEVEL !== 'constituency') {
+    parts.push({
+      label: TRACKER_CONST_NAME || trackerNameOf(OVERVIEW.consts, TRACKER_CONST_ID) || 'Constituency',
+      active: TRACKER_LEVEL === 'ward',
+      onclick: "trackerDrill('ward', '" + escAttr(TRACKER_CONST_ID) + "')"
+    });
+  }
+
+  // 3. Ward and centre
+  if (TRACKER_WARD && (TRACKER_LEVEL === 'centre' || TRACKER_LEVEL === 'stream') && SCOPE_MODE !== 'ward') {
+    parts.push({ label: TRACKER_WARD_NAME || 'Ward', active: TRACKER_LEVEL === 'centre', onclick: "trackerDrill('centre', '" + escAttr(TRACKER_WARD) + "')" });
+  }
+  if (TRACKER_CENTRE && TRACKER_LEVEL === 'stream') {
+    parts.push({ label: TRACKER_CENTRE_NAME || 'Centre', active: true, onclick: '' });
+  }
+
+  // 4. Render
+  el.innerHTML = parts.map(function (p, i) {
+    var cls = 'bc-seg' + (p.active ? ' current' : '');
+    var attr = p.active ? '' : 'onclick="' + p.onclick + '"';
+    return (i > 0 ? '<i class="fas fa-chevron-right bc-sep"></i>' : '') +
+      '<button class="' + cls + '" ' + attr + '>' + (i === 0 ? '<i class="fas fa-layer-group"></i> ' : '') + esc(p.label) + '</button>';
+  }).join('');
+}
+
+// ================================================================
+//  LIVE TRACKER + WAR ROOM — quiet refresh every 60 seconds while on screen
+// ================================================================
+var liveViewsTimer = null;
+var liveViewsBusy = false;
+
+function startLiveViewsRefresh() {
+  if (liveViewsTimer) clearInterval(liveViewsTimer);
+  liveViewsTimer = setInterval(async function () {
+    if (document.hidden || liveViewsBusy) return;        // tab hidden or a refresh still running
+    liveViewsBusy = true;
+    try {
+      if (CURRENT_VIEW === 'warroom') await fetchWarLevel(true);
+      else if (CURRENT_VIEW === 'tracker' && TRACKER_DATA) await fetchTrackerLevel(true);
+    } finally {
+      liveViewsBusy = false;
+    }
+  }, 60000);
+}
+
+startLiveViewsRefresh();
 // ================================================================
 //  RENDERING — TABS & HERO
 // ================================================================
@@ -2335,309 +2603,6 @@ function switchView(view) {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-function renderTracker() {
-  if (!TRACKER_DATA) return;
-  
-  // 1. Alert banner
-  var el = document.getElementById('trackerAlert'); 
-  var s = TRACKER_DATA.summary;
-  el.innerHTML = s.staleCount <= 5 ? '' : '<div class="tracker-alert"><i class="fas fa-triangle-exclamation"></i><div><strong>' + s.staleCount + ' streams</strong> haven\'t reported in over 2 hours</div></div>';
-
-  // 2. Summary tiles
-  var summaryEl = document.getElementById('trackerSummary');
-  var pct = s.totalStreams > 0 ? Math.round(s.completeStreams / s.totalStreams * 100) : 0;
-  var lastText = s.lastSubmitAt ? timeAgo(new Date(s.lastSubmitAt).getTime()) : 'Never';
-  summaryEl.innerHTML = '<div class="tracker-stat green"><div class="num">' + s.completeStreams + '/' + s.totalStreams + '</div><div class="lbl">Complete</div></div><div class="tracker-stat blue"><div class="num">' + s.pendingStreams + '</div><div class="lbl">Pending</div></div><div class="tracker-stat blue"><div class="num">' + pct + '%</div><div class="lbl">Progress</div></div><div class="tracker-stat"><div class="num small">' + esc(lastText) + '</div><div class="lbl">Last Submit</div></div>';
-
-  // 3. Tell the grid to render
-  renderTrackerBreadcrumb();
-  renderTrackerGrid();
-}
-
-function renderTrackerGrid() {
-  if (!TRACKER_DATA) return;
-
-  var gridEl = document.getElementById('trackerGrid');
-  var title = document.getElementById('trackerTitle');
-  var sub = document.getElementById('trackerSub');
-  var count = document.getElementById('trackerCount');
-
-  // NATIONAL ONLY: start at counties until one is picked
-  if (SCOPE_MODE === 'national') {
-    if (!DRILL_COUNTY_ID && TRACKER_LEVEL === 'constituency') TRACKER_LEVEL = 'county';
-    if (DRILL_COUNTY_ID && TRACKER_LEVEL === 'county') TRACKER_LEVEL = 'constituency';
-  }
-
-  // --- LEVEL 0: COUNTIES (national, "All Counties") ---
-  if (TRACKER_LEVEL === 'county') {
-    title.textContent = 'County Status';
-    sub.textContent = 'Submission progress by county';
-
-    // stream code -> county, straight from streams.county_id
-    var streamCounty = {};
-    (OVERVIEW.streams || []).forEach(s => { streamCounty[s.code] = s.county_id; });
-
-    var countyGroups = {};
-    (OVERVIEW.counties || []).forEach(c => {
-      countyGroups[c.id] = { id: c.id, name: c.name, streamsTotal: 0, streamsComplete: 0, cellsDone: 0, cellsTotal: 0 };
-    });
-
-    (TRACKER_DATA.wards || []).forEach(w => {
-      (w.centres || []).forEach(cen => {
-        (cen.streams || []).forEach(s => {
-          var g = countyGroups[streamCounty[s.code]];
-          if (!g) return;
-          g.streamsTotal++;
-          if (s.isComplete) g.streamsComplete++;
-          g.cellsDone += s.done;
-          g.cellsTotal += s.total;
-        });
-      });
-    });
-
-    var countyArr = Object.values(countyGroups).filter(g => g.streamsTotal > 0);
-    count.textContent = countyArr.length + ' counties';
-    if (!countyArr.length) { gridEl.innerHTML = '<div class="empty">No counties with streams yet.</div>'; return; }
-
-    gridEl.innerHTML = countyArr.map(c => {
-      var cellPct = c.cellsTotal > 0 ? (c.cellsDone / c.cellsTotal * 100) : 0;
-      var isComplete = c.streamsTotal > 0 && c.streamsComplete === c.streamsTotal;
-      var isPending = c.streamsComplete === 0;
-      var cls = 'card' + (isComplete ? ' leading' : (isPending ? ' empty' : ' trailing'));
-      var chip = trackerChip(c.streamsComplete, c.streamsTotal);
-      return `<div class="${cls}" onclick="trackerPickCounty('${escAttr(c.id)}')">
-        <div class="card-head"><div><div class="card-name">${esc(c.name)}</div><div class="card-sub">County</div></div><span class="card-status ${chip.cls}">${chip.label}</span></div>
-        <div><div class="card-numbers"><span class="card-votes">${c.streamsComplete} / ${c.streamsTotal}</span><span class="card-pct">${cellPct.toFixed(1)}%</span></div><div class="card-votes-lbl">Streams complete</div></div>
-        <div class="card-bar"><div class="card-bar-fill" style="width:${cellPct}%"></div></div>
-      </div>`;
-    }).join('');
-    return;
-  }
-
-  // --- LEVEL 1: CONSTITUENCIES ---
-  if (TRACKER_LEVEL === 'constituency') {
-    title.textContent = 'Constituency Status';
-    sub.textContent = 'Submission progress by constituency';
-
-    // Group wards by constituency (national: only the picked county)
-    var constGroups = {};
-    (TRACKER_DATA.consts || [])
-      .filter(c => SCOPE_MODE !== 'national' || c.county_id === DRILL_COUNTY_ID)
-      .forEach(c => { constGroups[c.id] = { id: c.id, name: c.name, streamsTotal: 0, streamsComplete: 0, cellsDone: 0, cellsTotal: 0 }; });
-
-    (TRACKER_DATA.wards || []).forEach(w => {
-      if (constGroups[w.constituency_id]) {
-        constGroups[w.constituency_id].streamsTotal += w.streamsTotal;
-        constGroups[w.constituency_id].streamsComplete += w.streamsComplete;
-        constGroups[w.constituency_id].cellsDone += w.cellsDone;
-        constGroups[w.constituency_id].cellsTotal += w.cellsTotal;
-      }
-    });
-
-    var groupsArr = Object.values(constGroups);
-    count.textContent = groupsArr.length + ' constituencies';
-    if (!groupsArr.length) { gridEl.innerHTML = '<div class="empty">No constituencies.</div>'; return; }
-
-    gridEl.innerHTML = groupsArr.map(c => {
-      var cellPct = c.cellsTotal > 0 ? (c.cellsDone / c.cellsTotal * 100) : 0;
-      var isComplete = c.streamsTotal > 0 && c.streamsComplete === c.streamsTotal;
-      var isPending = c.streamsComplete === 0;
-      var cls = 'card' + (isComplete ? ' leading' : (isPending ? ' empty' : ' trailing'));
-      var chip = trackerChip(c.streamsComplete, c.streamsTotal);
-
-      return `<div class="${cls}" onclick="trackerDrill('ward', '${c.id}', '${esc(c.name)}')">
-        <div class="card-head"><div><div class="card-name">${esc(c.name)}</div><div class="card-sub">Constituency</div></div><span class="card-status ${chip.cls}">${chip.label}</span></div>
-        <div><div class="card-numbers"><span class="card-votes">${c.streamsComplete} / ${c.streamsTotal}</span><span class="card-pct">${cellPct.toFixed(1)}%</span></div><div class="card-votes-lbl">Streams complete</div></div>
-        <div class="card-bar"><div class="card-bar-fill" style="width:${cellPct}%"></div></div>
-      </div>`;
-    }).join('');
-    return;
-  }
-
-  // --- LEVEL 2: WARDS ---
-  if (TRACKER_LEVEL === 'ward') {
-    var targetConstId = TRACKER_CONST_ID || (SCOPE_MODE === 'constituency' ? USER.constituency : '');
-    var myWards = TRACKER_DATA.wards.filter(w => w.constituency_id === targetConstId);
-    title.textContent = TRACKER_CONST_NAME + ' Wards';
-    sub.textContent = 'Submission progress by ward';
-    count.textContent = myWards.length + ' wards';
-
-    gridEl.innerHTML = myWards.map(renderTrackerWardCard).join('');
-    return;
-  }
-
-  // --- LEVEL 3: CENTRES ---
-  if (TRACKER_LEVEL === 'centre') {
-    var targetTrackerWard = TRACKER_WARD || (SCOPE_MODE === 'ward' ? USER.ward : '');
-    var ward = TRACKER_DATA.wards.find(w => w.wardId === targetTrackerWard);
-
-    if (!ward) { gridEl.innerHTML = '<div class="empty">No centres found for this ward.</div>'; return; }
-
-    title.textContent = ward.wardName + ' Centres';
-    sub.textContent = ward.streamsComplete + ' of ' + ward.streamsTotal + ' streams complete';
-    count.textContent = ward.centres.length + ' centres';
-
-    gridEl.innerHTML = ward.centres.map(renderTrackerCentreCard).join('');
-    return;
-  }
-
-  // --- LEVEL 4: STREAMS ---
-  if (TRACKER_LEVEL === 'stream') {
-    var targetTrackerWard = TRACKER_WARD || (SCOPE_MODE === 'ward' ? USER.ward : '');
-    var ward = TRACKER_DATA.wards.find(w => w.wardId === targetTrackerWard);
-
-    var centre = ward ? ward.centres.find(c => c.centreId === TRACKER_CENTRE) : null;
-    if (!centre) { gridEl.innerHTML = '<div class="empty">No streams found for this centre.</div>'; return; }
-
-    title.textContent = centre.centreName + ' Streams';
-    sub.textContent = centre.streamsComplete + ' of ' + centre.streamsTotal + ' streams complete · all positions';
-    count.textContent = centre.streams.length + ' streams';
-
-    gridEl.innerHTML = centre.streams.map(renderTrackerStreamCard).join('');
-    return;
-  }
-}
-
-function renderTrackerWardCard(w) {
-  var cellPct = w.cellsTotal > 0 ? (w.cellsDone / w.cellsTotal * 100) : 0; 
-  var isComplete = w.streamsTotal > 0 && w.streamsComplete === w.streamsTotal; 
-  var isPending = w.streamsComplete === 0;
-  var cls = 'card' + (isComplete ? ' leading' : (isPending ? ' empty' : ' trailing')); 
-  var chip = trackerChip(w.streamsComplete, w.streamsTotal);
-  var lastHtml = w.lastAt ? '<div class="tracker-last"><i class="fas fa-clock"></i>Last ' + esc(timeAgo(new Date(w.lastAt).getTime())) + (w.lastBy ? ' · ' + esc(w.lastBy) : '') + '</div>' : '<div class="tracker-last empty">No submissions yet</div>';
-  
-  return `<div class="${cls}" onclick="trackerDrill('centre', '${escAttr(w.wardId)}', '${escAttr(w.wardName)}')">
-    <div class="card-head">
-      <div>
-        <div class="card-name">${esc(w.wardName)}</div>
-        <div class="card-sub">${w.centres.length} centres · ${w.streamsTotal} streams</div>
-      </div>
-      <span class="card-status ${chip.cls}">${chip.label}</span>
-    </div>
-    <div>
-      <div class="card-numbers">
-        <span class="card-votes">${w.streamsComplete} / ${w.streamsTotal}</span>
-        <span class="card-pct">${cellPct.toFixed(1)}%</span>
-      </div>
-      <div class="card-votes-lbl">Streams complete</div>
-    </div>
-    <div class="card-bar"><div class="card-bar-fill" style="width:${cellPct}%"></div></div>
-    ${lastHtml}
-  </div>`;
-}
-
-function renderTrackerCentreCard(c) {
-  var cellPct = c.cellsTotal > 0 ? (c.cellsDone / c.cellsTotal * 100) : 0; 
-  var isComplete = c.streamsTotal > 0 && c.streamsComplete === c.streamsTotal; 
-  var isPending = c.streamsComplete === 0;
-  var cls = 'card' + (isComplete ? ' leading' : (isPending ? ' empty' : ' trailing')); 
-  var chip = trackerChip(c.streamsComplete, c.streamsTotal);
-  
-  return `<div class="${cls}" onclick="trackerDrill('stream', '${escAttr(c.centreId)}', '${escAttr(c.centreName)}')">
-    <div class="card-head">
-      <div>
-        <div class="card-name">${esc(c.centreName)}</div>
-        <div class="card-sub">${c.streamsTotal} streams</div>
-      </div>
-      <span class="card-status ${chip.cls}">${chip.label}</span>
-    </div>
-    <div>
-      <div class="card-numbers">
-        <span class="card-votes">${c.streamsComplete} / ${c.streamsTotal}</span>
-        <span class="card-pct">${cellPct.toFixed(1)}%</span>
-      </div>
-      <div class="card-votes-lbl">Streams complete</div>
-    </div>
-    <div class="card-bar"><div class="card-bar-fill" style="width:${cellPct}%"></div></div>
-  </div>`;
-}
-
-function renderTrackerStreamCard(s) {
-  var cls = 'card'; if (s.isComplete) cls += ' leading'; else if (s.done === 0) cls += ' empty'; else cls += ' trailing';
-  var chip; if (s.isComplete) chip = { cls: 'done', label: '<i class="fas fa-circle-check"></i> Complete' }; else if (s.done > 0) chip = { cls: 'partial', label: '<i class="fas fa-circle-half-stroke"></i> ' + s.done + '/' + s.total }; else chip = { cls: 'pending', label: '<i class="fas fa-circle"></i> Pending' };
-  var pipsHtml = TRACKER_DATA.positions.map(function (pos) {
-  var hit = s.pips[pos]; 
-  var short = POSITION_SHORT[pos] || pos.charAt(0); 
-  var tip = hit ? pos + ' · tap to view results' : pos + ' · not submitted yet';
-  var click = hit ? ' onclick="openTrackerPip(\'' + escAttr(s.code) + '\',\'' + escAttr(pos) + '\')"' : '';
-  
-  // Check if this specific stream/position has a photo
-  var hasForm = !!TRACKER_FORMS[s.code + '_' + pos];
-  var formBadge = hasForm ? '<span style="position:absolute;bottom:-3px;right:-3px;background:var(--blue);color:white;border-radius:50%;width:12px;height:12px;display:flex;align-items:center;justify-content:center;border:1.5px solid #fff;box-shadow:0 2px 4px rgba(0,0,0,0.2);"><i class="fas fa-camera" style="font-size:6px;"></i></span>' : '';
-  
-  var tag = hit ? 'button' : 'span'; 
-  var tagClose = hit ? '</button>' : '</span>'; 
-  var extra = hit ? ' type="button"' : '';
-  
-  return '<' + tag + extra + ' class="pip ' + (hit ? 'pip-done' : 'pip-pending') + '" title="' + escAttr(tip) + '"' + click + '>' + short + formBadge + tagClose;
-}).join('');
-  var lastHtml = s.lastAt ? '<div class="tracker-last"><i class="fas fa-clock"></i>' + esc(timeAgo(new Date(s.lastAt).getTime())) + (s.lastBy ? ' · ' + esc(s.lastBy) : '') + '</div>' : '';
-  return '<div class="' + cls + '"><div class="card-head"><div><div class="card-name">' + esc(s.label) + '</div><div class="card-sub">' + esc(s.code) + '</div></div><span class="card-status ' + chip.cls + '">' + chip.label + '</span></div><div class="pips">' + pipsHtml + '</div>' + lastHtml + '</div>';
-}
-
-function findTrackerStreamContext(streamCode) {
-  if (!TRACKER_DATA) return null; var wards = TRACKER_DATA.wards || [];
-  for (var i = 0; i < wards.length; i++) { var centres = wards[i].centres || []; for (var j = 0; j < centres.length; j++) { var streams = centres[j].streams || []; for (var k = 0; k < streams.length; k++) { if (streams[k].code === streamCode) return { ward: wards[i], centre: centres[j], stream: streams[k] }; } } }
-  return null;
-}
-
-async function openTrackerPip(streamCode, position) {
-  var sheetBg = document.getElementById('sheetBg'); 
-  var sheet = document.getElementById('sheetContent');
-  if (!sheetBg || !sheet) { toast('Could not open sheet — please reload.', 'error'); return; }
-  
-  var ctx = findTrackerStreamContext(streamCode);
-  var label = ctx ? ctx.stream.label : streamCode; 
-  var centreName = ctx ? ctx.centre.centreName : ''; 
-  var wardName = ctx ? ctx.ward.wardName : '';
-
-  sheetBg.classList.add('active');
-  sheet.innerHTML = '<div class="sheet-head"><div><div class="sheet-title">' + esc(position) + ' · ' + esc(label) + '</div><div class="sheet-sub">' + esc(centreName) + ' · ' + esc(wardName) + ' Ward</div></div><button class="sheet-close" onclick="closeSheet()"><i class="fas fa-xmark"></i></button></div><div class="load"><div class="tally-loader"></div>Loading results…</div>';
-
-  try {
-    // 1. Fetch Results
-    const { data: results } = await db.from('results')
-      .select('votes, submitted_by, created_at, candidates(name, party, photo_url)')
-      .eq('stream_code', streamCode).eq('position', position);
-
-    if (!results || results.length === 0) {
-      sheet.innerHTML = '<div class="sheet-head"><div><div class="sheet-title">' + esc(position) + ' · ' + esc(label) + '</div><div class="sheet-sub">' + esc(centreName) + ' · ' + esc(wardName) + ' Ward</div></div><button class="sheet-close" onclick="closeSheet()"><i class="fas fa-xmark"></i></button></div><div class="empty"><div class="empty-icon"><i class="fas fa-hourglass-half"></i></div><div class="empty-title">Not submitted yet</div></div>';
-      return;
-    }
-
-    const mappedResults = results.map(r => ({
-      candidateName: r.candidates.name, 
-      party: r.candidates.party, 
-      photo_url: normalizeImageUrl(r.candidates.photo_url), 
-      votes: r.votes
-    })).sort((a, b) => b.votes - a.votes);
-
-    // 2. Fetch Signed URL for the Form Photo (if it exists)
-    var formPhotoUrl = '';
-    var fileName = TRACKER_FORMS[streamCode + '_' + position];
-    if (fileName) {
-      const { data: signedData } = await db.storage.from('form-photos').createSignedUrl(fileName, 600); // Valid for 10 mins
-      if (signedData) formPhotoUrl = signedData.signedUrl;
-    }
-
-    // 3. Look up the name from the tracker cache, fallback to email if not found
-    var rawSubmitter = results[0].submitted_by;
-    var realName = (typeof TRACKER_AGENTS !== 'undefined' && TRACKER_AGENTS[rawSubmitter]) ? TRACKER_AGENTS[rawSubmitter] : (rawSubmitter || 'Unknown');
-
-    const res = {
-        submitted: true, 
-        submittedBy: rawSubmitter, 
-        submittedByName: realName, 
-        submittedAt: new Date(results[0].created_at).toLocaleString(), 
-        results: mappedResults
-    };
-    
-    renderTrackerPipResult(res, position, label, centreName, wardName, formPhotoUrl);
-  } catch (err) {
-    sheet.innerHTML = '<div class="sheet-head"><div><div class="sheet-title">' + esc(position) + '</div></div><button class="sheet-close" onclick="closeSheet()"><i class="fas fa-xmark"></i></button></div><div class="empty"><div class="empty-title">Connection error</div></div>';
-  }
-}
-
 function renderTrackerPipResult(res, position, label, centreName, wardName, formPhotoUrl) {
   var sheet = document.getElementById('sheetContent'); 
   var total = (res.results || []).reduce(function (s, r) { return s + (Number(r.votes) || 0); }, 0);
@@ -2681,79 +2646,6 @@ function trackerChip(done, total) {
   return { cls: 'pending', label: '<i class="fas fa-circle"></i> 0/' + total };
 }
 
-function trackerResetDrill() {
-  TRACKER_CONST_ID = ''; TRACKER_CONST_NAME = '';
-  TRACKER_WARD = ''; TRACKER_WARD_NAME = '';
-  TRACKER_CENTRE = ''; TRACKER_CENTRE_NAME = '';
-
-  if (SCOPE_MODE === 'national') TRACKER_LEVEL = DRILL_COUNTY_ID ? 'constituency' : 'county';
-  else if (SCOPE_MODE === 'county') TRACKER_LEVEL = 'constituency';
-  else if (SCOPE_MODE === 'constituency') TRACKER_LEVEL = 'ward';
-  else if (SCOPE_MODE === 'ward') TRACKER_LEVEL = 'centre';
-
-  renderTrackerBreadcrumb(); renderTrackerGrid();
-}
-
-function trackerDrill(level, id, name) {
-  if (level === 'ward') { TRACKER_CONST_ID = id; TRACKER_CONST_NAME = name; TRACKER_LEVEL = 'ward'; }
-  if (level === 'centre') { TRACKER_WARD = id; TRACKER_WARD_NAME = name; TRACKER_LEVEL = 'centre'; }
-  if (level === 'stream') { TRACKER_CENTRE = id; TRACKER_CENTRE_NAME = name; TRACKER_LEVEL = 'stream'; }
-  renderTrackerBreadcrumb(); renderTrackerGrid();
-  window.scrollTo({ top: 0, behavior: 'smooth' });
-}
-
-// NEW: pick a county from the tracker (national only) — keeps Results, dropdown and tracker in sync
-function trackerPickCounty(id) {
-  const sel = document.getElementById('aspCountySelector');
-  if (sel) sel.value = id;
-  switchAspCounty(id);
-}
-function renderTrackerBreadcrumb() {
-  var el = document.getElementById('trackerBreadcrumb');
-  if (!el) return;
-  var parts = [];
-
-  // 1. Root level
-  if (SCOPE_MODE === 'national') {
-      parts.push({ label: 'All Counties', active: TRACKER_LEVEL === 'county', onclick: "trackerPickCounty('')" });
-      if (DRILL_COUNTY_ID) parts.push({ label: DRILL_COUNTY_NAME || 'County', active: TRACKER_LEVEL === 'constituency', onclick: 'trackerResetDrill()' });
-  } else if (SCOPE_MODE === 'county') {
-      parts.push({ label: 'All Constituencies', active: TRACKER_LEVEL === 'constituency', onclick: 'trackerResetDrill()' });
-  } else if (SCOPE_MODE === 'constituency') {
-      parts.push({ label: 'All Wards', active: TRACKER_LEVEL === 'ward', onclick: 'trackerResetDrill()' });
-  } else if (SCOPE_MODE === 'ward') {
-      parts.push({ label: 'All Centres', active: TRACKER_LEVEL === 'centre', onclick: 'trackerResetDrill()' });
-  }
-
-  // 2. Constituency (with fallback for MP logins)
-  var currentConst = TRACKER_CONST_ID || (SCOPE_MODE === 'constituency' ? USER.constituency : '');
-  var currentConstName = TRACKER_CONST_NAME;
-
-  if (!currentConstName && currentConst && TRACKER_DATA && TRACKER_DATA.consts) {
-      var foundConst = TRACKER_DATA.consts.find(c => c.id === currentConst);
-      if (foundConst) currentConstName = foundConst.name;
-  }
-
-  if (currentConst) {
-      parts.push({
-          label: currentConstName || 'Constituency',
-          active: TRACKER_LEVEL === 'ward',
-          onclick: `trackerDrill('ward', '${currentConst}', '${currentConstName || 'Constituency'}')`
-      });
-  }
-
-  // 3. Deeper levels
-  if (TRACKER_WARD) parts.push({ label: TRACKER_WARD_NAME, active: TRACKER_LEVEL === 'centre', onclick: `trackerDrill('centre', '${TRACKER_WARD}', '${TRACKER_WARD_NAME}')` });
-  if (TRACKER_CENTRE) parts.push({ label: TRACKER_CENTRE_NAME, active: TRACKER_LEVEL === 'stream', onclick: `trackerDrill('stream', '${TRACKER_CENTRE}', '${TRACKER_CENTRE_NAME}')` });
-
-  // 4. Render
-  el.innerHTML = parts.map((p, i) => {
-      var cls = 'bc-seg' + (p.active ? ' current' : '');
-      var attr = p.active ? '' : `onclick="${p.onclick}"`;
-      return (i > 0 ? '<i class="fas fa-chevron-right bc-sep"></i>' : '') +
-            `<button class="${cls}" ${attr}>${i === 0 ? '<i class="fas fa-layer-group"></i> ' : ''}${esc(p.label)}</button>`;
-  }).join('');
-}
 // ================================================================
 //  STREAM/CANDIDATE DETAIL & HELPERS
 // ================================================================
@@ -3312,6 +3204,7 @@ function resetWarRoom() {
   WAR_DRILL_LEVEL = warRootLevel();
   fetchWarLevel(false);
 }
+
 function openWarRoomStream(streamCode) {
     var item = WAR_DATA.find(x => x.streamCode === streamCode);
     if (!item) return;
