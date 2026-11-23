@@ -3295,6 +3295,289 @@ function acceptTerms() {
 // OR call it at the very end of your script before init();
 checkTermsAcceptance();
   // START
+  // =====================================================================
+// TALLYHUB — SPECIAL-CHARACTER FIX  (Lang'ata, Ng'ando, St. Mary's, "quotes", &, <, spaces…)
+//
+// HOW TO INSTALL (1 minute):
+//   In your results page, scroll to the very bottom of the <script>, just ABOVE these two lines:
+//        // START
+//        init();
+//   Paste this ENTIRE file there. That's it.
+//   (Later definitions of a function replace earlier ones, so this overrides the old versions
+//    of drillDown, renderBreadcrumb, renderDrillGrid and normalizeImageUrl without you having
+//    to delete anything. To undo, just delete this block.)
+//
+// WHY IT BROKE: cards were built like  onclick="drillDown('ward','ID','LANG'ATA')"
+//   The apostrophe in Lang'ata ends the text early -> JavaScript error -> the card does nothing.
+// THE FIX: names are never put inside click code any more. Cards carry plain data attributes
+//   (data-act / data-level / data-id) and ONE click listener reads them. Names are looked up
+//   from the data already loaded, and always HTML-escaped when shown.
+// =====================================================================
+
+// ---- 1. Find a place's name from the data we already loaded (never from the click code) ----
+function lookupGeoName(level, id) {
+  var o = OVERVIEW || {};
+  var list = level === 'constituency' ? o.counties
+           : level === 'ward'         ? o.consts
+           : level === 'centre'       ? o.wards
+           : level === 'stream'       ? o.centres : [];
+  var hit = (list || []).find(function (i) { return i.id === id; });
+  if (hit) return hit.name;
+  // Fallbacks for breadcrumb re-clicks (the name is already held in state)
+  if (level === 'constituency' && id === DRILL_COUNTY_ID) return DRILL_COUNTY_NAME;
+  if (level === 'ward'         && id === DRILL_CONST_ID)  return DRILL_CONST_NAME;
+  if (level === 'centre'       && id === DRILL_WARD)      return DRILL_WARD_NAME;
+  if (level === 'stream'       && id === DRILL_CENTRE)    return DRILL_CENTRE_NAME;
+  return '';
+}
+
+// ---- 2. drillDown: same behaviour as before, but the name is looked up, not passed in ----
+function drillDown(level, id, name) {
+  name = name || lookupGeoName(level, id);
+
+  if (level === 'constituency' && SCOPE_MODE === 'national') {
+    const sel = document.getElementById('aspCountySelector');
+    if (sel) sel.value = id;
+    switchAspCounty(id);
+    window.scrollTo({ top: document.getElementById('drillGrid').offsetTop - 100, behavior: 'smooth' });
+    return;
+  }
+  if (level === 'constituency') {
+    DRILL_COUNTY_ID = id; DRILL_COUNTY_NAME = name; DRILL_LEVEL = 'constituency';
+    DRILL_CONST_ID = ''; DRILL_CONST_NAME = '';
+    DRILL_WARD = ''; DRILL_WARD_NAME = '';
+    DRILL_CENTRE = ''; DRILL_CENTRE_NAME = '';
+    if (SCOPE_MODE === 'national') {
+      CURRENT_COUNTY = id;
+      const sel = document.getElementById('aspCountySelector');
+      if (sel) sel.value = id;
+    }
+  }
+  if (level === 'ward') {
+    DRILL_CONST_ID = id; DRILL_CONST_NAME = name; DRILL_LEVEL = 'ward';
+    DRILL_WARD = ''; DRILL_WARD_NAME = '';
+    DRILL_CENTRE = ''; DRILL_CENTRE_NAME = '';
+  }
+  if (level === 'centre') {
+    DRILL_WARD = id; DRILL_WARD_NAME = name; DRILL_LEVEL = 'centre';
+    DRILL_CENTRE = ''; DRILL_CENTRE_NAME = '';
+  }
+  if (level === 'stream') {
+    DRILL_CENTRE = id; DRILL_CENTRE_NAME = name; DRILL_LEVEL = 'stream';
+  }
+
+  renderHero(); renderDrillGrid(); renderBoard(); renderBreadcrumb(); renderTabs();
+  window.scrollTo({ top: document.getElementById('drillGrid').offsetTop - 100, behavior: 'smooth' });
+}
+
+// ---- 3. Breadcrumb: buttons carry data attributes instead of click code ----
+function renderBreadcrumb() {
+  var el = document.getElementById('breadcrumb');
+  if (!el) return;
+  var parts = [];
+
+  if (SCOPE_MODE === 'national') {
+    parts.push({ label: 'All Counties', active: DRILL_LEVEL === 'county', act: 'reset-drill' });
+  } else if (SCOPE_MODE === 'county') {
+    parts.push({ label: 'All Constituencies', active: DRILL_LEVEL === 'constituency', act: 'reset-drill' });
+  } else if (SCOPE_MODE === 'constituency') {
+    parts.push({ label: 'All Wards', active: DRILL_LEVEL === 'ward', act: 'reset-drill' });
+  } else if (SCOPE_MODE === 'ward') {
+    parts.push({ label: 'All Centres', active: DRILL_LEVEL === 'centre', act: 'reset-drill' });
+  }
+
+  if (DRILL_COUNTY_ID) parts.push({ label: DRILL_COUNTY_NAME, active: DRILL_LEVEL === 'constituency', level: 'constituency', id: DRILL_COUNTY_ID });
+  if (DRILL_CONST_ID)  parts.push({ label: DRILL_CONST_NAME,  active: DRILL_LEVEL === 'ward',         level: 'ward',         id: DRILL_CONST_ID });
+  if (DRILL_WARD)      parts.push({ label: DRILL_WARD_NAME,   active: DRILL_LEVEL === 'centre',       level: 'centre',       id: DRILL_WARD });
+  if (DRILL_CENTRE)    parts.push({ label: DRILL_CENTRE_NAME, active: DRILL_LEVEL === 'stream',       level: 'stream',       id: DRILL_CENTRE });
+
+  el.innerHTML = parts.map(function (p, i) {
+    var cls = 'bc-seg' + (p.active ? ' current' : '');
+    var attr = p.active ? ''
+      : (p.act ? ' data-act="' + p.act + '"'
+               : ' data-act="drill" data-level="' + escAttr(p.level) + '" data-id="' + escAttr(p.id) + '"');
+    return (i > 0 ? '<i class="fas fa-chevron-right bc-sep"></i>' : '') +
+      '<button class="' + cls + '"' + attr + '>' + (i === 0 ? '<i class="fas fa-layer-group"></i> ' : '') + esc(p.label) + '</button>';
+  }).join('');
+}
+
+// ---- 4. Drill grid: cards carry data attributes; every name/initial/URL is escaped ----
+function renderDrillGrid() {
+  var el = document.getElementById('drillGrid');
+  var title = document.getElementById('drillTitle');
+  var sub = document.getElementById('drillSub');
+
+  if (DRILL_LEVEL === 'county') { title.textContent = 'National Overview'; sub.textContent = 'Vote share by county'; }
+  else if (DRILL_LEVEL === 'constituency') { title.textContent = DRILL_COUNTY_NAME ? DRILL_COUNTY_NAME + ' Constituencies' : 'Constituency Breakdown'; sub.textContent = 'Vote share by constituency'; }
+  else if (DRILL_LEVEL === 'ward') { title.textContent = DRILL_CONST_NAME + ' Wards'; sub.textContent = 'Vote share by ward'; }
+  else if (DRILL_LEVEL === 'centre') { title.textContent = DRILL_WARD_NAME + ' Centres'; sub.textContent = 'Vote share by polling centre'; }
+  else if (DRILL_LEVEL === 'stream') { title.textContent = DRILL_CENTRE_NAME + ' Streams'; sub.textContent = 'Vote share by stream'; }
+
+  document.getElementById('drillCount').textContent = '';
+  renderBreadcrumb();
+
+  // action = { act: 'drill', level: 'ward' }  or  { act: 'stream-detail' }
+  function buildCard(item, votesMap, typeLabel, action, showLeader) {
+    if (showLeader === undefined) showLeader = true;
+    if (!item) return '';
+    var itemKey = item.id || item.code;
+    var votes = (showLeader && votesMap && votesMap[itemKey]) ? votesMap[itemKey] : {};
+    var topCode = Object.keys(votes).sort(function (a, b) { return votes[b] - votes[a]; })[0];
+    var topCand = (showLeader && OVERVIEW && OVERVIEW.candMap) ? OVERVIEW.candMap[topCode] : null;
+    var total = Object.values(votes).reduce(function (s, v) { return s + v; }, 0);
+    var pct = total > 0 && topCand ? ((votes[topCode] / total) * 100).toFixed(1) : '0.0';
+
+    var tintStyle = 'border-left: none !important;';
+    if (showLeader && topCand && topCand.color && typeof tintBg === 'function') {
+      tintStyle += ' background: linear-gradient(to right, ' + tintBg(topCand.color, 0.08) + ' 0%, #FFFFFF 50%) !important;';
+    }
+
+    var leaderHtml = '';
+    if (!showLeader) {
+      leaderHtml = '<div class="card-empty-body" style="min-height: 120px; display: flex; flex-direction: column; justify-content: center;"><i class="fas fa-hand-pointer" style="color:var(--blue); opacity:0.6; margin-bottom:8px;"></i><div style="color:var(--blue); font-weight:800; font-size:14px;">Select ' + esc(typeLabel) + '</div></div>';
+    } else if (topCand) {
+      var initial = topCand.name ? topCand.name.charAt(0) : '?';
+      leaderHtml =
+        '<div class="card-leader">' +
+          '<div class="avatar-wrap with-crown ' + (topCand.photo_url ? '' : 'no-photo') + '">' +
+            (topCand.photo_url
+              ? '<img src="' + escAttr(topCand.photo_url) + '" data-fallback="' + escAttr(initial) + '" alt="">'
+              : esc(initial)) +
+            '<span class="avatar-crown"><i class="fas fa-crown"></i></span>' +
+          '</div>' +
+          '<div class="card-leader-info">' +
+            '<div class="card-leader-name">' + esc(topCand.name) + '</div>' +
+            '<div class="card-leader-party">' + esc(topCand.party) + '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="card-numbers">' +
+          '<span class="card-votes">' + votes[topCode].toLocaleString() + '</span>' +
+          '<span class="card-pct">' + pct + '%</span>' +
+        '</div>' +
+        '<div class="card-bar"><div class="card-bar-fill" style="width:' + pct + '%;background:' + escAttr(topCand.color || '#A5CF83') + '"></div></div>';
+    } else {
+      leaderHtml = '<div class="card-empty-body"><i class="fas fa-hourglass-half"></i>No votes yet</div>';
+    }
+
+    return '<div class="card" style="' + tintStyle + '" data-act="' + escAttr(action.act) + '"' +
+           (action.level ? ' data-level="' + escAttr(action.level) + '"' : '') +
+           ' data-id="' + escAttr(itemKey) + '">' +
+      '<div class="card-head"><div><div class="card-name">' + esc(item.name || item.code) + '</div><div class="card-sub">' + esc(typeLabel) + '</div></div></div>' +
+      leaderHtml +
+    '</div>';
+  }
+
+  if (DRILL_LEVEL === 'county') {
+    var myCounties = OVERVIEW && OVERVIEW.counties ? OVERVIEW.counties : [];
+    var show = (OVERVIEW.viewingPosition !== 'MCA');
+    el.innerHTML = myCounties.map(function (c) {
+      return buildCard(c, OVERVIEW.votesByCounty, 'County', { act: 'drill', level: 'constituency' }, show);
+    }).join('');
+    return;
+  }
+
+  if (DRILL_LEVEL === 'constituency') {
+    var myConsts = OVERVIEW.consts ? OVERVIEW.consts.filter(function (c) { return SCOPE_MODE !== 'national' || c.county_id === DRILL_COUNTY_ID; }) : [];
+    var showC = (OVERVIEW.viewingPosition !== 'MCA');
+    el.innerHTML = myConsts.map(function (c) {
+      return buildCard(c, OVERVIEW.votesByConst, 'Constituency', { act: 'drill', level: 'ward' }, showC);
+    }).join('');
+    return;
+  }
+
+  if (DRILL_LEVEL === 'ward') {
+    var targetConstId = DRILL_CONST_ID || (SCOPE_MODE === 'constituency' ? USER.constituency : '');
+    var myWards = OVERVIEW.wards ? OVERVIEW.wards.filter(function (w) { return w.constituency_id === targetConstId; }) : [];
+    el.innerHTML = myWards.map(function (w) {
+      return buildCard(w, OVERVIEW.votesByWard, 'Ward', { act: 'drill', level: 'centre' }, true);
+    }).join('');
+    return;
+  }
+
+  if (DRILL_LEVEL === 'centre') {
+    var targetWardId = DRILL_WARD || (SCOPE_MODE === 'ward' ? USER.ward : '');
+    var myCentres = OVERVIEW.centres ? OVERVIEW.centres.filter(function (c) { return c.ward_id === targetWardId; }) : [];
+    el.innerHTML = myCentres.map(function (c) {
+      return buildCard(c, OVERVIEW.votesByCentre, 'Polling Centre', { act: 'drill', level: 'stream' }, true);
+    }).join('');
+    return;
+  }
+
+  if (DRILL_LEVEL === 'stream') {
+    var myStreams = OVERVIEW.streams ? OVERVIEW.streams.filter(function (s) { return s.centre_id === DRILL_CENTRE; }) : [];
+    el.innerHTML = myStreams.map(function (s) {
+      var streamLabel = 'STR ' + String(s.stream_number).padStart(2, '0');
+      return buildCard({ code: s.code, name: streamLabel }, OVERVIEW.votesByStream, s.code, { act: 'stream-detail' }, true);
+    }).join('');
+    return;
+  }
+}
+
+// ---- 5. Photo links: spaces, apostrophes, #, ?, % in file names no longer break the URL ----
+function safeDecode(s) { try { return decodeURIComponent(s); } catch (e) { return s; } }
+
+function normalizeImageUrl(raw) {
+  if (!raw) return '';
+  raw = String(raw).trim();
+  if (!raw) return '';
+
+  // Supabase file (not a full link): build the URL, encoding every path piece safely
+  if (!raw.startsWith('http://') && !raw.startsWith('https://')) {
+    const cleanFileName = raw.replace('candidate-photos/', '');
+    const encoded = cleanFileName.split('/').map(function (seg) { return encodeURIComponent(safeDecode(seg)); }).join('/');
+    return 'https://mqafninsctppbkpwwmxx.supabase.co/storage/v1/object/public/candidate-photos/' + encoded;
+  }
+
+  if (raw.includes('cdn.jsdelivr.net/gh/') || raw.includes('lh3.googleusercontent.com/d/')) return raw;
+
+  var m = raw.match(/github\.com\/([^\/]+)\/([^\/]+)\/blob\/([^\/]+)\/(.+)$/);
+  if (m) return 'https://cdn.jsdelivr.net/gh/' + m[1] + '/' + m[2] + '@' + m[3] + '/' + m[4];
+
+  m = raw.match(/raw\.githubusercontent\.com\/([^\/]+)\/([^\/]+)\/([^\/]+)\/(.+)$/);
+  if (m) return 'https://cdn.jsdelivr.net/gh/' + m[1] + '/' + m[2] + '@' + m[3] + '/' + m[4];
+
+  m = raw.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+  if (m) return 'https://lh3.googleusercontent.com/d/' + m[1];
+  m = raw.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (m) return 'https://lh3.googleusercontent.com/d/' + m[1];
+  m = raw.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  if (m) return 'https://lh3.googleusercontent.com/d/' + m[1];
+
+  if (raw.startsWith('http://') || raw.startsWith('https://')) return raw;
+  if (/^[a-zA-Z0-9_-]{20,}$/.test(raw)) return 'https://lh3.googleusercontent.com/d/' + raw;
+  return '';
+}
+
+// ---- 6. The two listeners that make it all work ----
+// One click listener for every card / breadcrumb button / leaderboard row that carries data-act
+document.addEventListener('click', function (e) {
+  var el = e.target && e.target.closest ? e.target.closest('[data-act]') : null;
+  if (!el) return;
+  var act = el.getAttribute('data-act');
+  var id = el.getAttribute('data-id');
+  if (act === 'drill') drillDown(el.getAttribute('data-level'), id);
+  else if (act === 'stream-detail') openStreamDetail(id);
+  else if (act === 'candidate') openCandidateDetail(id);
+  else if (act === 'reset-drill') resetDrill();
+});
+
+// If a candidate photo fails to load, show their initial (and keep the crown badge)
+document.addEventListener('error', function (e) {
+  var img = e.target;
+  if (!img || img.tagName !== 'IMG' || img.getAttribute('data-fallback') === null) return;
+  var holder = img.parentElement;
+  img.style.display = 'none';
+  if (holder) {
+    holder.classList.add('no-photo');
+    if (!holder.querySelector('.avatar-initial')) {
+      var s = document.createElement('span');
+      s.className = 'avatar-initial';
+      s.textContent = img.getAttribute('data-fallback');
+      holder.insertBefore(s, img);
+    }
+  }
+}, true);
+
 init();
 </script>
 </body>
