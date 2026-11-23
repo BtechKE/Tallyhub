@@ -7884,6 +7884,588 @@ async function saveCorrection() {
     btn.innerHTML = '<i class="fas fa-save"></i> Save Correction';
   }
 }
+
+
+
+var AUD_TYPES = {
+  MATH:    { tag: 'MATH',         en: 'Totals do not add up',      sw: 'Hesabu hazilingani',
+             what: 'The votes given to candidates do not equal the valid votes (total cast minus rejected).' },
+  TURNOUT: { tag: 'TURNOUT',      en: 'Turnout above registered',  sw: 'Waliopiga kura wamezidi waliosajiliwa',
+             what: 'More ballots are recorded as cast than there are registered voters in that stream.' },
+  FORM:    { tag: 'FORM',         en: 'Form not uploaded',         sw: 'Fomu haijapakiwa',
+             what: 'No photo of the signed statutory form is attached, so the figures cannot be checked against it.' },
+  SILENT:  { tag: 'NOT REPORTED', en: 'Results not yet reported',  sw: 'Matokeo hayajawasilishwa',
+             what: 'The agent has not yet submitted results for this position.' }
+};
+
+function audFmt(d) {
+  if (!d) return '-';
+  var s = new Date(d).toLocaleString('en-GB', { timeZone: 'Africa/Nairobi', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return s.replace(/[\u202f\u00a0]/g, ' ') + ' EAT';
+}
+function audNum(n) { return Number(n || 0).toLocaleString('en-GB'); }
+function audPlural(n, one, many) { return n === 1 ? one : many; }
+
+function audExplain(it, type) {
+  if (type === 'MATH') {
+    if (it.sysOnly) {
+      return 'Flagged by the system when the agent submitted. The figures now on record reconcile (cast ' + audNum(it.cast) +
+        ' minus rejected ' + audNum(it.rej) + ' = valid ' + audNum(it.valid) + '; candidates ' + audNum(it.candSum) + ').';
+    }
+    var d = it.diff;
+    return 'Candidates\' votes add up to ' + audNum(it.candSum) + ', but valid votes (cast ' + audNum(it.cast) + ' minus rejected ' +
+      audNum(it.rej) + ') are ' + audNum(it.valid) + '. ' +
+      (d > 0 ? audNum(d) + ' valid ' + audPlural(d, 'vote is', 'votes are') + ' not attributed to any candidate.'
+             : audNum(-d) + ' more ' + audPlural(-d, 'vote has', 'votes have') + ' been given to candidates than the valid total.');
+  }
+  if (type === 'TURNOUT') {
+    return 'Total cast (' + audNum(it.cast) + ') is higher than the ' + audNum(it.registered) + ' registered voters recorded for this stream.';
+  }
+  if (type === 'FORM') return 'No photo of the signed statutory form has been uploaded for this position.';
+  return 'No results have been submitted for this position yet.';
+}
+
+function audCustody(it) {
+  var L = [];
+  L.push(it.rows.length ? 'Results submitted by ' + (it.by || 'unknown') + ' on ' + audFmt(it.at) + '.' : 'No results have been submitted yet.');
+  L.push(it.form ? 'Form uploaded by ' + (it.form.uploaded_by || 'unknown') + ' on ' + audFmt(it.form.uploaded_at) +
+                   (Number(it.form.upload_count) > 1 ? ' (replaced once).' : '.') : 'No form has been uploaded.');
+  L.push(it.corrs.length ? 'Corrections on record: ' + it.corrs.length + ' (' +
+         it.corrs.map(function (c) { return c.reason + ', ' + audFmt(c.corrected_at); }).join('; ') + ').' : 'No corrections on record.');
+  if (it.registered === 0 && it.rows.length) L.push('Registered voters for this stream are recorded as 0, so the turnout check could not run.');
+  return L;
+}
+
+// ---------------------------------------------------------------------
+//  MAIN: gather the evidence, register the report, build + store the PDF
+// ---------------------------------------------------------------------
+async function generateWarRoomPDF() {
+  var pos = document.getElementById('warRepPos').value;
+  var scopeSel = document.getElementById('warRepScope');
+  var scope = scopeSel.value;
+  var scopeLabel = scopeSel.options[scopeSel.selectedIndex].text;
+  var incAnomaly = document.getElementById('warRepAnomaly').checked;
+  var incMissing = document.getElementById('warRepMissing').checked;
+  var incSilent = document.getElementById('warRepSilent').checked;
+
+  if (!incAnomaly && !incMissing && !incSilent) return toast('Please select at least one issue type to filter.', 'error');
+
+  var btn = document.getElementById('warRepGoBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Gathering evidence…';
+
+  try {
+    // Fresh numbers, so the report matches the screen at the moment it is generated
+    await loadAdminWarRoom(true);
+    await loadAdminResults();
+    var cutoff = new Date();
+    var positions = pos === 'All' ? POSITIONS.slice() : [pos];
+
+    var streamByCode = {}, wardById = {}, centreById = {}, constById = {};
+    STREAMS.forEach(function (s) { streamByCode[s.code] = s; });
+    WARDS.forEach(function (w) { wardById[w.id] = w; });
+    CENTRES.forEach(function (c) { centreById[c.id] = c; });
+    CONSTITUENCIES.forEach(function (c) { constById[c.id] = c; });
+    var countyName = (COUNTIES.find(function (c) { return c.id === CURRENT_COUNTY; }) || {}).name || CONFIG.County || 'County';
+
+    // ---- 1. Which streams are in scope ----
+    var scoped = ADMIN_WAR_DATA.filter(function (item) {
+      if (scope === 'county') return true;
+      if (scope.indexOf('constituency_') === 0) return item.constId === scope.split('_')[1];
+      if (scope.indexOf('ward_') === 0) return item.wardId === scope.split('_')[1];
+      if (scope.indexOf('centre_') === 0) return item.centreId === scope.split('_')[1];
+      return true;
+    });
+
+    // ---- 2. Classify every stream x position ----
+    var items = [];
+    var c = { expected: 0, reported: 0, notReported: 0, forms: 0, dataGap: 0, registeredSilent: 0 };
+    scoped.forEach(function (sd) {
+      var st = streamByCode[sd.streamCode];
+      if (!st) return;
+      var registered = Number(st.registered_voters) || 0;
+      if (registered === 0) c.dataGap++;
+      positions.forEach(function (p) {
+        var d = sd.details[p];
+        if (!d) return;
+        c.expected++;
+        if (d.status === 'silent') { c.notReported++; if (positions.length === 1) c.registeredSilent += registered; }
+        else { c.reported++; if (d.hasForm) c.forms++; }
+        var wanted = [];
+        if (incAnomaly && d.status === 'anomaly') wanted.push('ANOM');
+        if (incMissing && d.status !== 'silent' && !d.hasForm) wanted.push('FORM');
+        if (incSilent && d.status === 'silent') wanted.push('SILENT');
+        if (wanted.length) items.push({ sd: sd, stream: st, pos: p, d: d, wanted: wanted });
+      });
+    });
+
+    // ---- 3. Evidence for the flagged items ----
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Reading submissions…';
+    var evCodes = [];
+    items.forEach(function (it) {
+      if (it.wanted.some(function (t) { return t !== 'SILENT'; }) && evCodes.indexOf(it.stream.code) === -1) evCodes.push(it.stream.code);
+    });
+    var inPos = function (q) { return q.in('position', positions); };
+    var resRows = evCodes.length ? await fetchIn('results',
+      'stream_code, position, candidate_code, votes, submitted_by, created_at, total_votes_cast, rejected_votes',
+      'stream_code', evCodes, 'id', inPos) : [];
+    var formRows = evCodes.length ? await fetchIn('form_photos',
+      'stream_code, position, uploaded_by, uploaded_at, upload_count',
+      'stream_code', evCodes, 'stream_code', function (q) { return q.in('position', positions).order('position'); }) : [];
+    var corrRows = evCodes.length ? await fetchIn('result_corrections',
+      'stream_code, position, reason, corrected_at',
+      'stream_code', evCodes, 'id', inPos) : [];
+    var resIdx = {}, formIdx = {}, corrIdx = {};
+    resRows.forEach(function (r) { (resIdx[r.stream_code + '|' + r.position] = resIdx[r.stream_code + '|' + r.position] || []).push(r); });
+    formRows.forEach(function (f) { formIdx[f.stream_code + '|' + f.position] = f; });
+    corrRows.forEach(function (x) { (corrIdx[x.stream_code + '|' + x.position] = corrIdx[x.stream_code + '|' + x.position] || []).push(x); });
+    var candMap = (RESULTS_DATA && RESULTS_DATA.candMap) || {};
+
+    items.forEach(function (it) {
+      var key = it.stream.code + '|' + it.pos;
+      var rows = resIdx[key] || [];
+      it.rows = rows;
+      it.cast = rows.length ? Number(rows[0].total_votes_cast) || 0 : 0;
+      it.rej = rows.length ? Number(rows[0].rejected_votes) || 0 : 0;
+      it.valid = it.cast - it.rej;
+      it.candSum = rows.reduce(function (s, r) { return s + (Number(r.votes) || 0); }, 0);
+      it.diff = it.valid - it.candSum;
+      it.registered = Number(it.stream.registered_voters) || 0;
+      it.by = rows.length ? rows[0].submitted_by : '';
+      it.at = rows.length ? rows[0].created_at : null;
+      it.form = formIdx[key] || null;
+      it.corrs = corrIdx[key] || [];
+      it.cands = rows.map(function (r) {
+        var cd = candMap[r.candidate_code] || {};
+        return { name: cd.name || r.candidate_code, party: cd.party || '', votes: Number(r.votes) || 0 };
+      }).sort(function (a, b) { return a.name.localeCompare(b.name); });     // A-Z: never ranked
+      it.issues = [];
+      if (it.wanted.indexOf('ANOM') !== -1) {
+        if (it.rows.length && it.candSum !== it.valid) it.issues.push('MATH');
+        if (it.registered > 0 && it.cast > it.registered) it.issues.push('TURNOUT');
+        if (!it.issues.length) { it.issues.push('MATH'); it.sysOnly = true; }
+      }
+      if (it.wanted.indexOf('FORM') !== -1) it.issues.push('FORM');
+      if (it.wanted.indexOf('SILENT') !== -1) it.issues.push('SILENT');
+      it.wardName = (wardById[it.stream.ward_id] || {}).name || 'Unknown ward';
+      it.centreName = (centreById[it.stream.centre_id] || {}).name || 'Unknown centre';
+      it.constName = (constById[it.stream.constituency_id] || {}).name || 'Unknown constituency';
+      it.label = 'STR ' + String(it.stream.stream_number).padStart(2, '0');
+    });
+    items.sort(function (a, b) {
+      return a.wardName.localeCompare(b.wardName) || a.centreName.localeCompare(b.centreName) ||
+        (a.stream.stream_number - b.stream.stream_number) || (POSITIONS.indexOf(a.pos) - POSITIONS.indexOf(b.pos));
+    });
+    items.forEach(function (it, i) { it.ref = 'A-' + String(i + 1).padStart(3, '0'); });
+
+    var byType = { MATH: 0, TURNOUT: 0, FORM: 0, SILENT: 0 };
+    items.forEach(function (it) { it.issues.forEach(function (t) { byType[t]++; }); });
+    var issueItems = items.filter(function (it) { return it.issues.some(function (t) { return t !== 'SILENT'; }); }).length;
+
+    // ---- 4. "Does it affect the outcome?" test ----
+    function unitOf(it) {
+      if (it.pos === 'MP') return { id: it.stream.constituency_id, label: it.constName + ' Constituency' };
+      if (it.pos === 'MCA') return { id: it.stream.ward_id, label: it.wardName + ' Ward' };
+      return { id: 'ALL', label: countyName + ' County' };
+    }
+    function unitTotals(p, unitId) {
+      var t = {}, R = RESULTS_DATA || {};
+      function add(m) { for (var k in (m || {})) t[k] = (t[k] || 0) + m[k]; }
+      if (p === 'MP') add(R.votesByConst && R.votesByConst[p] && R.votesByConst[p][unitId]);
+      else if (p === 'MCA') add(R.votesByWard && R.votesByWard[p] && R.votesByWard[p][unitId]);
+      else CONSTITUENCIES.forEach(function (k) { add(R.votesByConst && R.votesByConst[p] && R.votesByConst[p][k.id]); });
+      return t;
+    }
+    var units = {};
+    items.forEach(function (it) {
+      if (!it.rows.length) return;
+      if (!it.issues.some(function (t) { return t !== 'SILENT'; })) return;
+      var u = unitOf(it), key = it.pos + '|' + u.id;
+      if (!units[key]) units[key] = { pos: it.pos, id: u.id, label: u.label, vf: 0, un: 0, streams: 0 };
+      units[key].vf += it.candSum;
+      units[key].un += Math.max(it.diff, 0);
+      units[key].streams++;
+    });
+    var materiality = [];
+    Object.keys(units).forEach(function (k) {
+      var u = units[k], tot = unitTotals(u.pos, u.id);
+      var ranked = Object.keys(tot).map(function (code) { return { code: code, votes: tot[code] }; }).sort(function (a, b) { return b.votes - a.votes; });
+      if (!ranked.length) return;
+      var first = ranked[0], second = ranked[1] || { code: '', votes: 0 };
+      var gap = first.votes - second.votes;
+      var bound = 2 * u.vf + u.un;
+      var nm = function (code) { var cd = candMap[code] || {}; return code ? (cd.name || code) + (cd.party ? ' (' + cd.party + ')' : '') : '-'; };
+      materiality.push({
+        race: u.pos + ' - ' + u.label, first: nm(first.code) + ' ' + audNum(first.votes), second: second.code ? nm(second.code) + ' ' + audNum(second.votes) : '-',
+        gap: gap, vf: u.vf, streams: u.streams,
+        reading: bound < gap ? 'Flagged streams alone cannot change who is ahead.'
+                             : 'Flagged streams are large enough to affect who is ahead. Verify them against the forms.',
+        affects: bound >= gap
+      });
+    });
+
+    // ---- 5. Parties with a candidate in the contested race (for equal right of reply) ----
+    var partySet = {};
+    if (pos !== 'All') items.forEach(function (it) { it.cands.forEach(function (cd) { if (cd.party) partySet[cd.party] = true; }); });
+    var parties = Object.keys(partySet).sort();
+
+    var model = {
+      position: pos === 'All' ? 'All positions' : pos, scopeLabel: scopeLabel, cutoff: cutoff,
+      streamsInScope: scoped.length, counts: c, byType: byType, issueItems: issueItems,
+      filters: { MATH: incAnomaly, TURNOUT: incAnomaly, FORM: incMissing, SILENT: incSilent },
+      items: items, materiality: materiality, parties: parties, countyName: countyName
+    };
+
+    // ---- 6. Register the report so it can be verified later ----
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Registering report…';
+    var scopeTitle = scopeLabel.toUpperCase();
+    var snapPayload = {
+      leaderboard: [],
+      total_valid: items.reduce(function (s, it) { return s + it.candSum; }, 0),
+      registered: scoped.reduce(function (s, sd) { var st = streamByCode[sd.streamCode]; return s + (st ? Number(st.registered_voters) || 0 : 0); }, 0),
+      streams_reported: c.reported, streams_total: c.expected, forms_received: c.forms,
+      corrected_streams: items.filter(function (it) { return it.corrs.length; }).length,
+      audit: { kind: 'war-room-audit', issues: byType, items: items.length, materially_relevant: materiality.filter(function (m) { return m.affects; }).length, cutoff: cutoff.toISOString() }
+    };
+    const { data: snap, error: snapErr } = await db.rpc('create_report_snapshot', {
+      p_position: 'Audit ' + model.position, p_scope: scopeTitle, p_payload: snapPayload
+    });
+    if (snapErr || !snap || !snap.code) {
+      throw new Error('Could not register the report for verification (' + (snapErr ? snapErr.message : 'no response') + '). Check your connection and try again.');
+    }
+    model.verifyCode = snap.code; model.fingerprint = snap.fingerprint; model.generatedAt = snap.generated_at;
+
+    // ---- 7. Build the PDF once; the same bytes are stored and downloaded ----
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Building PDF…';
+    var out = await buildAuditPDF(model);
+    var pdfSha = await sha256Hex(await out.blob.arrayBuffer());
+    var up = await db.storage.from('reports').upload(snap.code + '.pdf', out.blob, { contentType: 'application/pdf', upsert: false });
+    var att = up.error ? null : await db.rpc('attach_report_pdf', { p_code: snap.code, p_sha256: pdfSha });
+
+    saveBlobAs(out.blob, out.filename);
+    closeWarRoomReportModal();
+    if (up.error || (att && att.error)) {
+      console.error('Verification copy failed', up.error || (att && att.error));
+      toast('Report downloaded, but the verification copy did not upload. Generate it again when online.', 'error');
+    } else {
+      toast('Audit report downloaded and registered - code ' + snap.code, 'success');
+    }
+  } catch (e) {
+    console.error(e);
+    toast('Error generating report: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-file-pdf"></i> Download PDF';
+  }
+}
+
+// ---------------------------------------------------------------------
+//  THE PDF
+// ---------------------------------------------------------------------
+async function buildAuditPDF(m) {
+  var jsPDF = window.jspdf.jsPDF;
+  var doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+  var pageW = 210, pageH = 297, mL = 14, mR = 14, cw = pageW - mL - mR;
+  var GREEN = [165, 207, 131], GREEN_DEEP = [74, 124, 58], GREEN_SOFT = [244, 249, 237];
+  var INK = [26, 26, 25], SLATE = [67, 86, 99], MUTED = [107, 124, 147], LINE = [220, 226, 216];
+  var RED = [196, 69, 58], AMBER = [184, 134, 11], BLUE = [21, 145, 220], WHITE = [255, 255, 255];
+  var TCOL = { MATH: RED, TURNOUT: RED, FORM: AMBER, SILENT: MUTED };
+  function tc(c) { doc.setTextColor(c[0], c[1], c[2]); }
+  function fc(c) { doc.setFillColor(c[0], c[1], c[2]); }
+  function dc(c) { doc.setDrawColor(c[0], c[1], c[2]); }
+  function font(style, size) { doc.setFont('helvetica', style); doc.setFontSize(size); }
+
+  var verifyUrl = VERIFY_BASE_URL + '?c=' + encodeURIComponent(m.verifyCode);
+  var fp = String(m.fingerprint || '');
+  var fpShort = fp ? (fp.substring(0, 8) + '...' + fp.substring(fp.length - 8)).toUpperCase() : '-';
+  var scopeTitle = m.scopeLabel.toUpperCase();
+
+  function bar(en, sw, y) {
+    fc(INK); doc.rect(mL, y - 5.5, cw, 8, 'F');
+    tc(WHITE); font('bold', 10.5); doc.text(en, mL + 3, y);
+    font('italic', 8.5); tc(GREEN); doc.text(sw, pageW - mR - 3, y, { align: 'right' });
+    return y + 8;
+  }
+  function room(y, need) { if (y + need > pageH - 20) { doc.addPage(); return 24; } return y; }
+
+  // ============ PAGE 1 — COVER ============
+  fc(GREEN_SOFT); doc.rect(0, 0, pageW, pageH, 'F');
+  fc(GREEN); doc.rect(0, 0, pageW, 14, 'F');
+  tc(INK); font('bold', 32); doc.text('TallyHub', pageW / 2, 46, { align: 'center' });
+  font('normal', 12); tc(SLATE); doc.text('Secure Election Tally System', pageW / 2, 54, { align: 'center' });
+
+  font('bold', 24); tc(INK); doc.text('ELECTION AUDIT REPORT', pageW / 2, 92, { align: 'center' });
+  font('italic', 12.5); tc(SLATE); doc.text('Ripoti ya Ukaguzi wa Uchaguzi', pageW / 2, 100, { align: 'center' });
+
+  fc(WHITE); dc(GREEN); doc.setLineWidth(0.6); doc.roundedRect(pageW / 2 - 52, 112, 104, 18, 4, 4, 'FD');
+  font('bold', 17); tc(GREEN_DEEP); doc.text(String(m.position).toUpperCase(), pageW / 2, 124, { align: 'center' });
+
+  font('normal', 8.5); tc(MUTED); doc.text('AREA COVERED  /  ENEO LINALOHUSIKA', pageW / 2, 142, { align: 'center' });
+  font('bold', 15); tc(INK);
+  var scopeLines = doc.splitTextToSize(scopeTitle, 160);
+  doc.text(scopeLines, pageW / 2, 150, { align: 'center' });
+
+  dc(GREEN); doc.setLineWidth(0.5); doc.line(mL + 25, 170, pageW - mR - 25, 170);
+  var meta = [
+    ['Data as at / Data hadi:', audFmt(m.cutoff)],
+    ['Generated / Imetolewa:', audFmt(m.generatedAt)],
+    ['Report code / Nambari ya ripoti:', m.verifyCode],
+    ['Data fingerprint / Alama ya data:', fpShort]
+  ];
+  meta.forEach(function (r, i) {
+    var y = 180 + i * 7;
+    font('bold', 9.5); tc(INK); doc.text(r[0], pageW / 2 - 6, y, { align: 'right' });
+    font('normal', 9.5); doc.text(String(r[1]), pageW / 2 - 2, y);
+  });
+
+  var qrS = 32, qrX = pageW / 2 - qrS / 2, qrY = 214;
+  if (drawQrCode(doc, verifyUrl, qrX, qrY, qrS)) {
+    font('bold', 8.5); tc(INK); doc.text('Scan to verify this report  /  Changanua kuthibitisha', pageW / 2, qrY + qrS + 7, { align: 'center' });
+  }
+  font('italic', 8); tc(SLATE);
+  var neutral = doc.splitTextToSize('This report states facts held in the TallyHub database at the time shown. A flag marks an item to be checked against the signed statutory form. It is not a finding that any person or party has done wrong.', 150);
+  doc.text(neutral, pageW / 2, 265, { align: 'center' });
+
+  // ============ PAGE 2 — SUMMARY ============
+  doc.addPage();
+  var y = bar('SUMMARY', 'Muhtasari', 24) + 4;
+  var tiles = [
+    { n: m.counts.expected, en: 'Results expected', sw: 'Yanayotarajiwa', col: GREEN },
+    { n: m.counts.reported, en: 'Reported', sw: 'Yaliyowasilishwa', col: GREEN_DEEP },
+    { n: m.counts.notReported, en: 'Not yet reported', sw: 'Hayajawasilishwa', col: MUTED },
+    { n: m.issueItems, en: 'With issues', sw: 'Yenye hitilafu', col: RED },
+    { n: m.counts.reported ? Math.round(m.counts.forms / m.counts.reported * 100) + '%' : '-', en: 'Forms attached', sw: 'Fomu zilizopakiwa', col: BLUE }
+  ];
+  var tw = (cw - 4 * 3) / 5, th = 28;
+  tiles.forEach(function (t, i) {
+    var x = mL + i * (tw + 3);
+    fc(WHITE); dc(LINE); doc.setLineWidth(0.3); doc.roundedRect(x, y, tw, th, 2, 2, 'FD');
+    fc(t.col); doc.roundedRect(x, y, tw, 2.2, 1, 1, 'F');
+    font('bold', 17); tc(INK); doc.text(typeof t.n === 'number' ? audNum(t.n) : String(t.n), x + tw / 2, y + 13, { align: 'center' });
+    font('bold', 6.8); tc(SLATE); doc.text(t.en.toUpperCase(), x + tw / 2, y + 19, { align: 'center' });
+    font('italic', 6.5); tc(MUTED); doc.text(t.sw, x + tw / 2, y + 23.5, { align: 'center' });
+  });
+  y += th + 8;
+
+  font('bold', 10); tc(INK); doc.text('Issues by type  /  Mambo kwa aina', mL, y); y += 3;
+  var typeRows = Object.keys(AUD_TYPES).map(function (k) {
+    var t = AUD_TYPES[k];
+    return [t.en + '\n' + t.sw, m.filters[k] ? String(m.byType[k]) : 'not selected', t.what];
+  });
+  doc.autoTable({
+    startY: y, head: [['Type / Aina', 'Count', 'What it means']], body: typeRows, theme: 'grid',
+    styles: { font: 'helvetica', fontSize: 8, cellPadding: 2.4, textColor: INK, lineColor: LINE, lineWidth: 0.2, valign: 'middle' },
+    headStyles: { fillColor: INK, textColor: WHITE, fontStyle: 'bold' },
+    columnStyles: { 0: { cellWidth: 58, fontStyle: 'bold' }, 1: { cellWidth: 22, halign: 'center', fontStyle: 'bold' }, 2: { cellWidth: cw - 80 } },
+    margin: { left: mL, right: mR, top: 20, bottom: 20 },
+    didParseCell: function (d) {
+      if (d.section === 'body' && d.column.index === 0) { d.cell.styles.textColor = TCOL[Object.keys(AUD_TYPES)[d.row.index]]; }
+    }
+  });
+  y = doc.lastAutoTable.finalY + 9;
+
+  y = room(y, 50);
+  y = bar('DOES IT AFFECT THE OUTCOME?', 'Je, inaathiri matokeo?', y + 3) + 3;
+  if (!m.materiality.length) {
+    font('normal', 9); tc(SLATE);
+    var none = doc.splitTextToSize('No votes are recorded in the flagged streams, so no outcome test is needed for this selection.', cw);
+    doc.text(none, mL, y); y += none.length * 4.5 + 4;
+  } else {
+    doc.autoTable({
+      startY: y, theme: 'grid',
+      head: [['Race', 'Ahead (votes)', 'Runner-up (votes)', 'Gap', 'Votes in flagged streams', 'Reading']],
+      body: m.materiality.map(function (r) { return [r.race, r.first, r.second, audNum(r.gap), audNum(r.vf) + ' (' + r.streams + ' ' + audPlural(r.streams, 'stream', 'streams') + ')', r.reading]; }),
+      styles: { font: 'helvetica', fontSize: 7.5, cellPadding: 2, textColor: INK, lineColor: LINE, lineWidth: 0.2, valign: 'middle' },
+      headStyles: { fillColor: INK, textColor: WHITE, fontStyle: 'bold', fontSize: 7.5 },
+      columnStyles: { 0: { cellWidth: 30 }, 1: { cellWidth: 30 }, 2: { cellWidth: 30 }, 3: { cellWidth: 14, halign: 'right', fontStyle: 'bold' }, 4: { cellWidth: 26, halign: 'right' }, 5: { cellWidth: cw - 130 } },
+      margin: { left: mL, right: mR, top: 20, bottom: 20 },
+      didParseCell: function (d) {
+        if (d.section === 'body' && d.column.index === 5) {
+          var aff = m.materiality[d.row.index].affects;
+          d.cell.styles.textColor = aff ? RED : GREEN_DEEP; d.cell.styles.fontStyle = 'bold';
+        }
+      }
+    });
+    y = doc.lastAutoTable.finalY + 3;
+    font('italic', 7.5); tc(MUTED);
+    var method = doc.splitTextToSize('How this is worked out: moving one vote from one candidate to another changes the gap by at most 2. If twice the votes held in flagged streams (plus any votes not attributed to a candidate) is smaller than the gap, those streams alone cannot change who is ahead. This is a test of size, not a finding about any result. Votes in flagged streams are counted for the selected area only; the gap is for the whole race shown.', cw);
+    doc.text(method, mL, y + 2); y += method.length * 3.4 + 8;
+  }
+
+  y = room(y, 30);
+  font('bold', 10); tc(INK); doc.text('Data completeness  /  Ukamilifu wa data', mL, y); y += 5;
+  font('normal', 8.8); tc(SLATE);
+  var lines = [];
+  lines.push('Streams in this area: ' + audNum(m.streamsInScope) + '.');
+  lines.push(audNum(m.counts.dataGap) + ' of ' + audNum(m.streamsInScope) + ' ' + audPlural(m.streamsInScope, 'stream has', 'streams have') +
+             ' no registered-voter figure, so the turnout check cannot run there' + (m.counts.dataGap ? ' (Wapigakura waliosajiliwa hawajapakiwa).' : '.'));
+  if (m.position !== 'All positions') lines.push('Registered voters in streams that have not yet reported: ' + audNum(m.counts.registeredSilent) + '.');
+  lines.forEach(function (l) { var ls = doc.splitTextToSize('-  ' + l, cw); doc.text(ls, mL, y); y += ls.length * 4.6; });
+
+  // ============ ISSUE REGISTER ============
+  doc.addPage();
+  y = bar('ISSUE REGISTER', 'Orodha ya mambo yaliyobainika', 24) + 3;
+  if (!m.items.length) {
+    fc(GREEN_SOFT); dc(GREEN); doc.setLineWidth(0.4); doc.roundedRect(mL, y + 4, cw, 30, 3, 3, 'FD');
+    font('bold', 12); tc(GREEN_DEEP); doc.text('No issues found for the selected filters', pageW / 2, y + 17, { align: 'center' });
+    font('italic', 9); tc(SLATE); doc.text('Hakuna mambo yaliyobainika kwa vichujio vilivyochaguliwa', pageW / 2, y + 24, { align: 'center' });
+    y += 40;
+  } else {
+    var regBody = m.items.map(function (it) {
+      var issueText = it.issues.map(function (t) { return '[' + AUD_TYPES[t].tag + '] ' + AUD_TYPES[t].en + '\n' + audExplain(it, t); }).join('\n\n');
+      var formText = it.rows.length || it.d.status !== 'silent' ? (it.form ? 'Yes' : 'No') : '-';
+      return [it.ref, it.wardName + ' > ' + it.centreName + '\n' + it.label + '  (' + it.stream.code + ')', it.pos, issueText, formText];
+    });
+    doc.autoTable({
+      startY: y, theme: 'grid',
+      head: [['Ref', 'Where  /  Mahali', 'Position', 'Issue and numbers  /  Hitilafu na namba', 'Form']],
+      body: regBody,
+      styles: { font: 'helvetica', fontSize: 7.5, cellPadding: 2.2, textColor: INK, lineColor: LINE, lineWidth: 0.2, valign: 'top', overflow: 'linebreak' },
+      headStyles: { fillColor: INK, textColor: WHITE, fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [250, 252, 248] },
+      columnStyles: { 0: { cellWidth: 14, fontStyle: 'bold' }, 1: { cellWidth: 50 }, 2: { cellWidth: 18 }, 3: { cellWidth: cw - 14 - 50 - 18 - 14 }, 4: { cellWidth: 14, halign: 'center', fontStyle: 'bold' } },
+      margin: { left: mL, right: mR, top: 20, bottom: 20 },
+      didParseCell: function (d) {
+        if (d.section !== 'body') return;
+        var it = m.items[d.row.index];
+        if (d.column.index === 3) d.cell.styles.textColor = TCOL[it.issues[0]] || INK;
+        if (d.column.index === 4) d.cell.styles.textColor = d.cell.raw === 'Yes' ? GREEN_DEEP : (d.cell.raw === 'No' ? RED : MUTED);
+      }
+    });
+    y = doc.lastAutoTable.finalY + 6;
+  }
+
+  // ============ ANNEX A — DETAIL SHEETS ============
+  var sheets = m.items.filter(function (it) { return it.rows.length; });
+  var MAXS = 60, shown = sheets.slice(0, MAXS);
+  if (shown.length) {
+    doc.addPage();
+    y = bar('DETAIL SHEETS', 'Karatasi za maelezo', 24) + 2;
+    font('italic', 8); tc(MUTED);
+    doc.text('Candidates are listed A to Z for every sheet. The order is not a ranking.  /  Wagombea wameorodheshwa kialfabeti, si kwa kura.', mL, y + 2);
+    y += 8;
+    shown.forEach(function (it) {
+      var need = 62 + it.cands.length * 5.2;
+      y = room(y, need);
+      fc(GREEN_SOFT); dc(LINE); doc.setLineWidth(0.3); doc.roundedRect(mL, y, cw, 9, 1.5, 1.5, 'FD');
+      font('bold', 9.5); tc(INK); doc.text(it.ref + '   ' + it.pos + '   ' + it.label, mL + 3, y + 6);
+      font('normal', 8); tc(SLATE); doc.text(it.wardName + ' > ' + it.centreName, pageW - mR - 3, y + 6, { align: 'right' });
+      y += 11;
+      font('bold', 7.5);
+      var x = mL;
+      it.issues.forEach(function (t) {
+        var label = AUD_TYPES[t].tag, w = doc.getTextWidth(label) + 5;
+        fc(TCOL[t]); doc.roundedRect(x, y - 3.4, w, 5, 1.2, 1.2, 'F'); tc(WHITE); doc.text(label, x + 2.5, y); x += w + 2;
+      });
+      y += 3;
+      doc.autoTable({
+        startY: y, theme: 'grid',
+        head: [['Total cast\nJumla iliyopigwa', 'Rejected\nZilizokataliwa', 'Valid votes\nKura halali', "Candidates' sum\nJumla ya wagombea", 'Difference\nTofauti', 'Registered\nWaliosajiliwa']],
+        body: [[audNum(it.cast), audNum(it.rej), audNum(it.valid), audNum(it.candSum), (it.diff > 0 ? '+' : '') + audNum(it.diff), it.registered ? audNum(it.registered) : 'not loaded']],
+        styles: { font: 'helvetica', fontSize: 9, cellPadding: 2, halign: 'center', textColor: INK, lineColor: LINE, lineWidth: 0.2, fontStyle: 'bold' },
+        headStyles: { fillColor: [235, 241, 230], textColor: SLATE, fontSize: 6.8, fontStyle: 'bold' },
+        margin: { left: mL, right: mR, top: 20, bottom: 20 },
+        didParseCell: function (d) { if (d.section === 'body' && d.column.index === 4 && it.diff !== 0) d.cell.styles.textColor = RED; }
+      });
+      doc.autoTable({
+        startY: doc.lastAutoTable.finalY + 2, theme: 'plain',
+        head: [['Candidate / Mgombea', 'Party / Chama', 'Votes / Kura']],
+        body: it.cands.map(function (cd) { return [cd.name, cd.party, audNum(cd.votes)]; }),
+        styles: { font: 'helvetica', fontSize: 8, cellPadding: 1.6, textColor: INK, lineColor: LINE, lineWidth: { bottom: 0.15 } },
+        headStyles: { textColor: SLATE, fontSize: 7, fontStyle: 'bold' },
+        columnStyles: { 0: { cellWidth: 88 }, 1: { cellWidth: 60 }, 2: { cellWidth: cw - 148, halign: 'right', fontStyle: 'bold' } },
+        margin: { left: mL, right: mR, top: 20, bottom: 20 }
+      });
+      y = doc.lastAutoTable.finalY + 3;
+      font('bold', 7.5); tc(SLATE); doc.text('EVIDENCE AND HISTORY  /  USHAHIDI NA HISTORIA', mL, y); y += 4;
+      font('normal', 8); tc(INK);
+      audCustody(it).forEach(function (ln) { var ls = doc.splitTextToSize('-  ' + ln, cw); doc.text(ls, mL, y); y += ls.length * 4; });
+      y += 1.5;
+      font('bold', 7.5); tc(SLATE); doc.text('RESOLUTION  /  AZIMIO', mL, y + 3);
+      var opts = ['Verified against form  /  Imethibitishwa na fomu', 'Corrected  /  Imerekebishwa', 'Escalated  /  Imepelekwa juu'];
+      var ox = mL + 38;
+      font('normal', 7.8); tc(INK);
+      opts.forEach(function (o) {
+        dc(SLATE); doc.setLineWidth(0.3); doc.rect(ox, y, 3.6, 3.6);
+        doc.text(o, ox + 5.2, y + 3); ox += doc.getTextWidth(o) + 12;
+      });
+      y += 9;
+      dc(LINE); doc.setLineWidth(0.15); doc.line(mL, y, pageW - mR, y); y += 6;
+    });
+    if (sheets.length > MAXS) {
+      y = room(y, 12);
+      font('italic', 8.5); tc(MUTED);
+      doc.text((sheets.length - MAXS) + ' further ' + audPlural(sheets.length - MAXS, 'item is', 'items are') + ' listed in the Issue Register only. Generate a narrower area to see all detail sheets.', mL, y);
+    }
+  }
+
+  // ============ LAST — GLOSSARY, RIGHT OF REPLY, SIGN-OFF ============
+  doc.addPage();
+  y = bar('HOW TO READ THIS REPORT', 'Jinsi ya kusoma ripoti hii', 24) + 3;
+  var gl = [
+    ['Cast / Zilizopigwa', 'Total ballots the agent recorded as cast in the stream (Jumla ya kura zilizopigwa).'],
+    ['Rejected / Zilizokataliwa', 'Ballots that were not counted as valid (Kura zilizokataliwa).'],
+    ['Valid votes / Kura halali', 'Cast minus rejected. The candidates\' votes should add up to this number.'],
+    ['Registered / Waliosajiliwa', 'Voters on the register for that stream (Wapigakura waliosajiliwa).'],
+    ['Stream', 'One polling stream within a polling centre; each has its own signed statutory form.'],
+    ['Flag', 'A prompt to check a figure against the signed form. It does not say who is right.'],
+    ['Corrected', 'A result changed by an administrator, with a reason and a note kept on record.']
+  ];
+  doc.autoTable({
+    startY: y, theme: 'grid', body: gl,
+    styles: { font: 'helvetica', fontSize: 8, cellPadding: 2.2, textColor: INK, lineColor: LINE, lineWidth: 0.2 },
+    columnStyles: { 0: { cellWidth: 48, fontStyle: 'bold', fillColor: GREEN_SOFT }, 1: { cellWidth: cw - 48 } },
+    margin: { left: mL, right: mR, top: 20, bottom: 20 }
+  });
+  y = doc.lastAutoTable.finalY + 9;
+
+  y = room(y, 90);
+  y = bar('RIGHT OF REPLY AND SIGN-OFF', 'Haki ya kujibu na sahihi', y + 3) + 3;
+  font('normal', 8.5); tc(SLATE);
+  var rr = doc.splitTextToSize('Every party with a candidate in this race has an equal row below. Each agent may record a response to any item in this report and sign to show that they have seen it. Signing means the report was received. It does not mean agreement with every figure.', cw);
+  doc.text(rr, mL, y); y += rr.length * 4.4 + 3;
+  var rows = m.parties.slice(0, 10).map(function (p) { return [p, '', '', '', '']; });
+  while (rows.length < 4) rows.push(['', '', '', '', '']);
+  doc.autoTable({
+    startY: y, theme: 'grid',
+    head: [['Party\nChama', 'Agent name\nJina la wakala', 'Response\nMaoni', 'Signature\nSahihi', 'Date\nTarehe']],
+    body: rows,
+    styles: { font: 'helvetica', fontSize: 8.5, cellPadding: 2.5, textColor: INK, lineColor: LINE, lineWidth: 0.25, minCellHeight: 15, valign: 'middle' },
+    headStyles: { fillColor: GREEN_SOFT, textColor: INK, fontStyle: 'bold', minCellHeight: 10 },
+    columnStyles: { 0: { cellWidth: 34, fontStyle: 'bold' }, 1: { cellWidth: 38 }, 2: { cellWidth: cw - 34 - 38 - 32 - 22 }, 3: { cellWidth: 32 }, 4: { cellWidth: 22 } },
+    margin: { left: mL, right: mR, top: 20, bottom: 20 }
+  });
+  y = doc.lastAutoTable.finalY + 8;
+  y = room(y, 40);
+  font('bold', 8.5); tc(INK); doc.text('Prepared by TallyHub  /  Imeandaliwa na TallyHub', mL, y);
+  font('normal', 8.5); tc(SLATE);
+  doc.text('Report code: ' + m.verifyCode + '     Fingerprint: ' + fpShort, mL, y + 5);
+  doc.text('Verify at: ' + verifyUrl, mL, y + 10);
+  var sx = pageW - mR - 70;
+  dc(SLATE); doc.setLineWidth(0.3); doc.line(sx, y + 12, pageW - mR, y + 12);
+  font('italic', 7.5); tc(MUTED); doc.text('TallyHub representative signature  /  Sahihi', sx, y + 16);
+
+  // ============ HEADERS, FOOTERS, WATERMARK (pages 2+) ============
+  var total = doc.internal.getNumberOfPages();
+  for (var i = 2; i <= total; i++) {
+    doc.setPage(i);
+    doc.saveGraphicsState(); doc.setGState(new doc.GState({ opacity: 0.04 }));
+    font('bold', 60); tc(GREEN); doc.text('TALLYHUB', pageW / 2, pageH / 2, { align: 'center', angle: 45 });
+    doc.restoreGraphicsState();
+    dc(LINE); doc.setLineWidth(0.2); doc.line(mL, 12, pageW - mR, 12);
+    font('normal', 8); tc(MUTED);
+    doc.text('TallyHub Election Audit Report', mL, 9);
+    doc.text(m.position + '  |  ' + scopeTitle, pageW - mR, 9, { align: 'right' });
+    doc.line(mL, pageH - 12, pageW - mR, pageH - 12);
+    doc.text('Data as at ' + audFmt(m.cutoff), mL, pageH - 7);
+    doc.text('Verify: ' + m.verifyCode, pageW / 2, pageH - 7, { align: 'center' });
+    doc.text('Page ' + i + ' of ' + total, pageW - mR, pageH - 7, { align: 'right' });
+  }
+
+  var safePos = String(m.position).replace(/\s+/g, '');
+  var safeScope = scopeTitle.replace(/[^A-Z0-9]+/g, '');
+  return { blob: doc.output('blob'), filename: 'TallyHub-Audit-' + safePos + '-' + safeScope + '-' + m.verifyCode + '.pdf' };
+}
   
 </script>
 </body>
