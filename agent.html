@@ -740,6 +740,20 @@ button { cursor: pointer; }
   .entry-footer-inner { gap: 6px; }
   .entry-footer .btn { height: 44px; }
 }
+
+    /* Attach-form modal: centred "Choose Form" + faded "Later" */
+.action-sheet-option {
+  justify-content: center;
+  background: var(--green-tint);
+  border-color: var(--green);
+}
+.btn-later {
+  background: #EEF0EC;
+  color: var(--muted);
+  border: none;
+  font-weight: 700;
+}
+.btn-later:active { background: #E1E5DE; }
   </style>
 </head>
 <body>
@@ -1060,7 +1074,7 @@ button { cursor: pointer; }
     <button class="action-sheet-option" onclick="document.getElementById('galleryInput').click()">
       <i class="fas fa-camera"></i>Choose Form
     </button>
-    <button class="btn btn-ghost" style="width:100%;" onclick="closeUploadModal()">Later</button>
+    <button class="btn btn-later" style="width:100%;" onclick="closeUploadModal()">Later</button>
   </div>
 </div>
 
