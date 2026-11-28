@@ -2539,96 +2539,84 @@ function finishFormUpload() {
 }
 
 async function executeFormUpload() {
+  if (!currentFormFile) return;
+
   var btn = document.getElementById('confirmUploadBtn');
-  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uploading...';
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uploading…';
   btn.disabled = true;
 
-  try {
-    var file = document.getElementById('galleryInput').files[0];
-    if (!file) throw new Error("No file selected");
+  var streamCode = currentFormStream;
+  var position = currentFormPos;
+  var fileName = streamCode + '_' + position.replace(/\s+/g, '') + '.jpg';
 
-    var streamCode = currentStream.code;
-    var position = currentPosition;
-    var fileName = streamCode + '_' + position.replace(/\s+/g, '') + '.jpg';
-    
-    // 1. CHECK IF THIS IS A REPLACEMENT
-    const { data: existingForm } = await db.from('form_photos')
-        .select('id, photo_url')
+  try {
+    // 1. Look for existing form
+    let existingForm = null;
+    try {
+      const { data } = await db.from('form_photos')
+        .select('id, photo_url, upload_count')
         .eq('stream_code', streamCode)
         .eq('position', position)
         .maybeSingle();
+      existingForm = data;
+    } catch (e) { console.warn('Lookup failed', e); }
 
-    // 2. IF REPLACEMENT, ARCHIVE THE OLD FILE FIRST
+    // 2. If replacement, best-effort archive old file (does NOT block)
     if (existingForm && existingForm.photo_url) {
-        const oldPath = existingForm.photo_url;
-        const archivePath = 'archive/' + oldPath; // e.g. archive/C-7K8SL-STR1_Governor.jpg
-        
-        // Copy old file to archive folder
+      var archivePath = 'archive/' + existingForm.photo_url.replace('.jpg', '_' + Date.now() + '.jpg');
+      try {
         const { error: copyError } = await db.storage
-            .from('form-photos')
-            .copy(oldPath, archivePath);
-
-        if (copyError) {
-            console.warn("Could not archive old file:", copyError);
-            // We continue anyway so the agent isn't stuck, but we log it.
-        }
-
-        // Log to history table (the trigger enforces time, but we log the image path)
-        await db.from('form_photo_history').insert({
-            form_photo_id: existingForm.id,
-            stream_code: streamCode,
-            position: position,
-            archived_url: archivePath,
-            uploaded_by: USER.name
-        });
+          .from('form-photos')
+          .copy(existingForm.photo_url, archivePath);
+        if (copyError) throw copyError;
+        console.log('Old form archived to:', archivePath);
+      } catch (copyErr) {
+        console.warn('Archive copy failed (continuing):', copyErr);
+        // Trigger still logs the old URL into history. We just don't have a copy of the old image.
+      }
     }
 
-    // 3. UPLOAD THE NEW FILE
-    // We use upsert: true to overwrite the main file
+    // 3. Upload new file (overwrites)
     const { error: uploadError } = await db.storage
-        .from('form-photos')
-        .upload(fileName, file, { upsert: true, cacheControl: '3600' });
-
+      .from('form-photos')
+      .upload(fileName, currentFormFile, { upsert: true, cacheControl: '3600' });
     if (uploadError) throw uploadError;
 
-    // 4. UPDATE OR INSERT THE DATABASE RECORD
+    // 4. Insert or update the DB row
     if (existingForm) {
-        // UPDATE (The database trigger will check time limits and owner)
-        const { error: dbError } = await db.from('form_photos')
-            .update({
-                photo_url: fileName,
-                uploaded_by: USER.name,
-                uploaded_at: new Date().toISOString()
-                // We don't manually set upload_count or deadline_at; the trigger does it.
-            })
-            .eq('id', existingForm.id);
-        
-        if (dbError) throw dbError; // This will catch the "Time lock" or "Agent lock" errors
+      // UPDATE — trigger enforces owner/time/limit, and logs to history
+      const { error: dbError } = await db.from('form_photos')
+        .update({
+          photo_url: fileName,
+          uploaded_by: USER.name,
+          uploaded_at: new Date().toISOString()
+        })
+        .eq('id', existingForm.id);
+      if (dbError) throw dbError;   // ← "Time lock", "Agent lock", "Limit reached" surface here
     } else {
-        // INSERT (First upload)
-        const { error: dbError } = await db.from('form_photos')
-            .insert({
-                stream_code: streamCode,
-                position: position,
-                photo_url: fileName,
-                uploaded_by: USER.name,
-                county_id: USER.county_id,
-                constituency_id: USER.constituency_id,
-                ward_id: USER.ward_id
-            });
-        
-        if (dbError) throw dbError;
+      // INSERT — trigger sets first_uploaded_at, deadline_at, upload_count=1
+      const { error: dbError } = await db.from('form_photos')
+        .insert({
+          stream_code: streamCode,
+          position: position,
+          photo_url: fileName,
+          uploaded_by: USER.name,
+          county_id: USER.county_id,
+          constituency_id: USER.constituency_id,
+          ward_id: USER.ward_id
+        });
+      if (dbError) throw dbError;
     }
 
-    toast('Form uploaded successfully', 'success');
-    closeUploadModal();
-    goToReadonly(streamCode, position); // Refresh the view
+    // 5. Save thumbnail for offline preview
+    try { await saveFormThumb(streamCode, position, currentFormFile); } catch (e) { console.warn('Thumb skipped', e); }
+
+    toast(isFormReplacement ? 'Form replaced successfully' : 'Form uploaded successfully', 'success');
+    finishFormUpload();   // ← closes modal, updates FORMS, navigates back
 
   } catch (err) {
-    console.error(err);
-    // If the DB trigger throws an error (Time expired / Wrong Agent), it shows here
+    console.error('Upload Error:', err);
     toast(err.message || 'Upload failed. Please try again.', 'error');
-  } finally {
     btn.innerHTML = '<i class="fas fa-cloud-upload-alt"></i> Upload';
     btn.disabled = false;
   }
