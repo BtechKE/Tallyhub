@@ -2115,25 +2115,57 @@ async function goToReadonly(streamCode, position) {
   var c = jsArg(streamCode), p = jsArg(position);
   var thumbId = 'formThumb_' + streamCode + '_' + position.replace(/\s+/g, '');
 
-  // Fetch the form record to check owner and count
+  // 1. Fetch form record (owner, count, deadline) - ONLINE → CACHE
   let formMeta = null;
+  const formMetaCacheKey = 'cached_formmeta_' + streamCode + '_' + position;
+  
   if (navigator.onLine && formOk) {
       try {
-          const { data } = await db.from('form_photos').select('uploaded_by, upload_count').eq('stream_code', streamCode).eq('position', position).maybeSingle();
-          formMeta = data;
+          const { data } = await db.from('form_photos')
+            .select('uploaded_by, upload_count, first_uploaded_at, deadline_at, photo_url')
+            .eq('stream_code', streamCode)
+            .eq('position', position)
+            .maybeSingle();
+          if (data) {
+              formMeta = data;
+              await offlineStore.setItem(formMetaCacheKey, data);
+          }
       } catch(e) { console.warn("Could not fetch form meta", e); }
   }
+  if (!formMeta) {
+      formMeta = await offlineStore.getItem(formMetaCacheKey);
+  }
 
-  // Determine if the current user can replace the form
+  // 2. Determine replacement rules (Owner AND < 2 uploads AND within 3 hours)
   let canReplace = false;
+  let timeLeftText = '';
+  let lockReason = '';
+  let lockIcon = 'fa-lock';
+
   if (formMeta) {
       const isOwner = (formMeta.uploaded_by === USER.name);
       const count = formMeta.upload_count || 1;
-      if (isOwner && count < 2) {
+      const deadlineMs = formMeta.deadline_at ? new Date(formMeta.deadline_at).getTime() : 0;
+      const timeLeftMs = deadlineMs - Date.now();
+
+      if (!isOwner) {
+          lockReason = 'Locked to ' + (formMeta.uploaded_by || 'another agent');
+          lockIcon = 'fa-user-lock';
+      } else if (count >= 2) {
+          lockReason = 'Replacement already used';
+          lockIcon = 'fa-ban';
+      } else if (timeLeftMs <= 0) {
+          lockReason = 'Replacement window expired';
+          lockIcon = 'fa-clock';
+      } else {
           canReplace = true;
+          const hoursLeft = Math.floor(timeLeftMs / (1000 * 60 * 60));
+          const minsLeft = Math.floor((timeLeftMs % (1000 * 60 * 60)) / (1000 * 60));
+          timeLeftText = ' (' + hoursLeft + 'h ' + minsLeft + 'm left)';
       }
   }
 
+  // 3. Build the form section HTML
   var formHtml = '';
   if (formOk || localPreview) {
     formHtml =
@@ -2143,13 +2175,13 @@ async function goToReadonly(streamCode, position) {
         '<span class="form-thumb-overlay"><i class="fas fa-search-plus"></i> View form</span>' +
       '</button>';
 
-    // ONLY show the replace button if they are the owner and haven't used their 1 chance
     if (canReplace) {
-        formHtml += '<button type="button" class="btn btn-green" style="width:100%;" onclick="openUploadModal(' + c + ',' + p + ')"><i class="fas fa-sync-alt"></i> Replace photo (1 attempt left)</button>';
-    } else {
-        formHtml += '<div class="ro-info" style="margin-top: 10px; justify-content: center;"><div class="ro-info-row" style="justify-content: center; color: var(--muted);"><i class="fas fa-lock"></i> Form locked. Only the submitting agent can replace it once.</div></div>';
+        formHtml += '<button type="button" class="btn btn-green" style="width:100%; margin-top:10px;" onclick="openUploadModal(' + c + ',' + p + ', true)"><i class="fas fa-sync-alt"></i> Replace Form' + timeLeftText + '</button>';
+    } else if (lockReason) {
+        formHtml += '<div class="ro-info" style="margin-top: 10px; justify-content: center;"><div class="ro-info-row" style="justify-content: center; color: var(--muted);"><i class="fas ' + lockIcon + '"></i> ' + esc(lockReason) + '</div></div>';
     }
 
+    // Load thumbnail
     if (!localPreview && formOk && navigator.onLine) {
       db.storage.from('form-photos').createSignedUrl(streamCode + '_' + position.replace(/\s+/g, '') + '.jpg', 600).then(({ data }) => {
         if (data) {
@@ -2159,7 +2191,7 @@ async function goToReadonly(streamCode, position) {
       });
     }
   } else {
-    formHtml = '<button type="button" class="form-attach-btn" onclick="openUploadModal(' + c + ',' + p + ')">' +
+    formHtml = '<button type="button" class="form-attach-btn" onclick="openUploadModal(' + c + ',' + p + ', false)">' +
       '<i class="fas fa-camera"></i>Attach statutory form</button>';
   }
 
@@ -2177,7 +2209,6 @@ async function goToReadonly(streamCode, position) {
       rows = queued.payload.map(x => ({ candidate_code: x.candidate_code, votes: x.votes }));
       meta = { by: USER.name, at: null, totalCast: queued.totalCast, rejected: queued.rejected, pending: true };
     } else {
-      // CHANGED: use the internet when available, otherwise the copy saved on the phone
       const resultKey = 'cached_result_' + streamCode + '_' + position;
       let results = null;
 
@@ -2190,7 +2221,6 @@ async function goToReadonly(streamCode, position) {
           results = data || [];
           if (results.length) await offlineStore.setItem(resultKey, results);
         } catch (err) {
-          // Weak network: fall back to the saved copy
           results = await offlineStore.getItem(resultKey);
           if (!results) throw err;
         }
@@ -2372,11 +2402,24 @@ function thConfirm(opts) {
 var currentFormFile = null;
 var currentFormStream = '';
 var currentFormPos = '';
+var isFormReplacement = false;
 
-function openUploadModal(streamCode, position) {
+function openUploadModal(streamCode, position, isReplace) {
   currentFormStream = streamCode;
   currentFormPos = position;
-  document.getElementById('uploadModalTitle').textContent = 'Attach ' + position + ' Form';
+  isFormReplacement = !!isReplace;
+
+  var titleEl = document.getElementById('uploadModalTitle');
+  var bodyEl  = document.querySelector('#uploadOptionsModal .modal-body');
+
+  if (isFormReplacement) {
+    titleEl.innerHTML = '<i class="fas fa-sync-alt" style="color:var(--blue-action)"></i> Replace Form';
+    if (bodyEl) bodyEl.innerHTML = 'Take a clear, upright photo of the <strong>corrected</strong> statutory form. Your original form will be archived.';
+  } else {
+    titleEl.textContent = 'Attach ' + position + ' Form';
+    if (bodyEl) bodyEl.innerHTML = 'Take a clear, upright (portrait) photo of the signed statutory form.';
+  }
+
   document.getElementById('galleryInput').value = '';
   document.getElementById('uploadOptionsModal').classList.add('active');
 }
@@ -2442,7 +2485,7 @@ async function handleFormUpload(event) {
 
     if (result.width > result.height) {
       toast('Hold the phone upright and take a portrait photo of the form.', 'error');
-      openUploadModal(currentFormStream, currentFormPos);
+      openUploadModal(currentFormStream, currentFormPos, isFormReplacement);
       return;
     }
 
@@ -2459,7 +2502,7 @@ async function handleFormUpload(event) {
   } catch (err) {
     console.error(err);
     toast('Couldn’t read that photo. Try again.', 'error');
-    openUploadModal(currentFormStream, currentFormPos);
+    openUploadModal(currentFormStream, currentFormPos, isFormReplacement);
   } finally {
     document.getElementById('appLoader').classList.remove('active');
   }
@@ -2467,7 +2510,7 @@ async function handleFormUpload(event) {
 
 function retakePhoto() {
   document.getElementById('formPreviewModal').classList.remove('active');
-  openUploadModal(currentFormStream, currentFormPos);
+  openUploadModal(currentFormStream, currentFormPos, isFormReplacement);
 }
 
 async function saveFormThumb(stream, pos, file) {
@@ -2488,6 +2531,7 @@ function finishFormUpload() {
   if (previewObjectUrl) { URL.revokeObjectURL(previewObjectUrl); previewObjectUrl = null; }
   document.getElementById('previewImage').src = '';
   currentFormFile = null;
+  isFormReplacement = false;
   if (!FORMS[currentFormStream]) FORMS[currentFormStream] = {};
   FORMS[currentFormStream][currentFormPos] = true;
   offlineStore.setItem('cached_forms', FORMS);
@@ -2495,88 +2539,98 @@ function finishFormUpload() {
 }
 
 async function executeFormUpload() {
-  if (!currentFormFile) return;
-
   var btn = document.getElementById('confirmUploadBtn');
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uploading...';
   btn.disabled = true;
 
-  // ---------- OFFLINE ----------
-  if (!navigator.onLine) {
-    btn.innerHTML = '<i class="fas fa-save"></i> Saving on phone…';
-    await offlineStore.setItem('form_' + currentFormStream + '_' + currentFormPos, {
-      streamCode: currentFormStream,
-      position: currentFormPos,
-      file: currentFormFile,
-      type: 'form'
-    });
-    await saveFormThumb(currentFormStream, currentFormPos, currentFormFile);
-    toast('Form saved on this phone. It will upload when you’re online.', 'success');
-    updateSyncPill();
-    finishFormUpload();
-    return;
-  }
-
-  // ---------- ONLINE ----------
-  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uploading…';
-
   try {
-    // 1. Check the current upload count in the database
+    var file = document.getElementById('galleryInput').files[0];
+    if (!file) throw new Error("No file selected");
+
+    var streamCode = currentStream.code;
+    var position = currentPosition;
+    var fileName = streamCode + '_' + position.replace(/\s+/g, '') + '.jpg';
+    
+    // 1. CHECK IF THIS IS A REPLACEMENT
     const { data: existingForm } = await db.from('form_photos')
-      .select('uploaded_by, upload_count')
-      .eq('stream_code', currentFormStream)
-      .eq('position', currentFormPos)
-      .maybeSingle();
+        .select('id, photo_url')
+        .eq('stream_code', streamCode)
+        .eq('position', position)
+        .maybeSingle();
 
-    let newCount = 1;
+    // 2. IF REPLACEMENT, ARCHIVE THE OLD FILE FIRST
+    if (existingForm && existingForm.photo_url) {
+        const oldPath = existingForm.photo_url;
+        const archivePath = 'archive/' + oldPath; // e.g. archive/C-7K8SL-STR1_Governor.jpg
+        
+        // Copy old file to archive folder
+        const { error: copyError } = await db.storage
+            .from('form-photos')
+            .copy(oldPath, archivePath);
 
-    if (existingForm) {
-        if (existingForm.upload_count >= 2) {
-            throw new Error('This form has already been replaced once. Only the Admin can reset it.');
+        if (copyError) {
+            console.warn("Could not archive old file:", copyError);
+            // We continue anyway so the agent isn't stuck, but we log it.
         }
-        if (existingForm.uploaded_by !== USER.name) {
-            throw new Error('Only the agent who submitted the results can replace the form.');
-        }
-        newCount = (existingForm.upload_count || 1) + 1;
+
+        // Log to history table (the trigger enforces time, but we log the image path)
+        await db.from('form_photo_history').insert({
+            form_photo_id: existingForm.id,
+            stream_code: streamCode,
+            position: position,
+            archived_url: archivePath,
+            uploaded_by: USER.name
+        });
     }
 
-    // 2. Upload the image to Storage (overwrite existing)
-    var fileName = currentFormStream + '_' + currentFormPos.replace(/\s+/g, '') + '.jpg';
+    // 3. UPLOAD THE NEW FILE
+    // We use upsert: true to overwrite the main file
     const { error: uploadError } = await db.storage
-      .from('form-photos')
-      .upload(fileName, currentFormFile, { upsert: true, contentType: 'image/jpeg' });
-    if (uploadError) throw new Error(uploadError.message);
+        .from('form-photos')
+        .upload(fileName, file, { upsert: true, cacheControl: '3600' });
 
-    // 3. Get Geography
-    const { data: streamData, error: streamErr } = await db.from('streams')
-      .select('county_id, constituency_id, ward_id')
-      .eq('code', currentFormStream)
-      .single();
-    if (streamErr) throw new Error('Failed to fetch stream geography: ' + streamErr.message);
+    if (uploadError) throw uploadError;
 
-    // 4. Upsert the record with the new count
-    const { error: dbError } = await db.from('form_photos').upsert({
-      stream_code: currentFormStream,
-      position: currentFormPos,
-      photo_url: fileName,
-      uploaded_by: USER.name,
-      county_id: streamData?.county_id,
-      constituency_id: streamData?.constituency_id,
-      ward_id: streamData?.ward_id,
-      upload_count: newCount
-    }, { onConflict: 'stream_code,position' });
-    
-    if (dbError) throw new Error(dbError.message);
+    // 4. UPDATE OR INSERT THE DATABASE RECORD
+    if (existingForm) {
+        // UPDATE (The database trigger will check time limits and owner)
+        const { error: dbError } = await db.from('form_photos')
+            .update({
+                photo_url: fileName,
+                uploaded_by: USER.name,
+                uploaded_at: new Date().toISOString()
+                // We don't manually set upload_count or deadline_at; the trigger does it.
+            })
+            .eq('id', existingForm.id);
+        
+        if (dbError) throw dbError; // This will catch the "Time lock" or "Agent lock" errors
+    } else {
+        // INSERT (First upload)
+        const { error: dbError } = await db.from('form_photos')
+            .insert({
+                stream_code: streamCode,
+                position: position,
+                photo_url: fileName,
+                uploaded_by: USER.name,
+                county_id: USER.county_id,
+                constituency_id: USER.constituency_id,
+                ward_id: USER.ward_id
+            });
+        
+        if (dbError) throw dbError;
+    }
 
-    await saveFormThumb(currentFormStream, currentFormPos, currentFormFile);
-    toast('Form uploaded successfully.', 'success');
-    sessionStorage.removeItem('pending_upload');
-    finishFormUpload();
+    toast('Form uploaded successfully', 'success');
+    closeUploadModal();
+    goToReadonly(streamCode, position); // Refresh the view
 
   } catch (err) {
     console.error(err);
-    toast(err.message, 'error');
+    // If the DB trigger throws an error (Time expired / Wrong Agent), it shows here
+    toast(err.message || 'Upload failed. Please try again.', 'error');
+  } finally {
+    btn.innerHTML = '<i class="fas fa-cloud-upload-alt"></i> Upload';
     btn.disabled = false;
-    btn.innerHTML = '<i class="fas fa-cloud-upload-alt"></i> Retry upload';
   }
 }
 
