@@ -5960,8 +5960,7 @@ async function buildPositionPDF(data) {
       });
       return doc.lastAutoTable.finalY + 6;
   }
-
-  function drawWardMatrixTable(wardName, centres, candidatesList, currentY) {
+function drawWardMatrixTable(wardName, centres, candidatesList, currentY, drawTitle, formsCount, totalStreams, totalVotes) {
       if (!centres || centres.length === 0) return currentY;
 
       // 1. Check if we need landscape based on candidate count
@@ -5973,7 +5972,19 @@ async function buildPositionPDF(data) {
           if (currentY > 200) { doc.addPage(); currentY = 25; }
       }
 
-      // 2. Build Headers
+      // 2. Draw the Ward Title + summary HERE (after page break checks)
+      if (drawTitle) {
+          doc.setFontSize(11); doc.setTextColor(INK[0], INK[1], INK[2]); doc.setFont('helvetica', 'bold');
+          var wardLabel = String(wardName || 'Unknown').toUpperCase();
+          if (!wardLabel.includes('WARD')) wardLabel += ' WARD';
+          doc.text(wardLabel, marginL + 3, currentY);
+          // Form count summary on the right
+          doc.setFontSize(8); doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]); doc.setFont('helvetica', 'normal');
+          doc.text('Forms: ' + (formsCount || 0) + '/' + (totalStreams || 0) + '  |  Total Votes: ' + Number(totalVotes || 0).toLocaleString(), pageW - marginR, currentY, { align: 'right' });
+          currentY += 8;
+      }
+
+      // 3. Build Headers
       var head = [['Stream']];
       candidatesList.forEach(c => head[0].push(c.name + '\n(' + c.party + ')'));
       head[0].push('Total Valid', 'Form', 'Status');
@@ -5982,7 +5993,7 @@ async function buildPositionPDF(data) {
       var wardTotalVotes = 0;
       var wardCandVotes = {};
 
-      // 3. Build Rows per Centre
+      // 4. Build Rows per Centre
       centres.forEach(cen => {
           // Centre Header Merged Row
           body.push([{ content: 'Centre: ' + cen.centreName, colSpan: candidatesList.length + 4, styles: { fillColor: [230, 230, 230], fontStyle: 'bold', halign: 'left', textColor: INK } }]);
@@ -6028,7 +6039,7 @@ async function buildPositionPDF(data) {
       wardTotalRow.push({ content: '', colSpan: 2, styles: { fillColor: GREEN } });
       body.push(wardTotalRow);
 
-      // 4. Draw Table
+      // 5. Draw Table
       doc.autoTable({
           startY: currentY,
           head: head,
@@ -6103,7 +6114,7 @@ async function buildPositionPDF(data) {
 
       currentY = doc.lastAutoTable.finalY + 8;
 
-      // 5. Revert to portrait for next section if needed
+      // 6. Revert to portrait for next section if needed
       if (needLandscape) {
           doc.addPage('a4', 'portrait');
           pageW = 210; marginL = 14; marginR = 14; currentY = 25;
@@ -6221,7 +6232,7 @@ async function buildPositionPDF(data) {
       currentY += 10;
   }
 
-   // ==========================================
+ // ==========================================
   // HIERARCHICAL RESULTS (NEW 34B MATRIX)
   // ==========================================
   
@@ -6261,7 +6272,7 @@ async function buildPositionPDF(data) {
           level2.subAreas.forEach(level3 => { // level3 is Ward
               
               if (data.posContext !== 'MCA') {
-                  // --- Show Ward overview for MP and County positions ---
+                  // --- MP & COUNTY POSITIONS: Show Ward overview, then 34B matrix (no title inside) ---
                   if (currentY > pageH - 50) { doc.addPage(); currentY = 25; }
                   doc.setFontSize(11); doc.setTextColor(INK[0], INK[1], INK[2]); doc.setFont('helvetica', 'bold');
                   var wardLabel = String(level3.wardName || 'Unknown').toUpperCase();
@@ -6272,18 +6283,21 @@ async function buildPositionPDF(data) {
                   currentY += 6;
                   currentY = drawOverallTable(level3.candidates, currentY, false);
                   currentY += 4;
+                  // Draw matrix WITHOUT title (title was already drawn above)
+                  currentY = drawWardMatrixTable('', level3.centres, raceCandidates, currentY, false, 0, 0, 0);
               } else {
-                  // --- MCA: Skip the repetitive Ward Overall table, just print the Ward Title ---
-                  if (currentY > pageH - 50) { doc.addPage(); currentY = 25; }
-                  doc.setFontSize(11); doc.setTextColor(INK[0], INK[1], INK[2]); doc.setFont('helvetica', 'bold');
-                  var wardLabel = String(level3.wardName || 'Unknown').toUpperCase();
-                  if (!wardLabel.includes('WARD')) wardLabel += ' WARD';
-                  doc.text(wardLabel, marginL + 3, currentY);
-                  currentY += 8; // Spacing before the table
+                  // --- MCA: Skip repetitive Ward Overall. Pass title + form counts INTO the table ---
+                  currentY = drawWardMatrixTable(
+                      level3.wardName,
+                      level3.centres,
+                      raceCandidates,
+                      currentY,
+                      true,
+                      level3.formsCount,
+                      level3.totalStreams,
+                      level3.totalVotes
+                  );
               }
-
-              // --- NEW: Single 34B Matrix for the entire Ward ---
-              currentY = drawWardMatrixTable(level3.wardName, level3.centres, raceCandidates, currentY);
           });
       });
   });
