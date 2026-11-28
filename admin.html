@@ -6221,7 +6221,7 @@ async function buildPositionPDF(data) {
       currentY += 10;
   }
 
-  // ==========================================
+   // ==========================================
   // HIERARCHICAL RESULTS (NEW 34B MATRIX)
   // ==========================================
   
@@ -6245,8 +6245,8 @@ async function buildPositionPDF(data) {
 
       level1.subAreas.forEach(level2 => { // level2 is Constituency
           
-          // --- MP / COUNTY POSITIONS: Show Constituency overview ---
-          if (['President', 'Governor', 'Senator', 'Women Rep', 'MP'].includes(data.posContext)) {
+          // --- COUNTY POSITIONS: Show Constituency overview (Removed 'MP' to prevent repetition) ---
+          if (['President', 'Governor', 'Senator', 'Women Rep'].includes(data.posContext)) {
               if (currentY > 25) { doc.addPage(); currentY = 25; } 
               doc.setFillColor(INK[0], INK[1], INK[2]);
               doc.rect(marginL, currentY - 6, pageW - marginL - marginR, 8, 'F');
@@ -6260,24 +6260,33 @@ async function buildPositionPDF(data) {
 
           level2.subAreas.forEach(level3 => { // level3 is Ward
               
-              // --- Show Ward overview ---
-              if (currentY > pageH - 50) { doc.addPage(); currentY = 25; }
-              doc.setFontSize(11); doc.setTextColor(INK[0], INK[1], INK[2]); doc.setFont('helvetica', 'bold');
-              var wardLabel = String(level3.wardName || 'Unknown').toUpperCase();
-              if (!wardLabel.includes('WARD')) wardLabel += ' WARD';
-              doc.text(wardLabel, marginL + 3, currentY);
-              doc.setFontSize(8); doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]); doc.setFont('helvetica', 'normal');
-              doc.text('Forms: ' + level3.formsCount + '/' + level3.totalStreams + '  |  Total Votes: ' + level3.totalVotes.toLocaleString(), pageW - marginR, currentY, { align: 'right' });
-              currentY += 6;
-              currentY = drawOverallTable(level3.candidates, currentY, false);
-              currentY += 4;
+              if (data.posContext !== 'MCA') {
+                  // --- Show Ward overview for MP and County positions ---
+                  if (currentY > pageH - 50) { doc.addPage(); currentY = 25; }
+                  doc.setFontSize(11); doc.setTextColor(INK[0], INK[1], INK[2]); doc.setFont('helvetica', 'bold');
+                  var wardLabel = String(level3.wardName || 'Unknown').toUpperCase();
+                  if (!wardLabel.includes('WARD')) wardLabel += ' WARD';
+                  doc.text(wardLabel, marginL + 3, currentY);
+                  doc.setFontSize(8); doc.setTextColor(SLATE[0], SLATE[1], SLATE[2]); doc.setFont('helvetica', 'normal');
+                  doc.text('Forms: ' + level3.formsCount + '/' + level3.totalStreams + '  |  Total Votes: ' + level3.totalVotes.toLocaleString(), pageW - marginR, currentY, { align: 'right' });
+                  currentY += 6;
+                  currentY = drawOverallTable(level3.candidates, currentY, false);
+                  currentY += 4;
+              } else {
+                  // --- MCA: Skip the repetitive Ward Overall table, just print the Ward Title ---
+                  if (currentY > pageH - 50) { doc.addPage(); currentY = 25; }
+                  doc.setFontSize(11); doc.setTextColor(INK[0], INK[1], INK[2]); doc.setFont('helvetica', 'bold');
+                  var wardLabel = String(level3.wardName || 'Unknown').toUpperCase();
+                  if (!wardLabel.includes('WARD')) wardLabel += ' WARD';
+                  doc.text(wardLabel, marginL + 3, currentY);
+                  currentY += 8; // Spacing before the table
+              }
 
               // --- NEW: Single 34B Matrix for the entire Ward ---
               currentY = drawWardMatrixTable(level3.wardName, level3.centres, raceCandidates, currentY);
           });
       });
   });
-
   // ==========================================
   // LAST PAGE: FOR OFFICIAL USE (certification & sign-off)
   // ==========================================
